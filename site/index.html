@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>punk0 — The Speed-First IDE for Reviewing AI-Generated Code</title>
+  <meta name="description" content="punk0 is a clean, speed-first review console built for AI-generated code. Sub-millisecond cold starts, zero-latency search, native Git diffs, and seamless agent handoff.">
+  <meta name="keywords" content="punk0, AI code review, fast code review, PR review, git diff, Claude Code, Cursor, Antigravity, single binary">
+
+  <!-- Clean, Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <!-- Soft Ambient Glow -->
+  <div class="ambient-glow" aria-hidden="true"></div>
+
+  <!-- Minimal Clean Header -->
+  <header class="site-nav">
+    <div class="container nav-row">
+      <a href="#" class="brand" aria-label="punk0 home">
+        <span class="brand-badge" aria-hidden="true">p0</span>
+        <span>punk0</span>
+      </a>
+
+      <nav aria-label="Primary Navigation">
+        <ul class="nav-links">
+          <li><a href="#preview" class="nav-link">Preview</a></li>
+          <li><a href="#metrics" class="nav-link">Performance</a></li>
+          <li><a href="#features" class="nav-link">Features</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <button class="search-trigger" id="btn-search-trigger" data-open-search type="button" aria-label="Search files">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>Find</span>
+          <kbd class="search-kbd">Ctrl+K</kbd>
+        </button>
+
+        <a href="https://github.com/neautrino/punk0/releases" target="_blank" rel="noopener noreferrer" class="version-tag" title="Changelog">v0.1.18</a>
+
+        <a href="https://github.com/neautrino/punk0" target="_blank" rel="noopener noreferrer" class="btn-github">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"></path>
+          </svg>
+          <span>Star</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <!-- Clean Hero -->
+    <section class="hero" id="hero">
+      <div class="container">
+        <a href="https://github.com/neautrino/punk0" target="_blank" rel="noopener noreferrer" class="pill-announcement">
+          <span class="pill-dot" aria-hidden="true"></span>
+          <span>punk0 v0.1.18 is live — Zero-latency review engine &rarr;</span>
+        </a>
+
+        <h1 class="hero-title">
+          Review AI code at the <br>
+          <span class="text-gradient">speed of thought.</span>
+        </h1>
+
+        <p class="hero-sub">
+          A minimalist, ultra-fast review console. Instant fuzzy search across massive codebases, native Git diffs, and direct handoff to local AI coding harnesses.
+        </p>
+
+        <!-- Clean Install Box -->
+        <div class="install-wrapper">
+          <div class="install-box">
+            <div class="install-cmd">
+              <span class="install-prompt">$</span>
+              <code>curl -fsSL https://punk0.ai/install.sh | sh</code>
+            </div>
+            <button class="copy-btn" id="btn-copy-install" data-copy="curl -fsSL https://punk0.ai/install.sh | sh" type="button" aria-label="Copy install command">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Supported Harnesses Row -->
+        <div class="harness-strip">
+          <span>Supported harnesses:</span>
+          <span class="harness-chip">Claude Code</span>
+          <span class="harness-chip">Cursor Agent</span>
+          <span class="harness-chip">Antigravity</span>
+          <span class="harness-chip">OpenCode</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clean Interactive Preview Window -->
+    <section class="preview-section" id="preview">
+      <div class="container">
+        <div class="preview-window">
+          <div class="window-header">
+            <div class="window-dots" aria-hidden="true">
+              <div class="w-dot"></div>
+              <div class="w-dot"></div>
+              <div class="w-dot"></div>
+            </div>
+
+            <div class="tab-switcher" role="tablist">
+              <button class="tab-btn active" data-tab="diff" role="tab" aria-selected="true" type="button">Git Diff</button>
+              <button class="tab-btn" data-tab="engine" role="tab" aria-selected="false" type="button">Engine</button>
+              <button class="tab-btn" data-tab="agent" role="tab" aria-selected="false" type="button">AI Handoff</button>
+            </div>
+
+            <div class="window-badge">127.0.0.1:7777</div>
+          </div>
+
+          <div class="preview-content" id="preview-code-body">
+            <!-- Default Diff Content -->
+            <div class="diff-row"><span class="diff-ln">24</span><span class="diff-sign"> </span><span class="diff-code"><span class="syn-k">func</span> (r *<span class="syn-t">Router</span>) <span class="syn-f">Dispatch</span>(packet []<span class="syn-t">byte</span>) <span class="syn-t">error</span> {</span></div>
+            <div class="diff-row del"><span class="diff-ln">25</span><span class="diff-sign">-</span><span class="diff-code">    buf := make([]byte, len(packet))</span></div>
+            <div class="diff-row del"><span class="diff-ln">26</span><span class="diff-sign">-</span><span class="diff-code">    copy(buf, packet)</span></div>
+            <div class="diff-row add"><span class="diff-ln">25</span><span class="diff-sign">+</span><span class="diff-code">    <span class="syn-c">// Zero-copy slice borrowed from ring buffer</span></span></div>
+            <div class="diff-row add"><span class="diff-ln">26</span><span class="diff-sign">+</span><span class="diff-code">    buf := r.ringBuffer.BorrowSlice(packet)</span></div>
+            <div class="diff-row"><span class="diff-ln">27</span><span class="diff-sign"> </span><span class="diff-code">    <span class="syn-k">return</span> r.handler.<span class="syn-f">Handle</span>(buf)</span></div>
+            <div class="diff-row"><span class="diff-ln">28</span><span class="diff-sign"> </span><span class="diff-code">}</span></div>
+          </div>
+
+          <div class="preview-footer">
+            <div class="preview-status">
+              <span class="status-indicator" aria-hidden="true"></span>
+              <span id="preview-file-status">core/router.go (2 modified)</span>
+            </div>
+            <div>&lt; 0.2ms virtual DOM render</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clean 4-Stat Metrics Row -->
+    <section class="metrics-section" id="metrics">
+      <div class="container">
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-val">&lt; 1<span>ms</span></div>
+            <div class="metric-label">Cold Start</div>
+            <div class="metric-desc">Instant boot in sub-millisecond time</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-val">20<span>MB</span></div>
+            <div class="metric-label">Host Memory</div>
+            <div class="metric-desc">~90% less overhead vs. full desktop editors</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-val">6.0<span>ms</span></div>
+            <div class="metric-label">Fuzzy Search</div>
+            <div class="metric-desc">Indexes 95,710 Linux kernel files</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-val">0<span>Deps</span></div>
+            <div class="metric-label">Single Static Binary</div>
+            <div class="metric-desc">No Electron, no Node, zero runtime bloat</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clean 3-Pillar Features -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <h2 class="section-title">Engineered for pure speed</h2>
+          <p class="section-desc">Everything you need to review and verify AI code without editor lag.</p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <h3 class="feature-title">Virtual DOM Windowing</h3>
+            <p class="feature-text">
+              Only renders visible viewport rows on screen. Opening a 400,000-line kernel file costs the exact same memory as a 10-line script.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title">Native Agent Handoff</h3>
+            <p class="feature-text">
+              Direct integration with Antigravity, Claude Code, and Cursor. Audit patches, apply fixes, and delegate generation without context switching.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+            </div>
+            <h3 class="feature-title">Zero-Config Portability</h3>
+            <p class="feature-text">
+              Run locally or remotely over SSH/HTTP. A single static binary with no daemon dependencies or container requirements.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clean CTA Card -->
+    <section class="cta-section">
+      <div class="container">
+        <div class="cta-box">
+          <h2 class="cta-title">Get started in 5 seconds</h2>
+          <p class="cta-desc">Single command install. Works out of the box on macOS, Linux, and BSD.</p>
+          <div class="install-wrapper" style="margin-bottom: 0;">
+            <div class="install-box">
+              <div class="install-cmd">
+                <span class="install-prompt">$</span>
+                <code>curl -fsSL https://punk0.ai/install.sh | sh</code>
+              </div>
+              <button class="copy-btn" data-copy="curl -fsSL https://punk0.ai/install.sh | sh" type="button" aria-label="Copy install command">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Clean Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-row">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="brand-badge" style="padding: 1px 5px; font-size: 10px;">p0</span>
+          <span style="font-weight: 600; color: var(--txt-primary);">punk0</span>
+          <span>&copy; 2026. Open source software released under MIT.</span>
+        </div>
+
+        <ul class="footer-links">
+          <li><a href="https://github.com/neautrino/punk0" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="https://github.com/neautrino/punk0/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
+          <li><a href="#hero">Back to top &uarr;</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Clean Search Modal (Ctrl+K) -->
+  <div class="modal-backdrop hidden" id="search-modal" role="dialog" aria-modal="true" aria-label="Find files">
+    <div class="modal-window">
+      <div class="modal-input-row">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--txt-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" class="modal-input" id="search-input" placeholder="Type a filename..." autocomplete="off" spellcheck="false">
+      </div>
+      <div class="modal-list" id="search-list">
+        <!-- Rendered by JS -->
+      </div>
+      <div class="modal-footer">
+        <span><kbd style="font-family: var(--font-mono);">esc</kbd> close</span>
+        <span><kbd style="font-family: var(--font-mono);">↵</kbd> select</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
