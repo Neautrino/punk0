@@ -1,0 +1,19 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #0b0d12;
+  color: #c9d1d9;
+  font: 12px system-ui, sans-serif;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#term {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 8px;
+}
