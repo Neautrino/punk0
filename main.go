@@ -1,29 +1,41 @@
+// Package main implements punk0: a minimal agent orchestrator that runs coding
+// agents in git worktrees behind a local browser UI.
 package main
 
 import (
 	"embed"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 )
 
 //go:embed web
-var webFS embed.FS
+var embedded embed.FS
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:7070", "listen address")
+	var (
+		port = flag.Int("port", 7070, "port to listen on (0 picks a free one)")
+		host = flag.String("host", "127.0.0.1", "address to bind")
+	)
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "punk0 - agent orchestrator\n\nusage:\n  punk0 [flags]\n\nflags:\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
-	web, err := fs.Sub(webFS, "web")
+	web, err := fs.Sub(embedded, "web")
 	if err != nil {
 		log.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(web))
 
-	ln, err := net.Listen("tcp", *addr)
+	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
 		log.Fatal(err)
 	}
