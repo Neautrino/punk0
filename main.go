@@ -17,6 +17,9 @@ import (
 //go:embed web
 var embedded embed.FS
 
+// px0's policy minus its remote fonts and images. xterm.js injects <style> elements, hence 'unsafe-inline'.
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
+
 func main() {
 	var (
 		port = flag.Int("port", 7070, "port to listen on (0 picks a free one)")
@@ -32,8 +35,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	files := http.FileServerFS(web)
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServerFS(web))
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+		files.ServeHTTP(w, r)
+	})
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
