@@ -24,12 +24,21 @@ func main() {
 	var (
 		port = flag.Int("port", 7070, "port to listen on (0 picks a free one)")
 		host = flag.String("host", "127.0.0.1", "address to bind")
+		dir  = flag.String("dir", ".", "worktree the shell and agents run in")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "punk0 - agent orchestrator\n\nusage:\n  punk0 [flags]\n\nflags:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	// Check here: with a PTY, a missing dir surfaces only as a misleading
+	// "fork/exec <shell>: no such file or directory" when the tab connects.
+	if fi, err := os.Stat(*dir); err != nil {
+		log.Fatal(err)
+	} else if !fi.IsDir() {
+		log.Fatalf("%s is not a directory", *dir)
+	}
 
 	web, err := fs.Sub(embedded, "web")
 	if err != nil {
@@ -41,6 +50,7 @@ func main() {
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		files.ServeHTTP(w, r)
 	})
+	mux.Handle("GET /term", &termHandler{dir: *dir})
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
