@@ -48,6 +48,13 @@ func setPTYSize(f *os.File, cols, rows uint16) error {
 	return ptyIoctl(f, syscall.TIOCSWINSZ, unsafe.Pointer(&ws))
 }
 
+// ptyForeground returns the PTY's foreground process group.
+func ptyForeground(f *os.File) (int, error) {
+	var pgrp int32
+	err := ptyIoctl(f, syscall.TIOCGPGRP, unsafe.Pointer(&pgrp))
+	return int(pgrp), err
+}
+
 func ptyIoctl(f *os.File, req uintptr, arg unsafe.Pointer) error {
 	rc, err := f.SyscallConn()
 	if err != nil {

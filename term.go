@@ -16,9 +16,14 @@ import (
 // frame and the library default (32 KiB) would drop the connection.
 const maxTermFrame = 8 << 20
 
+// claudeCommand is typed into the shell by the Claude button. The server owns
+// it so session ids and hook settings can be added here later.
+const claudeCommand = "claude"
+
 // termHandler serves GET /term: one websocket drives one PTY running the
 // user's shell in dir. Binary frames carry PTY bytes both ways; text frames
-// carry {"cols":N,"rows":N}. The shell lives as long as the websocket.
+// carry {"cols":N,"rows":N} or {"run":"claude"}. The shell lives as long as
+// the websocket.
 type termHandler struct {
 	dir string
 }
@@ -68,9 +73,22 @@ func (h *termHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-			var size struct{ Cols, Rows uint16 }
-			if json.Unmarshal(data, &size) == nil && size.Cols > 0 && size.Rows > 0 {
-				setPTYSize(ptmx, size.Cols, size.Rows)
+			var msg struct {
+				Cols, Rows uint16
+				Run        string
+			}
+			if json.Unmarshal(data, &msg) != nil {
+				continue
+			}
+			if msg.Cols > 0 && msg.Rows > 0 {
+				setPTYSize(ptmx, msg.Cols, msg.Rows)
+			}
+			// Only type into the shell while it sits at its prompt (it is the
+			// PTY's foreground process group), never into a running program.
+			if msg.Run == "claude" {
+				if fg, err := ptyForeground(ptmx); err == nil && fg == cmd.Process.Pid {
+					ptmx.Write([]byte("\x15" + claudeCommand + "\r")) // ^U clears a half-typed line
+				}
 			}
 		}
 	}()

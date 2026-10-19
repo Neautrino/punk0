@@ -1,6 +1,7 @@
 // web/src/term.js
 // Terminal pane: xterm.js <-> GET /term websocket <-> the user's shell in a PTY.
-// Binary frames carry PTY bytes both ways; text frames carry {"cols","rows"}.
+// Binary frames carry PTY bytes both ways; text frames carry {"cols","rows"}
+// or {"run":"claude"}, which the server types into the shell when it is idle.
 import { Terminal } from '../vendor/xterm.mjs';
 import { FitAddon } from '../vendor/addon-fit.mjs';
 
@@ -34,4 +35,11 @@ export function initTerm(el) {
     if (e.type === 'keydown') send(enc.encode('\x1b\r'));
     return false;
   });
+
+  return {
+    run(name) {
+      send(JSON.stringify({ run: name }));
+      term.focus();
+    },
+  };
 }
