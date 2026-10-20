@@ -5,6 +5,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -30,25 +31,26 @@ func main() {
 	var (
 		port = flag.Int("port", 7070, "port to listen on (0 picks a free one)")
 		host = flag.String("host", "127.0.0.1", "address to bind")
-		dir  = flag.String("dir", ".", "primary worktree; satellites are added to its repository")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "punk0 - agent orchestrator\n\nusage:\n  punk0 [flags]\n\nflags:\n")
+		fmt.Fprintf(os.Stderr, "punk0 - agent orchestrator\n\nusage:\n  punk0 [flags] [dir]\n\ndir is added as a project; projects are kept in ~/.punk0/records.json.\n\nflags:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
-	workdir, err := filepath.Abs(*dir)
+	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	if fi, err := os.Stat(workdir); err != nil {
+	rec, err := OpenRecords(filepath.Join(home, ".punk0"))
+	if err != nil {
 		log.Fatal(err)
-	} else if !fi.IsDir() {
-		log.Fatalf("%s is not a directory", workdir)
 	}
-
-	reg := NewRegistry(workdir)
+	if dir := flag.Arg(0); dir != "" {
+		if _, err := rec.AddProject(dir); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	web, err := fs.Sub(embedded, "web")
 	if err != nil {
@@ -61,12 +63,16 @@ func main() {
 		files.ServeHTTP(w, r)
 	})
 
-	mux.HandleFunc("GET /api/satellites", handleListSatellites(reg))
-	mux.HandleFunc("POST /api/satellites", handleCreateSatellite(reg))
-	mux.HandleFunc("DELETE /api/satellites/{id}", handleDeleteSatellite(reg))
-	mux.HandleFunc("GET /api/satellites/{id}/tree", handleTree(reg))
-	mux.HandleFunc("GET /api/satellites/{id}/file", handleFile(reg))
-	mux.HandleFunc("GET /api/satellites/{id}/term", handleTerm(reg))
+	mux.HandleFunc("GET /api/projects", handleListProjects(rec))
+	mux.HandleFunc("POST /api/projects", handleAddProject(rec))
+	mux.HandleFunc("DELETE /api/projects/{id}", handleRemoveProject(rec))
+	mux.HandleFunc("POST /api/projects/{id}/workspaces", handleAddWorkspace(rec))
+	mux.HandleFunc("DELETE /api/workspaces/{id}", handleRemoveWorkspace(rec))
+	mux.HandleFunc("GET /api/workspaces/{id}/tree", handleTree(rec))
+	mux.HandleFunc("GET /api/workspaces/{id}/file", handleFile(rec))
+	mux.HandleFunc("POST /api/workspaces/{id}/tabs", handleAddTab(rec))
+	mux.HandleFunc("DELETE /api/tabs/{id}", handleRemoveTab(rec))
+	mux.HandleFunc("GET /api/tabs/{id}/term", handleTerm(rec))
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
@@ -79,7 +85,7 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
-		reg.Close()
+		rec.Close()
 		os.Exit(0)
 	}()
 
@@ -87,40 +93,113 @@ func main() {
 	log.Fatal(http.Serve(ln, guard(mux)))
 }
 
-func handleListSatellites(reg *Registry) http.HandlerFunc {
+func handleListProjects(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, reg.List())
+		writeJSON(w, rec.List())
 	}
 }
 
-func handleCreateSatellite(reg *Registry) http.HandlerFunc {
+func handleAddProject(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Name, Branch string }
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var req struct{ Dir string }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Dir) == "" {
 			failJSON(w, http.StatusBadRequest, "bad request body")
 			return
 		}
-		sat, err := reg.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Branch))
+		p, err := rec.AddProject(expandHome(strings.TrimSpace(req.Dir)))
 		if err != nil {
-			failJSON(w, http.StatusBadRequest, err.Error())
+			failRecord(w, err)
 			return
 		}
-		writeJSON(w, sat)
+		writeJSON(w, p)
 	}
 }
 
-func handleDeleteSatellite(reg *Registry) http.HandlerFunc {
+func handleRemoveProject(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sat := satelliteOf(reg, w, r)
-		if sat == nil {
-			return
-		}
-		if err := reg.Remove(sat.ID); err != nil {
-			failJSON(w, http.StatusBadRequest, err.Error())
+		if err := rec.RemoveProject(r.PathValue("id")); err != nil {
+			failRecord(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func handleAddWorkspace(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name     string
+			Worktree bool
+			Base     string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			failJSON(w, http.StatusBadRequest, "bad request body")
+			return
+		}
+		ws, err := rec.AddWorkspace(r.PathValue("id"), req.Name, req.Worktree, strings.TrimSpace(req.Base))
+		if err != nil {
+			failRecord(w, err)
+			return
+		}
+		writeJSON(w, ws)
+	}
+}
+
+// handleRemoveWorkspace answers 409 while a worktree has uncommitted
+// changes; ?force=1 deletes them.
+func handleRemoveWorkspace(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := rec.RemoveWorkspace(r.PathValue("id"), r.URL.Query().Get("force") == "1"); err != nil {
+			failRecord(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleAddTab(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Kind string }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			failJSON(w, http.StatusBadRequest, "bad request body")
+			return
+		}
+		t, err := rec.AddTab(r.PathValue("id"), req.Kind)
+		if err != nil {
+			failRecord(w, err)
+			return
+		}
+		writeJSON(w, t)
+	}
+}
+
+func handleRemoveTab(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := rec.RemoveTab(r.PathValue("id")); err != nil {
+			failRecord(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// workspaceOf resolves the {id} path segment, answering 404 when it is unknown.
+func workspaceOf(rec *Records, w http.ResponseWriter, r *http.Request) *Workspace {
+	ws := rec.Workspace(r.PathValue("id"))
+	if ws == nil {
+		failJSON(w, http.StatusNotFound, "workspace not found")
+	}
+	return ws
+}
+
+// expandHome lets the add-project form take ~/path like a shell would.
+func expandHome(dir string) string {
+	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + rest
+		}
+	}
+	return dir
 }
 
 func safePath(root, rel string) (string, string, bool) {
@@ -152,13 +231,26 @@ func failJSON(w http.ResponseWriter, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func handleTree(reg *Registry) http.HandlerFunc {
+// failRecord answers a Records error: 404 for unknown ids, 409 for a dirty
+// worktree (the client may retry with force), 400 for the rest.
+func failRecord(w http.ResponseWriter, err error) {
+	code := http.StatusBadRequest
+	switch {
+	case errors.Is(err, errNotFound):
+		code = http.StatusNotFound
+	case errors.Is(err, errDirty):
+		code = http.StatusConflict
+	}
+	failJSON(w, code, err.Error())
+}
+
+func handleTree(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sat := satelliteOf(reg, w, r)
-		if sat == nil {
+		ws := workspaceOf(rec, w, r)
+		if ws == nil {
 			return
 		}
-		ix := sat.Index()
+		ix := ws.Index()
 		dir := strings.Trim(r.URL.Query().Get("dir"), "/")
 		kids, ok := ix.Children(dir)
 		if !ok && !ix.Ready() {
@@ -181,13 +273,13 @@ func handleTree(reg *Registry) http.HandlerFunc {
 	}
 }
 
-func handleFile(reg *Registry) http.HandlerFunc {
+func handleFile(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sat := satelliteOf(reg, w, r)
-		if sat == nil {
+		ws := workspaceOf(rec, w, r)
+		if ws == nil {
 			return
 		}
-		abs, rel, ok := safePath(sat.Dir, r.URL.Query().Get("path"))
+		abs, rel, ok := safePath(ws.Dir, r.URL.Query().Get("path"))
 		if !ok || rel == "" {
 			failJSON(w, http.StatusBadRequest, "bad path")
 			return

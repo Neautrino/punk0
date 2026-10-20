@@ -18,7 +18,7 @@ import (
 const maxTermFrame = 8 << 20
 
 // scrollback is how much output a shell keeps for viewers that attach later:
-// switching satellites or reloading the page replays it.
+// switching tabs or reloading the page replays it.
 const scrollback = 256 << 10
 
 // viewerQueue is how many PTY reads a viewer may lag behind. A slower viewer
@@ -30,8 +30,8 @@ const viewerQueue = 256
 // it so session ids and hook settings can be added here later.
 const claudeCommand = "claude"
 
-// Shell is a satellite's shell in a PTY. It outlives websockets: viewers
-// attach and detach while the shell and any agent in it keep running.
+// Shell is a tab's shell in a PTY. It outlives websockets: viewers attach
+// and detach while the shell and any agent in it keep running.
 type Shell struct {
 	cmd  *exec.Cmd
 	ptmx *os.File
@@ -226,12 +226,13 @@ func (s *Shell) dropLocked(v chan []byte) {
 	}
 }
 
-// handleTerm serves GET /api/satellites/{id}/term. Binary frames carry PTY
-// bytes both ways; text frames carry {"cols":N,"rows":N} or {"run":"claude"}.
-func handleTerm(reg *Registry) http.HandlerFunc {
+// handleTerm serves GET /api/tabs/{id}/term. Binary frames carry PTY bytes
+// both ways; text frames carry {"cols":N,"rows":N} or {"run":"claude"}.
+func handleTerm(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		sat := satelliteOf(reg, w, r)
-		if sat == nil {
+		tab := rec.Tab(r.PathValue("id"))
+		if tab == nil {
+			failJSON(w, http.StatusNotFound, "tab not found")
 			return
 		}
 		// nil options: Accept rejects handshakes whose Origin differs from Host.
@@ -240,9 +241,9 @@ func handleTerm(reg *Registry) http.HandlerFunc {
 			return
 		}
 		defer conn.CloseNow()
-		sh, err := sat.Shell()
+		sh, err := tab.Shell()
 		if err != nil {
-			log.Printf("term %s: %v", sat.ID, err)
+			log.Printf("term %s: %v", tab.ID, err)
 			conn.Close(websocket.StatusInternalError, err.Error())
 			return
 		}
