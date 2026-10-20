@@ -9,8 +9,41 @@
 </head>
 <body>
 <div id="app">
-  <header id="bar"><button id="btn-claude" type="button" title="Start Claude Code in this shell">Claude</button></header>
-  <div id="term"></div>
+  <!-- Left Pane: Terminal (Shell + Claude Launcher) -->
+  <section id="pane-term" class="pane">
+    <header class="pane-head">
+      <div class="head-left">
+        <button id="btn-claude" type="button" title="Start Claude Code in this shell">Claude</button>
+        <span class="head-title">Terminal</span>
+      </div>
+    </header>
+    <div id="term"></div>
+  </section>
+
+  <!-- Split Divider -->
+  <div id="resizer" aria-hidden="true"></div>
+
+  <!-- Right Pane: Code Explorer & Viewer -->
+  <section id="pane-view" class="pane">
+    <aside id="sidebar">
+      <header class="pane-head">
+        <span class="head-title">Files</span>
+      </header>
+      <div id="tree"></div>
+    </aside>
+
+    <main id="viewer">
+      <header class="pane-head" id="view-head">
+        <span class="head-title" id="file-title">Select a file</span>
+        <span class="file-meta" id="file-meta"></span>
+      </header>
+      <div id="code-vp">
+        <div id="code-sizer">
+          <div id="code-rows"></div>
+        </div>
+      </div>
+    </main>
+  </section>
 </div>
 <script type="module" src="src/main.js"></script>
 </body>

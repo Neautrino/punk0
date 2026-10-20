@@ -1,40 +1,312 @@
-html, body {
+/* ==========================================================================
+   punk0 style: high legibility, clean developer dark theme
+   ========================================================================== */
+
+:root {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* Surfaces */
+  --bg: #0b0d12;
+  --bg2: #12151c;
+  --bg3: #181c26;
+  --border: #1f2430;
+  --border-hover: #2e3547;
+
+  /* Text */
+  --fg: #cdd6f4;
+  --dim: #8b949e;
+  --faint: #484f58;
+
+  /* Accents */
+  --amber: #f59e0b;
+  --amber-soft: rgba(245, 158, 11, 0.12);
+
+  /* Syntax Tokens (Catppuccin/Chroma) */
+  --k: #cba6f7;
+  --kt: #f9e2af;
+  --nf: #89b4fa;
+  --nc: #f9e2af;
+  --nb: #f38ba8;
+  --nv: #cdd6f4;
+  --no: #fab387;
+  --na: #f9e2af;
+  --nt: #89b4fa;
+  --nd: #fab387;
+  --np: #b4befe;
+  --s: #a6e3a1;
+  --m: #fab387;
+  --o: #89dceb;
+  --p: #bac2de;
+  --c: #9399b2;
+  --cp: #f5c2e7;
+  --err: #f38ba8;
+  --gi: #a6e3a1;
+  --gd: #f38ba8;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
+  padding: 0;
+}
+
+html, body {
   height: 100%;
-  background: #0b0d12;
-  color: #c9d1d9;
-  font: 12px system-ui, sans-serif;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 #app {
   display: flex;
-  flex-direction: column;
-  height: 100%;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-#bar {
+/* Panes */
+.pane {
   display: flex;
-  gap: 6px;
-  padding: 4px 8px;
-  border-bottom: 1px solid #1f2430;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-#bar button {
-  background: none;
-  border: 1px solid #2a3040;
+#pane-term {
+  flex: 1;
+  min-width: 300px;
+  background: var(--bg);
+}
+
+#resizer {
+  width: 2px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+#pane-view {
+  flex: 1.25;
+  min-width: 360px;
+  display: flex;
+  flex-direction: row;
+  background: var(--bg2);
+}
+
+/* Headers */
+.pane-head {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.head-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.file-meta {
+  font-size: 11px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+}
+
+#btn-claude {
+  background: var(--amber-soft);
+  border: 1px solid rgba(245, 158, 11, 0.35);
   border-radius: 4px;
-  color: inherit;
-  font: inherit;
-  padding: 2px 10px;
+  color: var(--amber);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 9px;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-#bar button:hover {
-  border-color: #3d4560;
+#btn-claude:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: var(--amber);
 }
 
+/* Terminal Container */
 #term {
   flex: 1;
-  min-height: 0;
-  padding: 6px 8px;
+  padding: 4px 6px;
+  overflow: hidden;
 }
+
+/* Sidebar (File Tree) */
+#sidebar {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg2);
+}
+
+#tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
+}
+
+.tree-node.ignored {
+  opacity: 0.45;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  cursor: pointer;
+  user-select: none;
+  padding-right: 8px;
+  border-radius: 4px;
+  margin: 1px 4px;
+  transition: background 0.1s ease;
+}
+
+.tree-row:hover {
+  background: var(--bg3);
+}
+
+.tree-row.active {
+  background: var(--border-hover);
+  color: #fff;
+}
+
+.tree-arrow {
+  font-size: 9px;
+  width: 12px;
+  text-align: center;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.st-mod { color: #fab387; }
+.st-add { color: #a6e3a1; }
+.st-untr { color: #89b4fa; }
+.st-del { color: #f38ba8; }
+.st-ren { color: #cba6f7; }
+.st-conf { color: #f38ba8; font-weight: 900; }
+
+.tree-children.hidden {
+  display: none;
+}
+
+/* Code Viewer */
+#viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
+#view-head {
+  background: var(--bg);
+}
+
+#code-vp {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+#code-sizer {
+  position: relative;
+  width: 100%;
+}
+
+#code-rows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.code-row {
+  display: flex;
+  height: 20px;
+  white-space: pre;
+}
+
+.code-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.line-gutter {
+  width: 50px;
+  text-align: right;
+  padding-right: 14px;
+  color: var(--faint);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-code {
+  flex: 1;
+  padding-right: 20px;
+  color: var(--fg);
+}
+
+/* Syntax Token Colors */
+.line-code i { font-style: normal; }
+.line-code .k   { color: var(--k); }
+.line-code .kt  { color: var(--kt); }
+.line-code .nf  { color: var(--nf); }
+.line-code .nc  { color: var(--nc); }
+.line-code .nb  { color: var(--nb); }
+.line-code .nv  { color: var(--nv); }
+.line-code .no  { color: var(--no); }
+.line-code .na  { color: var(--na); }
+.line-code .nt  { color: var(--nt); }
+.line-code .nd  { color: var(--nd); }
+.line-code .np  { color: var(--np); }
+.line-code .s   { color: var(--s); }
+.line-code .m   { color: var(--m); }
+.line-code .o   { color: var(--o); }
+.line-code .p   { color: var(--p); }
+.line-code .c   { color: var(--c); font-style: italic; }
+.line-code .cp  { color: var(--cp); }
+.line-code .err { color: var(--err); }
+.line-code .gi  { color: var(--gi); }
+.line-code .gd  { color: var(--gd); }
