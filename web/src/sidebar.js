@@ -1,7 +1,8 @@
 // web/src/sidebar.js
 // Projects and their workspaces: selecting, adding and removing them. Each
 // workspace is one feature; local ones share the project folder, worktree
-// ones own a folder and branch.
+// ones own a folder and branch. Scratch holds chats that belong to no
+// project, each in its own folder.
 import { state, subscribe, reload, selectWorkspace, api, esc } from './store.js';
 
 let listEl, formEl, nameEl, wtRowEl, wtEl, baseEl, submitEl;
@@ -30,16 +31,29 @@ export function initSidebar(container) {
 }
 
 function render() {
-  const projects = state.projects;
+  const projects = state.projects.filter((p) => !p.scratch);
+  const scratch = state.projects.find((p) => p.scratch);
+  let html = projects.map(renderProject).join('');
   if (!projects.length) {
-    listEl.innerHTML = `
+    html = `
       <div class="side-empty">
         <p>No projects yet.</p>
         <button type="button" class="btn-accent" data-act="add-project">Add project</button>
       </div>`;
-    return;
   }
-  listEl.innerHTML = projects.map(renderProject).join('');
+  if (scratch) html += renderScratch(scratch);
+  listEl.innerHTML = html;
+}
+
+function renderScratch(p) {
+  return `
+    <div class="proj scratch" data-project="${esc(p.id)}">
+      <div class="side-section" title="${esc(p.dir)}">
+        <span>Scratch</span>
+        <button type="button" class="icon-btn" data-act="add-ws" title="New scratch chat">+</button>
+      </div>
+      ${p.workspaces.map(renderWorkspace).join('')}
+    </div>`;
 }
 
 function renderProject(p) {
@@ -62,6 +76,7 @@ function renderWorkspace(w) {
   let chip = '<span class="chip">local</span>';
   if (w.missing) chip = '<span class="chip missing" title="Folder deleted outside punk0">missing</span>';
   else if (w.kind === 'worktree') chip = `<span class="chip wt" title="Own worktree">⑂ ${esc(w.branch)}</span>`;
+  else if (w.kind === 'folder') chip = '';
   return `
     <div class="ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}" data-ws="${esc(w.id)}" title="${esc(w.dir)}">
       <span class="dot${running ? ' on' : ''}"></span>
@@ -97,9 +112,11 @@ async function removeProject(p) {
 }
 
 async function removeWorkspace(w) {
-  const what = w.kind === 'worktree'
-    ? `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is kept.`
-    : `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`;
+  const what = {
+    worktree: `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is kept.`,
+    local: `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`,
+    folder: `Delete chat "${w.name}"? Its tabs stop. Its folder ${w.dir} is kept.`,
+  }[w.kind];
   if (!confirm(what)) return;
   const path = `/api/workspaces/${encodeURIComponent(w.id)}`;
   let res = await api('DELETE', path);
@@ -115,7 +132,8 @@ function openForm(f) {
   formFor = f;
   const ws = f.mode === 'workspace';
   nameEl.value = '';
-  nameEl.placeholder = ws ? `new workspace in ${f.project.name}` : 'folder path, e.g. ~/Code/app';
+  nameEl.placeholder = !ws ? 'folder path, e.g. ~/Code/app'
+    : f.project.scratch ? 'new scratch chat, e.g. research-auth' : `new workspace in ${f.project.name}`;
   wtEl.checked = false;
   wtRowEl.classList.toggle('hidden', !ws || !f.project.git);
   baseEl.value = '';

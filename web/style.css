@@ -140,6 +140,29 @@ html, body {
   margin-top: 8px;
 }
 
+.proj.scratch {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.side-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 4px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scratch .ws-row {
+  padding-left: 10px;
+}
+
 .proj-row,
 .ws-row {
   display: flex;

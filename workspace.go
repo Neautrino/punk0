@@ -18,10 +18,12 @@ import (
 
 // Workspace kinds. A local workspace runs in the project folder, which any
 // number of local workspaces share; a worktree workspace owns exactly one
-// git worktree, so deleting it can never pull files from under another.
+// git worktree, so deleting it can never pull files from under another. A
+// folder workspace is a scratch chat in its own folder under home/scratch.
 const (
 	kindLocal    = "local"
 	kindWorktree = "worktree"
+	kindFolder   = "folder"
 )
 
 // Tab kinds.
@@ -40,11 +42,13 @@ var (
 )
 
 // Project is a folder the user registered: a git repository's top level or
-// a plain folder.
+// a plain folder. The one Scratch project holds chats that belong to no
+// project; it is always listed and cannot be removed.
 type Project struct {
 	ID         string       `json:"id"`
 	Name       string       `json:"name"`
 	Dir        string       `json:"dir"`
+	Scratch    bool         `json:"scratch,omitempty"`
 	Workspaces []*Workspace `json:"workspaces"`
 }
 
@@ -144,8 +148,10 @@ type Records struct {
 // file that does not parse is an error rather than an empty list, so a
 // later save cannot overwrite it.
 func OpenRecords(home string) (*Records, error) {
-	if err := os.MkdirAll(filepath.Join(home, "worktrees"), 0o700); err != nil {
-		return nil, err
+	for _, dir := range []string{"worktrees", "scratch"} {
+		if err := os.MkdirAll(filepath.Join(home, dir), 0o700); err != nil {
+			return nil, err
+		}
 	}
 	wt, err := filepath.EvalSymlinks(filepath.Join(home, "worktrees"))
 	if err != nil {
@@ -153,14 +159,13 @@ func OpenRecords(home string) (*Records, error) {
 	}
 	r := &Records{home: home, worktrees: wt}
 	data, err := os.ReadFile(r.file())
-	if errors.Is(err, os.ErrNotExist) {
-		return r, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	if err := json.Unmarshal(data, &r.projects); err != nil {
-		return nil, fmt.Errorf("%s: %w", r.file(), err)
+	if err == nil {
+		if err := json.Unmarshal(data, &r.projects); err != nil {
+			return nil, fmt.Errorf("%s: %w", r.file(), err)
+		}
 	}
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
@@ -168,6 +173,9 @@ func OpenRecords(home string) (*Records, error) {
 				t.dir = w.Dir
 			}
 		}
+	}
+	if !slices.ContainsFunc(r.projects, func(p *Project) bool { return p.Scratch }) {
+		r.projects = append(r.projects, &Project{ID: r.projectIDLocked("scratch"), Name: "Scratch", Dir: filepath.Join(home, "scratch"), Scratch: true})
 	}
 	return r, nil
 }
@@ -306,6 +314,9 @@ func (r *Records) RemoveProject(id string) error {
 	if i < 0 {
 		return fmt.Errorf("project %q: %w", id, errNotFound)
 	}
+	if r.projects[i].Scratch {
+		return errors.New("scratch cannot be removed")
+	}
 	var tabs []*Satellite
 	for _, w := range r.projects[i].Workspaces {
 		tabs = append(tabs, w.Tabs...)
@@ -318,15 +329,11 @@ func (r *Records) RemoveProject(id string) error {
 // AddWorkspace adds a feature to a project with one shell tab. A local
 // workspace runs in the project folder. A worktree workspace gets its own
 // worktree under home/worktrees on branch name, which is created from base
-// (HEAD when empty) unless it already exists.
+// (HEAD when empty) unless it already exists. In Scratch, every workspace
+// is a chat with one claude tab in its own folder, kept when the chat is
+// deleted and reused by a new chat of the same name.
 func (r *Records) AddWorkspace(projectID, name string, worktree bool, base string) (*Workspace, error) {
 	name = strings.TrimSpace(name)
-	if worktree && !dirName.MatchString(name) {
-		return nil, fmt.Errorf("invalid name %q: use letters, digits, '.', '_' and '-'", name)
-	}
-	if !worktree && (name == "" || len(name) > 80 || strings.IndexFunc(name, unicode.IsControl) >= 0) {
-		return nil, fmt.Errorf("invalid name %q", name)
-	}
 	if strings.HasPrefix(base, "-") {
 		return nil, fmt.Errorf("invalid base %q", base)
 	}
@@ -337,11 +344,25 @@ func (r *Records) AddWorkspace(projectID, name string, worktree bool, base strin
 	if p == nil {
 		return nil, fmt.Errorf("project %q: %w", projectID, errNotFound)
 	}
+	if worktree || p.Scratch {
+		if !dirName.MatchString(name) {
+			return nil, fmt.Errorf("invalid name %q: use letters, digits, '.', '_' and '-'", name)
+		}
+	} else if name == "" || len(name) > 80 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return nil, fmt.Errorf("invalid name %q", name)
+	}
 	if slices.ContainsFunc(p.Workspaces, func(w *Workspace) bool { return w.Name == name }) {
 		return nil, fmt.Errorf("workspace %q already exists", name)
 	}
 	var w *Workspace
-	if worktree {
+	switch {
+	case p.Scratch:
+		dir := filepath.Join(p.Dir, name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+		w = newWorkspace(name, kindFolder, dir, "")
+	case worktree:
 		if !gitAvailable(p.Dir) {
 			return nil, errors.New("worktrees need a git repository")
 		}
@@ -350,15 +371,15 @@ func (r *Records) AddWorkspace(projectID, name string, worktree bool, base strin
 			return nil, err
 		}
 		w = newWorkspace(name, kindWorktree, dir, name)
-	} else {
+	default:
 		w = newWorkspace(name, kindLocal, p.Dir, "")
 	}
 	p.Workspaces = append(p.Workspaces, w)
 	return w, r.saveLocked()
 }
 
-// RemoveWorkspace stops the workspace's tabs and forgets it. A local
-// workspace leaves the project folder alone. A worktree workspace also
+// RemoveWorkspace stops the workspace's tabs and forgets it. Local and
+// scratch workspaces leave their folder alone. A worktree workspace also
 // removes its worktree, but answers errDirty while it has uncommitted
 // changes unless force is set; its branch is always kept.
 func (r *Records) RemoveWorkspace(id string, force bool) error {
@@ -572,8 +593,13 @@ func addWorktree(repo, dir, branch, base string) error {
 	return nil
 }
 
+// newWorkspace opens with one tab: a shell, or Claude for a scratch chat.
 func newWorkspace(name, kind, dir, branch string) *Workspace {
-	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: []*Satellite{newTab(tabShell, dir)}}
+	first := tabShell
+	if kind == kindFolder {
+		first = tabClaude
+	}
+	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: []*Satellite{newTab(first, dir)}}
 }
 
 func newTab(kind, dir string) *Satellite {

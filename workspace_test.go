@@ -77,11 +77,15 @@ func TestProjectAddAndReload(t *testing.T) {
 	}
 
 	// A restarted punk0 lists the same tree, with every shell stopped.
-	views := openRecords(t, home).List()
-	if len(views) != 1 || len(views[0].Workspaces) != 2 {
-		t.Fatalf("reloaded tree: %+v", views)
+	reopened := openRecords(t, home)
+	if views := reopened.List(); len(views) != 2 {
+		t.Fatalf("reloaded tree, want the project and Scratch: %+v", views)
 	}
-	tabs := views[0].Workspaces[1].Tabs
+	pv := listed(reopened, p.ID)
+	if len(pv.Workspaces) != 2 {
+		t.Fatalf("reloaded project: %+v", pv)
+	}
+	tabs := pv.Workspaces[1].Tabs
 	if len(tabs) != 2 || tabs[1].ID != claude.ID || tabs[1].Session != claude.Session || tabs[1].Running {
 		t.Fatalf("reloaded tabs: %+v", tabs)
 	}
@@ -174,7 +178,7 @@ func TestWorktreeDeletedOutsidePunk0(t *testing.T) {
 	}
 	os.RemoveAll(w.Dir)
 
-	wv := rec.List()[0].Workspaces[1]
+	wv := listed(rec, p.ID).Workspaces[1]
 	if !wv.Missing || wv.Branch != "feat-c" {
 		t.Fatalf("deleted worktree listed as %+v, want missing on feat-c", wv)
 	}
@@ -212,7 +216,7 @@ func TestAddWorkspaceRejects(t *testing.T) {
 			t.Errorf("AddWorkspace(%q, %v, %q) succeeded", tc.name, tc.worktree, tc.base)
 		}
 	}
-	if n := len(rec.List()[0].Workspaces); n != 1 {
+	if n := len(listed(rec, p.ID).Workspaces); n != 1 {
 		t.Fatalf("got %d workspaces after rejected adds, want 1", n)
 	}
 
@@ -223,4 +227,58 @@ func TestAddWorkspaceRejects(t *testing.T) {
 	if _, err := rec.AddWorkspace(plain.ID, "x", true, ""); err == nil {
 		t.Fatal("made a worktree in a folder that is not a git repository")
 	}
+}
+
+func TestScratchChats(t *testing.T) {
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	views := rec.List()
+	if len(views) != 1 || !views[0].Scratch {
+		t.Fatalf("empty records should list only Scratch: %+v", views)
+	}
+	scratch := views[0]
+
+	w, err := rec.AddWorkspace(scratch.ID, "research", false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Kind != kindFolder || w.Dir != filepath.Join(home, "scratch", "research") || !isDir(w.Dir) {
+		t.Fatalf("scratch chat %+v, want its own folder under home/scratch", w)
+	}
+	if len(w.Tabs) != 1 || w.Tabs[0].Kind != tabClaude || w.Tabs[0].Session == "" {
+		t.Fatalf("scratch chat should open on a claude tab: %+v", w.Tabs)
+	}
+	if _, err := rec.AddWorkspace(scratch.ID, "../escape", false, ""); err == nil {
+		t.Fatal("scratch chat name escaped its folder")
+	}
+	os.WriteFile(filepath.Join(w.Dir, "notes.md"), []byte("findings"), 0o644)
+	if err := rec.RemoveWorkspace(w.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(w.Dir, "notes.md")); err != nil {
+		t.Fatalf("deleting a scratch chat deleted its folder: %v", err)
+	}
+	if err := rec.RemoveProject(scratch.ID); err == nil {
+		t.Fatal("removed Scratch")
+	}
+
+	// Saved records hold Scratch; reopening must not add a second one.
+	n := 0
+	for _, p := range openRecords(t, home).List() {
+		if p.Scratch {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("reopened records list %d Scratch projects, want 1", n)
+	}
+}
+
+func listed(rec *Records, id string) projectView {
+	for _, p := range rec.List() {
+		if p.ID == id {
+			return p
+		}
+	}
+	return projectView{}
 }
