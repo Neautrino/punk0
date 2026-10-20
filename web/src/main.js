@@ -7,7 +7,6 @@ import { initViewer, setViewerWorkspace } from './viewer.js';
 import { initTree, setTreeWorkspace } from './tree.js';
 
 const term = initTerm(document.getElementById('term'), reload);
-document.getElementById('btn-claude').addEventListener('click', () => term.run('claude'));
 
 initViewer(
   document.getElementById('code-vp'),

@@ -26,8 +26,8 @@ const scrollback = 256 << 10
 // rather than silently missing bytes mid escape sequence.
 const viewerQueue = 256
 
-// claudeCommand is typed into the shell by the Claude button. The server owns
-// it so session ids and hook settings can be added here later.
+// claudeCommand starts Claude Code in a claude tab's new shell. The server
+// owns it so hook settings can be added here later.
 const claudeCommand = "claude"
 
 // Shell is a tab's shell in a PTY. It outlives websockets: viewers attach
@@ -44,15 +44,22 @@ type Shell struct {
 	exited  bool
 }
 
-func startShell(dir string) (*Shell, error) {
+// startShell runs the user's interactive shell in dir. A non-empty command
+// runs first, inside an interactive shell so the rc files set PATH, and the
+// shell then replaces itself with a plain one: quitting the command leaves
+// a prompt, as if it had been typed there.
+func startShell(dir, command string) (*Shell, error) {
 	ctx, stop := context.WithCancel(context.Background())
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
 	cmd := exec.CommandContext(ctx, shell)
+	if command != "" {
+		cmd = exec.CommandContext(ctx, shell, "-i", "-c", command+`; exec "$SHELL"`)
+	}
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmd.Env = append(os.Environ(), "SHELL="+shell, "TERM=xterm-256color", "COLORTERM=truecolor")
 	hangupOnCancel(cmd)
 	cmd.WaitDelay = 2 * time.Second // then Wait SIGKILLs a shell that ignored the hangup
 	ptmx, err := startPTY(cmd)
@@ -184,8 +191,8 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-// input writes browser keystrokes into the PTY and applies resize and
-// launcher messages until the websocket closes.
+// input writes browser keystrokes into the PTY and applies resizes until the
+// websocket closes.
 func (s *Shell) input(ctx context.Context, conn *websocket.Conn) {
 	for {
 		typ, data, err := conn.Read(ctx)
@@ -198,22 +205,9 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn) {
 			}
 			continue
 		}
-		var msg struct {
-			Cols, Rows uint16
-			Run        string
-		}
-		if json.Unmarshal(data, &msg) != nil {
-			continue
-		}
-		if msg.Cols > 0 && msg.Rows > 0 {
+		var msg struct{ Cols, Rows uint16 }
+		if json.Unmarshal(data, &msg) == nil && msg.Cols > 0 && msg.Rows > 0 {
 			setPTYSize(s.ptmx, msg.Cols, msg.Rows)
-		}
-		// Only type into the shell while it sits at its prompt (it is the
-		// PTY's foreground process group), never into a running program.
-		if msg.Run == "claude" {
-			if fg, err := ptyForeground(s.ptmx); err == nil && fg == s.cmd.Process.Pid {
-				s.ptmx.Write([]byte("\x15" + claudeCommand + "\r")) // ^U clears a half-typed line
-			}
 		}
 	}
 }
@@ -227,7 +221,7 @@ func (s *Shell) dropLocked(v chan []byte) {
 }
 
 // handleTerm serves GET /api/tabs/{id}/term. Binary frames carry PTY bytes
-// both ways; text frames carry {"cols":N,"rows":N} or {"run":"claude"}.
+// both ways; text frames carry {"cols":N,"rows":N}.
 func handleTerm(rec *Records) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tab := rec.Tab(r.PathValue("id"))

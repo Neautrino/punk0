@@ -1,8 +1,7 @@
 // web/src/term.js
 // Terminal pane: xterm.js <-> /api/tabs/{id}/term websocket <-> that tab's
 // shell. The shell outlives the socket; attaching replays its scrollback.
-// Binary frames carry PTY bytes both ways; text frames carry {"cols","rows"}
-// or {"run":"claude"}, which the server types into the shell when it is idle.
+// Binary frames carry PTY bytes both ways; text frames carry {"cols","rows"}.
 import { Terminal } from '../vendor/xterm.mjs';
 import { FitAddon } from '../vendor/addon-fit.mjs';
 
@@ -22,6 +21,7 @@ export function initTerm(el, onChange) {
   const enc = new TextEncoder();
   let ws = null;
   let tab = null;
+  let ended = false; // the socket closed: the next key reattaches, starting a new shell
   const send = (data) => ws?.readyState === WebSocket.OPEN && ws.send(data);
   const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
 
@@ -33,6 +33,7 @@ export function initTerm(el, onChange) {
       ws = null;
     }
     tab = id;
+    ended = false;
     term.reset(); // the server replays this tab's scrollback
     if (!id) return;
     ws = new WebSocket(`ws://${location.host}/api/tabs/${encodeURIComponent(id)}/term`);
@@ -41,12 +42,13 @@ export function initTerm(el, onChange) {
     ws.onmessage = (e) => term.write(new Uint8Array(e.data));
     ws.onclose = (e) => {
       if (e.code === FELL_BEHIND) return attach(tab);
-      term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'}]\x1b[0m\r\n`);
+      term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'} · press any key to restart]\x1b[0m\r\n`);
+      ended = true;
       onChange();
     };
   }
 
-  term.onData((s) => send(enc.encode(s)));
+  term.onData((s) => (ended ? attach(tab) : send(enc.encode(s))));
   term.onBinary((s) => send(Uint8Array.from(s, (c) => c.charCodeAt(0))));
   term.onResize(sendSize);
   new ResizeObserver(() => fit.fit()).observe(el);
@@ -60,11 +62,5 @@ export function initTerm(el, onChange) {
     return false;
   });
 
-  return {
-    attach,
-    run(name) {
-      send(JSON.stringify({ run: name }));
-      term.focus();
-    },
-  };
+  return { attach };
 }

@@ -70,22 +70,34 @@ type Satellite struct {
 	Name    string `json:"name"`
 	Session string `json:"session,omitempty"` // claude --session-id, so the chat can be resumed
 
-	dir string
-	mu  sync.Mutex
-	sh  *Shell
+	dir     string
+	newChat bool // a claude tab made this run whose session does not exist yet
+	mu      sync.Mutex
+	sh      *Shell
 }
 
 // Shell returns the tab's running shell, starting one if there is none or
-// the last one exited.
+// the last one exited. A claude tab's shell runs Claude first: a new session
+// on the tab's first start, else a resume. Claude exits 1 when there is
+// nothing to resume (the tab never got a message), and the || then starts
+// the session under the same id.
 func (s *Satellite) Shell() (*Shell, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sh == nil || s.sh.Exited() {
-		sh, err := startShell(s.dir)
+		var line string
+		if s.Kind == tabClaude {
+			start := claudeCommand + " --session-id " + s.Session
+			line = claudeCommand + " --resume " + s.Session + " || " + start
+			if s.newChat {
+				line = start
+			}
+		}
+		sh, err := startShell(s.dir, line)
 		if err != nil {
 			return nil, err
 		}
-		s.sh = sh
+		s.sh, s.newChat = sh, false
 	}
 	return s.sh, nil
 }
@@ -567,7 +579,7 @@ func newWorkspace(name, kind, dir, branch string) *Workspace {
 func newTab(kind, dir string) *Satellite {
 	t := &Satellite{ID: newID(), Kind: kind, Name: kind, dir: dir}
 	if kind == tabClaude {
-		t.Session = newUUID()
+		t.Session, t.newChat = newUUID(), true
 	}
 	return t
 }
