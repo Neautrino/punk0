@@ -4,6 +4,7 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -11,7 +12,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 )
 
 //go:embed web
@@ -32,13 +36,18 @@ func main() {
 	}
 	flag.Parse()
 
-	// Check here: with a PTY, a missing dir surfaces only as a misleading
-	// "fork/exec <shell>: no such file or directory" when the tab connects.
-	if fi, err := os.Stat(*dir); err != nil {
+	workdir, err := filepath.Abs(*dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if fi, err := os.Stat(workdir); err != nil {
 		log.Fatal(err)
 	} else if !fi.IsDir() {
-		log.Fatalf("%s is not a directory", *dir)
+		log.Fatalf("%s is not a directory", workdir)
 	}
+
+	ix := NewIndex(workdir)
+	go ix.Build()
 
 	web, err := fs.Sub(embedded, "web")
 	if err != nil {
@@ -50,7 +59,9 @@ func main() {
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		files.ServeHTTP(w, r)
 	})
-	mux.Handle("GET /term", &termHandler{dir: *dir})
+	mux.Handle("GET /term", &termHandler{dir: workdir})
+	mux.HandleFunc("GET /api/tree", handleTree(ix))
+	mux.HandleFunc("GET /api/file", handleFile(ix))
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
@@ -58,6 +69,95 @@ func main() {
 	}
 	log.Printf("punk0 on http://%s", ln.Addr())
 	log.Fatal(http.Serve(ln, guard(mux)))
+}
+
+func safePath(root, rel string) (string, string, bool) {
+	rel = strings.TrimPrefix(strings.TrimSpace(rel), "/")
+	clean := filepath.Clean(filepath.FromSlash(rel))
+	if clean == "." {
+		return root, "", true
+	}
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", "", false
+	}
+	abs := filepath.Join(root, clean)
+	if abs != root && !strings.HasPrefix(abs, root+string(filepath.Separator)) {
+		return "", "", false
+	}
+	return abs, filepath.ToSlash(clean), true
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	enc.Encode(v)
+}
+
+func failJSON(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func handleTree(ix *Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dir := strings.Trim(r.URL.Query().Get("dir"), "/")
+		kids, ok := ix.Children(dir)
+		if !ok && !ix.Ready() {
+			for range 30 {
+				time.Sleep(10 * time.Millisecond)
+				if kids, ok = ix.Children(dir); ok {
+					break
+				}
+				if ix.Ready() {
+					kids, ok = ix.Children(dir)
+					break
+				}
+			}
+		}
+		if !ok {
+			failJSON(w, http.StatusNotFound, "not found: "+dir)
+			return
+		}
+		writeJSON(w, map[string]any{"dir": dir, "children": kids})
+	}
+}
+
+func handleFile(ix *Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		abs, rel, ok := safePath(ix.Root(), r.URL.Query().Get("path"))
+		if !ok || rel == "" {
+			failJSON(w, http.StatusBadRequest, "bad path")
+			return
+		}
+		d, err := Open(abs, rel)
+		if err != nil {
+			failJSON(w, http.StatusUnsupportedMediaType, err.Error())
+			return
+		}
+		start, _ := strconv.Atoi(r.URL.Query().Get("start"))
+		count, _ := strconv.Atoi(r.URL.Query().Get("count"))
+		if count <= 0 {
+			count = hlChunk
+		}
+		if start < 0 {
+			start = 0
+		}
+		if start > d.Total {
+			start = d.Total
+		}
+		lines, exact := d.Lines(start, start+count)
+		writeJSON(w, map[string]any{
+			"path":    rel,
+			"lang":    d.Lang,
+			"total":   d.Total,
+			"maxCols": d.MaxCols,
+			"start":   start,
+			"lines":   lines,
+			"exact":   exact,
+		})
+	}
 }
 
 // guard wraps every route: loopback Host on all requests (blocks DNS
