@@ -9,18 +9,20 @@
 </head>
 <body>
 <div id="app">
-  <!-- Left Sidebar: Satellites -->
-  <aside id="pane-satellites">
+  <!-- Left Sidebar: Projects and their workspaces -->
+  <aside id="pane-projects">
     <header class="pane-head">
-      <span class="head-title">Satellites</span>
-      <button id="btn-new-sat" type="button" title="Create new satellite">+</button>
+      <span class="head-title">Projects</span>
+      <button id="btn-add-project" class="icon-btn" type="button" title="Add project">+</button>
     </header>
-    <div id="satellites-list"></div>
-    <div id="satellites-form" class="hidden">
-      <input id="input-sat-name" type="text" placeholder="satellite-name" spellcheck="false" autocomplete="off" />
+    <div id="projects-list"></div>
+    <div id="side-form" class="hidden">
+      <input id="form-name" type="text" spellcheck="false" autocomplete="off" />
+      <label id="form-wt-row" class="hidden"><input id="form-wt" type="checkbox" /> Own worktree and branch</label>
+      <input id="form-base" class="hidden" type="text" placeholder="base branch (default: HEAD)" spellcheck="false" autocomplete="off" />
       <div class="form-actions">
-        <button id="btn-sat-cancel" type="button">Cancel</button>
-        <button id="btn-sat-create" type="button">Create</button>
+        <button id="form-cancel" type="button">Cancel</button>
+        <button id="form-submit" type="button">Create</button>
       </div>
     </div>
   </aside>

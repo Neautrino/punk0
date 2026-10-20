@@ -1,85 +1,151 @@
 // web/src/sidebar.js
-// Satellite list: switching, creating and deleting satellites. The caller's
-// onSelect swaps the terminal and file view to the chosen satellite.
+// Projects and their workspaces: selecting, adding and removing them. Each
+// workspace is one feature; local ones share the project folder, worktree
+// ones own a folder and branch.
+import { state, subscribe, reload, selectWorkspace, api, esc } from './store.js';
 
-let listEl, formEl, nameEl, onSelect;
-let active = 'default';
+let listEl, formEl, nameEl, wtRowEl, wtEl, baseEl, submitEl;
+let formFor = null; // { mode: 'project' } or { mode: 'workspace', project }
+const collapsed = new Set(JSON.parse(localStorage.getItem('punk0.collapsed') || '[]'));
 
-export function initSidebar(container, select) {
-  listEl = container.querySelector('#satellites-list');
-  formEl = container.querySelector('#satellites-form');
-  nameEl = container.querySelector('#input-sat-name');
-  onSelect = select;
+export function initSidebar(container) {
+  listEl = container.querySelector('#projects-list');
+  formEl = container.querySelector('#side-form');
+  nameEl = container.querySelector('#form-name');
+  wtRowEl = container.querySelector('#form-wt-row');
+  wtEl = container.querySelector('#form-wt');
+  baseEl = container.querySelector('#form-base');
+  submitEl = container.querySelector('#form-submit');
 
-  container.querySelector('#btn-new-sat').addEventListener('click', () => {
-    formEl.classList.remove('hidden');
-    nameEl.value = '';
-    nameEl.focus();
-  });
-  container.querySelector('#btn-sat-cancel').addEventListener('click', () => formEl.classList.add('hidden'));
-  container.querySelector('#btn-sat-create').addEventListener('click', create);
-  nameEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') create();
-    if (e.key === 'Escape') formEl.classList.add('hidden');
+  container.querySelector('#btn-add-project').addEventListener('click', () => openForm({ mode: 'project' }));
+  container.querySelector('#form-cancel').addEventListener('click', closeForm);
+  submitEl.addEventListener('click', submit);
+  wtEl.addEventListener('change', () => baseEl.classList.toggle('hidden', !wtEl.checked));
+  formEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit();
+    if (e.key === 'Escape') closeForm();
   });
   listEl.addEventListener('click', onListClick);
-  return reload();
+  subscribe(render);
 }
 
-async function reload() {
-  const res = await fetch('/api/satellites');
-  if (res.ok) render(await res.json());
+function render() {
+  const projects = state.projects;
+  if (!projects.length) {
+    listEl.innerHTML = `
+      <div class="side-empty">
+        <p>No projects yet.</p>
+        <button type="button" class="btn-accent" data-act="add-project">Add project</button>
+      </div>`;
+    return;
+  }
+  listEl.innerHTML = projects.map(renderProject).join('');
 }
 
-function render(sats) {
-  listEl.innerHTML = sats.map((s) => `
-    <div class="sat-item${s.id === active ? ' active' : ''}" data-id="${esc(s.id)}">
-      <div class="sat-info">
-        <div class="sat-header">
-          <span class="sat-name">${esc(s.name)}</span>
-          ${s.primary ? '<span class="sat-badge primary">main</span>' : ''}
-        </div>
-        <div class="sat-branch">${esc(s.branch || '(no branch)')}</div>
+function renderProject(p) {
+  const open = !collapsed.has(p.id);
+  return `
+    <div class="proj" data-project="${esc(p.id)}">
+      <div class="proj-row" data-act="toggle" title="${esc(p.dir)}">
+        <span class="proj-arrow">${open ? '▾' : '▸'}</span>
+        <span class="proj-name">${esc(p.name)}</span>
+        ${p.branch ? `<span class="proj-branch">${esc(p.branch)}</span>` : ''}
+        <button type="button" class="icon-btn" data-act="add-ws" title="New workspace">+</button>
+        <button type="button" class="icon-btn del" data-act="del-project" title="Remove project from punk0">×</button>
       </div>
-      ${s.primary ? '' : `<button class="sat-del" data-id="${esc(s.id)}" title="Delete satellite">×</button>`}
-    </div>`).join('');
+      ${open ? p.workspaces.map(renderWorkspace).join('') : ''}
+    </div>`;
 }
 
-function select(id) {
-  active = id;
-  for (const el of listEl.querySelectorAll('.sat-item')) el.classList.toggle('active', el.dataset.id === id);
-  onSelect(id);
+function renderWorkspace(w) {
+  const running = w.tabs.some((t) => t.running);
+  let chip = '<span class="chip">local</span>';
+  if (w.missing) chip = '<span class="chip missing" title="Folder deleted outside punk0">missing</span>';
+  else if (w.kind === 'worktree') chip = `<span class="chip wt" title="Own worktree">⑂ ${esc(w.branch)}</span>`;
+  return `
+    <div class="ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}" data-ws="${esc(w.id)}" title="${esc(w.dir)}">
+      <span class="dot${running ? ' on' : ''}"></span>
+      <span class="ws-name">${esc(w.name)}</span>
+      ${chip}
+      <button type="button" class="icon-btn del" data-act="del-ws" title="Delete workspace">×</button>
+    </div>`;
 }
 
 async function onListClick(e) {
-  const del = e.target.closest('.sat-del');
-  if (del) {
-    const id = del.dataset.id;
-    if (!confirm(`Delete satellite "${id}"? Its shell stops and uncommitted changes in its worktree are lost. The branch is kept.`)) return;
-    const res = await fetch(`/api/satellites/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    if (!res.ok) return alert((await res.json()).error);
-    if (id === active) select('default');
-    return reload();
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  const projectId = e.target.closest('[data-project]')?.dataset.project;
+  const project = state.projects.find((p) => p.id === projectId);
+  const wsId = e.target.closest('[data-ws]')?.dataset.ws;
+
+  if (act === 'add-project') return openForm({ mode: 'project' });
+  if (act === 'add-ws') return openForm({ mode: 'workspace', project });
+  if (act === 'del-project') return removeProject(project);
+  if (act === 'del-ws') return removeWorkspace(project.workspaces.find((w) => w.id === wsId));
+  if (wsId) return selectWorkspace(wsId);
+  if (act === 'toggle') {
+    collapsed.has(projectId) ? collapsed.delete(projectId) : collapsed.add(projectId);
+    localStorage.setItem('punk0.collapsed', JSON.stringify([...collapsed]));
+    render();
   }
-  const item = e.target.closest('.sat-item');
-  if (item && item.dataset.id !== active) select(item.dataset.id);
 }
 
-async function create() {
-  const name = nameEl.value.trim();
-  if (!name) return;
-  const res = await fetch('/api/satellites', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  const j = await res.json();
-  if (!res.ok) return alert(j.error);
+async function removeProject(p) {
+  if (!confirm(`Remove "${p.name}" from punk0? Its tabs stop. No files are deleted, and its worktrees come back if you add it again.`)) return;
+  const res = await api('DELETE', `/api/projects/${encodeURIComponent(p.id)}`);
+  if (!res.ok) return alert(res.data.error);
+  reload();
+}
+
+async function removeWorkspace(w) {
+  const what = w.kind === 'worktree'
+    ? `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is kept.`
+    : `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`;
+  if (!confirm(what)) return;
+  const path = `/api/workspaces/${encodeURIComponent(w.id)}`;
+  let res = await api('DELETE', path);
+  if (res.status === 409) {
+    if (!confirm(`"${w.name}" has uncommitted changes. Delete them with the worktree?`)) return;
+    res = await api('DELETE', `${path}?force=1`);
+  }
+  if (!res.ok) return alert(res.data.error);
+  reload();
+}
+
+function openForm(f) {
+  formFor = f;
+  const ws = f.mode === 'workspace';
+  nameEl.value = '';
+  nameEl.placeholder = ws ? `new workspace in ${f.project.name}` : 'folder path, e.g. ~/Code/app';
+  wtEl.checked = false;
+  wtRowEl.classList.toggle('hidden', !ws || !f.project.git);
+  baseEl.value = '';
+  baseEl.classList.add('hidden');
+  submitEl.textContent = ws ? 'Create' : 'Add';
+  formEl.classList.remove('hidden');
+  nameEl.focus();
+}
+
+function closeForm() {
+  formFor = null;
   formEl.classList.add('hidden');
-  await reload();
-  select(j.id);
 }
 
-function esc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function submit() {
+  const value = nameEl.value.trim();
+  if (!value || !formFor) return;
+  let res;
+  if (formFor.mode === 'project') {
+    res = await api('POST', '/api/projects', { dir: value });
+  } else {
+    res = await api('POST', `/api/projects/${encodeURIComponent(formFor.project.id)}/workspaces`, {
+      name: value,
+      worktree: wtEl.checked,
+      base: baseEl.value.trim(),
+    });
+  }
+  if (!res.ok) return alert(res.data.error);
+  closeForm();
+  await reload();
+  // A new project opens on its first workspace.
+  selectWorkspace(res.data.workspaces ? res.data.workspaces[0].id : res.data.id);
 }

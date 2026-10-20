@@ -1,10 +1,10 @@
 // web/src/tree.js
-// File tree of the active satellite: lazy folder expansion and file selection.
+// File tree of the selected workspace: lazy folder expansion and file selection.
 import { openFile } from './viewer.js';
 
 let treeEl = null;
 let activeRow = null;
-let sat = 'default';
+let ws = '';
 
 const GIT_STATUS = {
   M: ['st-mod', 'M'],
@@ -15,26 +15,25 @@ const GIT_STATUS = {
   '!': ['st-conf', '!'],
 };
 
-export async function initTree(container) {
+export function initTree(container) {
   treeEl = container;
   treeEl.addEventListener('click', handleTreeClick);
-  await loadTree('', treeEl, 0);
 }
 
-export function setTreeSatellite(id) {
-  sat = id;
+export function setTreeWorkspace(id) {
+  ws = id;
   activeRow = null;
   treeEl.innerHTML = '';
-  return loadTree('', treeEl, 0);
+  if (id) loadTree('', treeEl, 0);
 }
 
 async function loadTree(dir, targetEl, depth) {
-  const from = sat;
+  const from = ws;
   try {
-    const res = await fetch(`/api/satellites/${encodeURIComponent(from)}/tree?dir=${encodeURIComponent(dir)}`);
+    const res = await fetch(`/api/workspaces/${encodeURIComponent(from)}/tree?dir=${encodeURIComponent(dir)}`);
     if (!res.ok) return;
     const j = await res.json();
-    if (from === sat) renderNodes(j.children, targetEl, depth); // drop answers for a satellite switched away from
+    if (from === ws) renderNodes(j.children, targetEl, depth); // drop answers for a workspace switched away from
   } catch (err) {
     console.error('Failed to load tree:', dir, err);
   }
