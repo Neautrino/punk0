@@ -9,7 +9,23 @@
 </head>
 <body>
 <div id="app">
-  <!-- Left Pane: Terminal (Shell + Claude Launcher) -->
+  <!-- Left Sidebar: Satellites -->
+  <aside id="pane-satellites">
+    <header class="pane-head">
+      <span class="head-title">Satellites</span>
+      <button id="btn-new-sat" type="button" title="Create new satellite">+</button>
+    </header>
+    <div id="satellites-list"></div>
+    <div id="satellites-form" class="hidden">
+      <input id="input-sat-name" type="text" placeholder="satellite-name" spellcheck="false" autocomplete="off" />
+      <div class="form-actions">
+        <button id="btn-sat-cancel" type="button">Cancel</button>
+        <button id="btn-sat-create" type="button">Create</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Middle Pane: Terminal (Shell + Claude Launcher) -->
   <section id="pane-term" class="pane">
     <header class="pane-head">
       <div class="head-left">
