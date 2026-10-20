@@ -85,8 +85,8 @@ func TestProjectAddAndReload(t *testing.T) {
 	if len(tabs) != 2 || tabs[1].ID != claude.ID || tabs[1].Session != claude.Session || tabs[1].Running {
 		t.Fatalf("reloaded tabs: %+v", tabs)
 	}
-	if tabs[1].dir != repo {
-		t.Fatalf("reloaded tab would start in %q", tabs[1].dir)
+	if tabs[1].tab.dir != repo {
+		t.Fatalf("reloaded tab would start in %q", tabs[1].tab.dir)
 	}
 
 	if err := rec.RemoveWorkspace(local.ID, false); err != nil {

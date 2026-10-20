@@ -190,9 +190,16 @@ type workspaceView struct {
 	Tabs    []tabView `json:"tabs"`
 }
 
+// tabView copies the tab's fields under the lock, since a rename may change
+// Name while the response is being encoded.
 type tabView struct {
-	*Satellite
-	Running bool `json:"running"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Name    string `json:"name"`
+	Session string `json:"session,omitempty"`
+	Running bool   `json:"running"`
+
+	tab *Satellite
 }
 
 // List returns the tree with live state: current branches, worktree folders
@@ -209,7 +216,7 @@ func (r *Records) List() []projectView {
 			wv.Workspace, wv.Branch = w, w.Branch
 			wv.Tabs = make([]tabView, len(w.Tabs))
 			for k, t := range w.Tabs {
-				wv.Tabs[k] = tabView{Satellite: t}
+				wv.Tabs[k] = tabView{ID: t.ID, Kind: t.Kind, Name: t.Name, Session: t.Session, tab: t}
 			}
 		}
 	}
@@ -232,7 +239,7 @@ func (r *Records) List() []projectView {
 				wv.Branch = gitBranch(wv.Dir)
 			}
 			for k := range wv.Tabs {
-				wv.Tabs[k].Running = wv.Tabs[k].running()
+				wv.Tabs[k].Running = wv.Tabs[k].tab.running()
 			}
 		}
 	}
@@ -403,20 +410,33 @@ func (r *Records) AddTab(workspaceID, kind string) (*Satellite, error) {
 	return t, r.saveLocked()
 }
 
+// RenameTab names a tab after what it is for, e.g. "review".
+func (r *Records) RenameTab(id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 40 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return fmt.Errorf("invalid name %q", name)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, i := r.tabLocked(id)
+	if w == nil {
+		return fmt.Errorf("tab %q: %w", id, errNotFound)
+	}
+	w.Tabs[i].Name = name
+	return r.saveLocked()
+}
+
 // RemoveTab stops the tab's shell and forgets it.
 func (r *Records) RemoveTab(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, p := range r.projects {
-		for _, w := range p.Workspaces {
-			if i := slices.IndexFunc(w.Tabs, func(t *Satellite) bool { return t.ID == id }); i >= 0 {
-				w.Tabs[i].close()
-				w.Tabs = slices.Delete(w.Tabs, i, i+1)
-				return r.saveLocked()
-			}
-		}
+	w, i := r.tabLocked(id)
+	if w == nil {
+		return fmt.Errorf("tab %q: %w", id, errNotFound)
 	}
-	return fmt.Errorf("tab %q: %w", id, errNotFound)
+	w.Tabs[i].close()
+	w.Tabs = slices.Delete(w.Tabs, i, i+1)
+	return r.saveLocked()
 }
 
 func (r *Records) Workspace(id string) *Workspace {
@@ -431,12 +451,8 @@ func (r *Records) Workspace(id string) *Workspace {
 func (r *Records) Tab(id string) *Satellite {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, p := range r.projects {
-		for _, w := range p.Workspaces {
-			if i := slices.IndexFunc(w.Tabs, func(t *Satellite) bool { return t.ID == id }); i >= 0 {
-				return w.Tabs[i]
-			}
-		}
+	if w, i := r.tabLocked(id); w != nil {
+		return w.Tabs[i]
 	}
 	return nil
 }
@@ -465,6 +481,17 @@ func (r *Records) workspaceLocked(id string) (*Project, int) {
 	for _, p := range r.projects {
 		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return w.ID == id }); i >= 0 {
 			return p, i
+		}
+	}
+	return nil, -1
+}
+
+func (r *Records) tabLocked(id string) (*Workspace, int) {
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if i := slices.IndexFunc(w.Tabs, func(t *Satellite) bool { return t.ID == id }); i >= 0 {
+				return w, i
+			}
 		}
 	}
 	return nil, -1

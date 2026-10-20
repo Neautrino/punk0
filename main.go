@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("GET /api/workspaces/{id}/tree", handleTree(rec))
 	mux.HandleFunc("GET /api/workspaces/{id}/file", handleFile(rec))
 	mux.HandleFunc("POST /api/workspaces/{id}/tabs", handleAddTab(rec))
+	mux.HandleFunc("PATCH /api/tabs/{id}", handleRenameTab(rec))
 	mux.HandleFunc("DELETE /api/tabs/{id}", handleRemoveTab(rec))
 	mux.HandleFunc("GET /api/tabs/{id}/term", handleTerm(rec))
 
@@ -170,6 +171,21 @@ func handleAddTab(rec *Records) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, t)
+	}
+}
+
+func handleRenameTab(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Name string }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			failJSON(w, http.StatusBadRequest, "bad request body")
+			return
+		}
+		if err := rec.RenameTab(r.PathValue("id"), req.Name); err != nil {
+			failRecord(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

@@ -27,12 +27,14 @@
     </div>
   </aside>
 
-  <!-- Middle Pane: Terminal (Shell + Claude Launcher) -->
+  <!-- Middle Pane: tabs of the selected workspace -->
   <section id="pane-term" class="pane">
     <header class="pane-head">
+      <div id="tabs"></div>
       <div class="head-left">
         <button id="btn-claude" type="button" title="Start Claude Code in this shell">Claude</button>
-        <span class="head-title">Terminal</span>
+        <button class="new-tab" type="button" data-new-tab="claude" title="New Claude Code tab">+ Claude</button>
+        <button class="new-tab" type="button" data-new-tab="shell" title="New shell tab">+ Shell</button>
       </div>
     </header>
     <div id="term"></div>
