@@ -268,6 +268,9 @@ func (ix *Index) Build() {
 			if e.Type()&os.ModeSymlink != 0 {
 				continue
 			}
+			if !isDir && name == ".git" {
+				continue // a linked worktree's .git is a file pointing into the main repository
+			}
 			if ig.Match(childRel, isDir) {
 				if !(isDir && vcsDirs[name]) {
 					kids = append(kids, Node{Name: name, Path: childRel, Dir: isDir, Ignored: true})
