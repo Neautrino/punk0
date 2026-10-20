@@ -1,9 +1,10 @@
 // web/src/tree.js
-// File tree component: lazy folder expansion and file selection.
+// File tree of the active satellite: lazy folder expansion and file selection.
 import { openFile } from './viewer.js';
 
 let treeEl = null;
 let activeRow = null;
+let sat = 'default';
 
 const GIT_STATUS = {
   M: ['st-mod', 'M'],
@@ -20,12 +21,20 @@ export async function initTree(container) {
   await loadTree('', treeEl, 0);
 }
 
+export function setTreeSatellite(id) {
+  sat = id;
+  activeRow = null;
+  treeEl.innerHTML = '';
+  return loadTree('', treeEl, 0);
+}
+
 async function loadTree(dir, targetEl, depth) {
+  const from = sat;
   try {
-    const res = await fetch(`/api/tree?dir=${encodeURIComponent(dir)}`);
+    const res = await fetch(`/api/satellites/${encodeURIComponent(from)}/tree?dir=${encodeURIComponent(dir)}`);
     if (!res.ok) return;
     const j = await res.json();
-    renderNodes(j.children, targetEl, depth);
+    if (from === sat) renderNodes(j.children, targetEl, depth); // drop answers for a satellite switched away from
   } catch (err) {
     console.error('Failed to load tree:', dir, err);
   }

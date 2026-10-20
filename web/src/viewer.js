@@ -1,10 +1,11 @@
 // web/src/viewer.js
-// Syntax-highlighted virtualized code viewer.
+// Syntax-highlighted virtualized code viewer for the active satellite.
 const LH = 20; // line height in px
 const CHUNK = 1000;
 const OVERSCAN = 30;
 
 let currentDoc = null;
+let currentSatId = 'default';
 let vpEl = null;
 let sizerEl = null;
 let rowsEl = null;
@@ -22,11 +23,22 @@ export function initViewer(vp, sizer, rows, title, meta) {
   window.addEventListener('resize', () => render());
 }
 
+export function setViewerSatellite(satId) {
+  currentSatId = satId || 'default';
+  currentDoc = null;
+  if (titleEl) titleEl.textContent = 'Select a file';
+  if (metaEl) metaEl.textContent = '';
+  if (rowsEl) rowsEl.innerHTML = '';
+  if (sizerEl) sizerEl.style.height = '0px';
+}
+
 export async function openFile(path) {
   if (titleEl) titleEl.textContent = path;
   if (metaEl) metaEl.textContent = 'Loading...';
 
-  const res = await fetch(`/api/file?path=${encodeURIComponent(path)}&start=0&count=${CHUNK}`);
+  const from = currentSatId;
+  const res = await fetch(`/api/satellites/${encodeURIComponent(from)}/file?path=${encodeURIComponent(path)}&start=0&count=${CHUNK}`);
+  if (from !== currentSatId) return; // switched satellites while loading
   if (!res.ok) {
     if (metaEl) metaEl.textContent = 'Failed to load file';
     return;
@@ -61,7 +73,7 @@ function ensureChunks(d, first, last) {
   for (let c = c0; c <= c1; c++) {
     if (d.chunks.has(c) || d.pending.has(c)) continue;
     d.pending.add(c);
-    fetch(`/api/file?path=${encodeURIComponent(d.path)}&start=${c * CHUNK}&count=${CHUNK}`)
+    fetch(`/api/satellites/${encodeURIComponent(currentSatId)}/file?path=${encodeURIComponent(d.path)}&start=${c * CHUNK}&count=${CHUNK}`)
       .then(r => r.json())
       .then(j => {
         for (let i = 0; i < j.lines.length; i++) {

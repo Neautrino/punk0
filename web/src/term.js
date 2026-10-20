@@ -1,9 +1,15 @@
 // web/src/term.js
-// Terminal pane: xterm.js <-> GET /term websocket <-> the user's shell in a PTY.
-// Binary frames carry PTY bytes both ways; text frames carry {"cols","rows"}
-// or {"run":"claude"}, which the server types into the shell when it is idle.
+// Terminal pane: xterm.js <-> /api/satellites/{id}/term websocket <-> that
+// satellite's shell. The shell outlives the socket; attaching replays its
+// scrollback. Binary frames carry PTY bytes both ways; text frames carry
+// {"cols","rows"} or {"run":"claude"}, which the server types into the shell
+// when it is idle.
 import { Terminal } from '../vendor/xterm.mjs';
 import { FitAddon } from '../vendor/addon-fit.mjs';
+
+// The server closes a viewer that lags behind the shell with 1013 (try
+// again later); reattaching replays scrollback, so nothing is lost.
+const FELL_BEHIND = 1013;
 
 export function initTerm(el) {
   const term = new Terminal({ cursorBlink: true, scrollback: 10000, fontSize: 13, theme: { background: '#0b0d12' } });
@@ -12,15 +18,28 @@ export function initTerm(el) {
   term.open(el);
   fit.fit();
 
-  const ws = new WebSocket(`ws://${location.host}/term`);
-  ws.binaryType = 'arraybuffer';
   const enc = new TextEncoder();
-  const send = (data) => ws.readyState === WebSocket.OPEN && ws.send(data);
+  let ws = null;
+  let sat = 'default';
+  const send = (data) => ws?.readyState === WebSocket.OPEN && ws.send(data);
   const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
 
-  ws.onopen = () => { sendSize(); term.focus(); };
-  ws.onmessage = (e) => term.write(new Uint8Array(e.data));
-  ws.onclose = (e) => term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'}]\x1b[0m\r\n`);
+  function attach(id) {
+    if (ws) {
+      ws.onclose = null; // a deliberate switch is not a disconnect
+      ws.close();
+    }
+    sat = id;
+    term.reset(); // the server replays this satellite's scrollback
+    ws = new WebSocket(`ws://${location.host}/api/satellites/${encodeURIComponent(id)}/term`);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = () => { sendSize(); term.focus(); };
+    ws.onmessage = (e) => term.write(new Uint8Array(e.data));
+    ws.onclose = (e) => {
+      if (e.code === FELL_BEHIND) return attach(sat);
+      term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'}]\x1b[0m\r\n`);
+    };
+  }
 
   term.onData((s) => send(enc.encode(s)));
   term.onBinary((s) => send(Uint8Array.from(s, (c) => c.charCodeAt(0))));
@@ -36,7 +55,10 @@ export function initTerm(el) {
     return false;
   });
 
+  attach(sat);
+
   return {
+    attach,
     run(name) {
       send(JSON.stringify({ run: name }));
       term.focus();

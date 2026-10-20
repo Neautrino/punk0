@@ -12,9 +12,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -28,7 +30,7 @@ func main() {
 	var (
 		port = flag.Int("port", 7070, "port to listen on (0 picks a free one)")
 		host = flag.String("host", "127.0.0.1", "address to bind")
-		dir  = flag.String("dir", ".", "worktree the shell and agents run in")
+		dir  = flag.String("dir", ".", "primary worktree; satellites are added to its repository")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "punk0 - agent orchestrator\n\nusage:\n  punk0 [flags]\n\nflags:\n")
@@ -46,8 +48,7 @@ func main() {
 		log.Fatalf("%s is not a directory", workdir)
 	}
 
-	ix := NewIndex(workdir)
-	go ix.Build()
+	reg := NewRegistry(workdir)
 
 	web, err := fs.Sub(embedded, "web")
 	if err != nil {
@@ -59,16 +60,67 @@ func main() {
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 		files.ServeHTTP(w, r)
 	})
-	mux.Handle("GET /term", &termHandler{dir: workdir})
-	mux.HandleFunc("GET /api/tree", handleTree(ix))
-	mux.HandleFunc("GET /api/file", handleFile(ix))
+
+	mux.HandleFunc("GET /api/satellites", handleListSatellites(reg))
+	mux.HandleFunc("POST /api/satellites", handleCreateSatellite(reg))
+	mux.HandleFunc("DELETE /api/satellites/{id}", handleDeleteSatellite(reg))
+	mux.HandleFunc("GET /api/satellites/{id}/tree", handleTree(reg))
+	mux.HandleFunc("GET /api/satellites/{id}/file", handleFile(reg))
+	mux.HandleFunc("GET /api/satellites/{id}/term", handleTerm(reg))
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Shells hold agents that may run for minutes; hang them up on exit
+	// instead of leaving them orphaned under init.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sig
+		reg.Close()
+		os.Exit(0)
+	}()
+
 	log.Printf("punk0 on http://%s", ln.Addr())
 	log.Fatal(http.Serve(ln, guard(mux)))
+}
+
+func handleListSatellites(reg *Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, reg.List())
+	}
+}
+
+func handleCreateSatellite(reg *Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct{ Name, Branch string }
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			failJSON(w, http.StatusBadRequest, "bad request body")
+			return
+		}
+		sat, err := reg.Create(strings.TrimSpace(req.Name), strings.TrimSpace(req.Branch))
+		if err != nil {
+			failJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, sat)
+	}
+}
+
+func handleDeleteSatellite(reg *Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sat := satelliteOf(reg, w, r)
+		if sat == nil {
+			return
+		}
+		if err := reg.Remove(sat.ID); err != nil {
+			failJSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func safePath(root, rel string) (string, string, bool) {
@@ -100,8 +152,13 @@ func failJSON(w http.ResponseWriter, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func handleTree(ix *Index) http.HandlerFunc {
+func handleTree(reg *Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		sat := satelliteOf(reg, w, r)
+		if sat == nil {
+			return
+		}
+		ix := sat.Index()
 		dir := strings.Trim(r.URL.Query().Get("dir"), "/")
 		kids, ok := ix.Children(dir)
 		if !ok && !ix.Ready() {
@@ -124,9 +181,13 @@ func handleTree(ix *Index) http.HandlerFunc {
 	}
 }
 
-func handleFile(ix *Index) http.HandlerFunc {
+func handleFile(reg *Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		abs, rel, ok := safePath(ix.Root(), r.URL.Query().Get("path"))
+		sat := satelliteOf(reg, w, r)
+		if sat == nil {
+			return
+		}
+		abs, rel, ok := safePath(sat.Dir, r.URL.Query().Get("path"))
 		if !ok || rel == "" {
 			failJSON(w, http.StatusBadRequest, "bad path")
 			return
