@@ -14,18 +14,28 @@ Running `punk0` with no arguments opens the **agents page** at `/`: your project
 
 Only one punk0 runs per machine. A second `punk0` or `punk0 <dir>` hands its folder to the running one, opens the page there and exits; `-host` and `-port` only apply to the first.
 
+## Layout
+
+Three panes: projects on the left, the selected workspace's tabs in the middle, its files on the right. Drag either border to resize its side pane: the projects pane from 200 to 400 px, the files pane from 200 px up to whatever leaves the middle 360 px. The status bar's left section follows the projects pane. Double-click a border, or focus it and press Enter, to go back to 260 px; with a border focused, the arrow keys move it 16 px (64 px with Shift) and Home / End jump to its limits. Widths are remembered in this browser, and a narrower window shrinks the files pane first. While you drag, a terminal keeps its size and refits once the pointer rests, so an agent's screen is not redrawn at every pixel.
+
+Either side pane can be hidden: the panel button at its inner edge (the right end of the projects pane's header, the left end of the files pane's) hides it, and a button at that end of the tab bar brings it back. **Ctrl+B** (⌘B on macOS) toggles the projects pane and **Ctrl+Alt+B** (⌘⌥B) the files pane, except while a terminal has focus, where Ctrl+B belongs to the shell. Which panes are hidden is remembered with their widths.
+
 ## Sidebar
 
-- **Projects.** **+** at the top takes a folder path (with folder completion: **Tab** completes, **↑/↓** choose, **Esc** dismisses) or a pull request URL. A folder inside a git repository adds the repository. A new project starts with one local workspace holding a shell tab. ✕ removes the project from punk0 and stops its tabs; no files are deleted, and its worktrees come back if it is added again.
-- **Workspaces.** **+** on a project creates one. A local workspace works in the project folder itself. Tick the worktree box (git projects only) to give it its own `git worktree` on a new branch, optionally from a base you name. ✕ deletes a workspace: its tabs stop, a worktree folder is removed (punk0 asks again if it has uncommitted changes) and the branch is kept.
-- **Scratch.** Chats that belong to no project, each in its own folder under the state directory.
-- **Reviews.** Pull requests opened from the **+** box or from the editor's **Git: Open Pull Request…**. Click one to open its review; ■ stops it, ✕ removes it from the list.
+The **Projects | Scratch** switch at the top picks what the pane lists. Under it, the list's header has a filter (by project, workspace or branch name, or **Running only**: workspaces with a running editor or terminal; Esc clears it), then in Projects a new-worktree button and **+**.
+
+- **Projects.** **+** takes a folder path (with folder completion: **Tab** completes, **↑/↓** choose, **Esc** dismisses) or a pull request URL. A folder inside a git repository adds the repository. A new project starts with one local workspace and no tabs open. Click a project's name to fold it. ✕ removes the project from punk0 and stops its tabs; no files are deleted, and its worktrees come back if it is added again.
+- **Workspaces.** The header's new-worktree button creates a workspace with its own `git worktree` on a new branch, optionally from a base you name, in the selected workspace's project (a plain folder gets a local workspace). **+** on a project's row creates one there, a local workspace unless you tick the worktree box. A local workspace works in the project folder itself. ✕ deletes a workspace: its tabs stop, a worktree folder is removed (punk0 asks again if it has uncommitted changes) and the branch is kept.
+- **Scratch.** Chats that belong to no project, each in its own folder under the state directory. **+** in the Scratch view starts one.
+- **Reviews.** Listed under the projects: pull requests opened from the **+** box or from the editor's **Git: Open Pull Request…**. Click one to open its review; ■ stops it, ✕ removes it from the list.
 
 Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, and its actions: **LSP** (see below), open in editor, delete.
 
 ## Tabs
 
 The tab bar holds the selected workspace's terminals and open files. **+** offers a new Claude Code tab, a shell tab, or a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it.
+
+With no tab open, as in a new project or worktree workspace, the center shows the welcome view: punk0's name and version, the workspace and its folder, and buttons for a new Claude Code chat, a new shell or a file. Nothing starts until you pick one. A scratch chat still opens on its Claude tab.
 
 - **Terminals are real.** Each terminal tab is your shell in a PTY, started when you first open the tab. A Claude tab runs `claude` in that shell.
 - **They outlive the browser.** Closing or reloading the page leaves every terminal running; reattaching replays its recent output. Everything stops when punk0 stops (Ctrl-C). After a restart, a Claude tab resumes its own chat.
@@ -62,7 +72,7 @@ If a pull request cannot be opened (a typo in the URL, no access), the error is 
 
 ## Status bar and themes
 
-The bottom bar shows the version, what is running, and the **CPU · RAM · LSP** chip. The chip adds up punk0 and every running editor; click it for a breakdown by process. The palette button opens the theme list. Arrow keys preview a theme, Enter or a click keeps it, and Esc restores the one you had. The choice is saved to settings, so the editors use it too.
+The bottom bar shows the logo and version, then the theme, GitHub and settings buttons on the left. On the right, one button shows the running terminals (`>_`), running Claude tabs (robot icon) and the total RAM of punk0 and everything it started. Click it for the resource panel: CPU and RAM for each workspace with a recent-CPU sparkline, then its editor (language servers included) and each terminal (the shell and everything running in it, such as an agent and the tools it starts), then pull request reviews, then punk0 itself. Click a workspace to fold it; Esc or a click elsewhere closes the panel. The palette button opens the theme list. Arrow keys preview a theme, Enter or a click keeps it, and Esc restores the one you had. The choice is saved to settings, so the editors use it too. The gear opens the selected workspace's editor with its settings showing; the workbench itself saves only the theme.
 
 ## Security
 
