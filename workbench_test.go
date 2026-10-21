@@ -279,22 +279,24 @@ func TestWorkbenchRunsChildThroughProxy(t *testing.T) {
 	if resolved, _ := filepath.EvalSymlinks(ws); meta.Root != resolved {
 		t.Fatalf("root %q, want %q", meta.Root, resolved)
 	}
-	// The status bar's totals cover the workbench and the running child.
-	resp, err = http.Get(srv.URL + "/base/api/metrics")
+	// The running child is the workspace's editor, measured as its own
+	// process tree; with the parent's share it makes up the total.
+	resp, err = http.Get(srv.URL + "/base/api/resources")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var metrics struct {
-		RSSBytes uint64 `json:"rssBytes"`
-		Parts    []struct {
-			Name     string `json:"name"`
-			RSSBytes uint64 `json:"rssBytes"`
-		} `json:"parts"`
+	var res struct {
+		RSS        uint64 `json:"rss"`
+		Self       struct{ RSS uint64 }
+		Workspaces []struct {
+			Editor *struct{ RSS uint64 }
+		}
 	}
-	json.NewDecoder(resp.Body).Decode(&metrics)
+	json.NewDecoder(resp.Body).Decode(&res)
 	resp.Body.Close()
-	if len(metrics.Parts) != 2 || metrics.RSSBytes != metrics.Parts[0].RSSBytes+metrics.Parts[1].RSSBytes || metrics.Parts[1].RSSBytes == 0 {
-		t.Fatalf("metrics: %+v", metrics)
+	if len(res.Workspaces) != 1 || res.Workspaces[0].Editor == nil || res.Workspaces[0].Editor.RSS == 0 ||
+		res.RSS != res.Self.RSS+res.Workspaces[0].Editor.RSS {
+		t.Fatalf("resources: %+v", res)
 	}
 
 	if m := post("/base/api/wb/stop", `{"id":"`+id+`"}`); m["ok"] != true {

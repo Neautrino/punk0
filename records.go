@@ -636,6 +636,44 @@ func (r *Records) Tabs() []*Satellite {
 	return tabs
 }
 
+// runningWorkspace is a workspace and the shell pids of its running tabs,
+// in tab order, for the resource view.
+type runningWorkspace struct {
+	id, dir string
+	tabs    []runningTab
+}
+
+type runningTab struct {
+	id  string
+	pid int
+}
+
+// Running lists every workspace with the pids of its running tabs. Shells
+// are asked outside r.mu, as everywhere else.
+func (r *Records) Running() []runningWorkspace {
+	r.mu.Lock()
+	var all []*Workspace
+	tabs := map[*Workspace][]*Satellite{}
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			all = append(all, w)
+			tabs[w] = slices.Clone(w.Tabs)
+		}
+	}
+	r.mu.Unlock()
+	out := make([]runningWorkspace, 0, len(all))
+	for _, w := range all {
+		rw := runningWorkspace{id: w.ID, dir: w.Dir}
+		for _, t := range tabs[w] {
+			if sh := t.shell(); sh != nil {
+				rw.tabs = append(rw.tabs, runningTab{t.ID, sh.Pid()})
+			}
+		}
+		out = append(out, rw)
+	}
+	return out
+}
+
 // Folder returns the folder behind a /w/<id>/ workspace URL: the dir of any
 // workspace whose backend id is id (local workspaces of one project share it).
 func (r *Records) Folder(id string) string {

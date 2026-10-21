@@ -1,9 +1,11 @@
 // web/src/orch/sidebar.js
-// Left pane: projects and their workspaces, scratch chats, and the pull
-// requests open for review. Each workspace is one feature: local ones share
-// the project folder, worktree ones own a folder and branch, scratch chats own
-// a folder outside any project. A folder's editor (px0's single-folder view)
-// runs in a child the parent starts on demand; its state is the dot.
+// Left pane, in two views behind a tab: Projects (projects, their
+// workspaces, and the pull requests open for review) and Scratch (chats that
+// belong to no project). Each workspace is one feature: local ones share the
+// project folder, worktree ones own a folder and branch, scratch chats own a
+// folder outside any project. A folder's editor (px0's single-folder view)
+// runs in a child the parent starts on demand; its state is the dot. The
+// header's filter narrows either view by name or branch, or to what runs.
 import { $, esc } from '../state.js';
 import { call, failed, openEditor } from './api.js';
 import { state, subscribe, reload, selectWorkspace, workspace, tildify } from './store.js';
@@ -14,15 +16,19 @@ const ICON_X = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stro
 const ICON_EDITOR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>';
 const ICON_STOP = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>';
 const ICON_PR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4"/><polyline points="13 4 11 6 13 8"/></svg>';
+const ICON_FOLDER = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>';
+const ICON_FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1"/><path d="M3 18l2.6-6.5A2 2 0 0 1 7.5 10H21l-2.7 7.2a2 2 0 0 1-1.9 1.3H3Z"/></svg>';
 
 // The tab status that most needs a look wins a workspace's badge.
 const URGENCY = ['waiting', 'working', 'idle'];
 const STATUS_LABEL = { waiting: 'needs you', working: 'working', idle: 'idle' };
 
 const collapsed = new Set(JSON.parse(localStorage.getItem('punk0.collapsed') || '[]'));
+let view = localStorage.getItem('punk0.sideView') === 'scratch' ? 'scratch' : 'projects';
+const filter = { text: '', running: false };
 
 let listEl, formEl, nameEl, wtRowEl, wtEl, baseEl, submitEl, msgEl, cloneEl, clonePathEl;
-let formFor = null; // { mode: 'project' } or { mode: 'workspace', project }
+let formFor = null; // { mode: 'project' } or { mode: 'workspace', project, worktree }
 let pendingPR = ''; // the PR URL waiting for its clone to be chosen
 
 export function initSidebar() {
@@ -39,7 +45,21 @@ export function initSidebar() {
 
   attachComplete(nameEl, $('#o-suggest'));
   attachComplete(clonePathEl, $('#o-clone-suggest'));
-  $('#o-add-project').addEventListener('click', () => openForm({ mode: 'project' }));
+  // + adds a project in the Projects view, a chat in the Scratch view.
+  $('#o-add-project').addEventListener('click', () => {
+    const scratch = state.projects.find(p => p.scratch);
+    if (view === 'scratch') return scratch && openForm({ mode: 'workspace', project: scratch });
+    openForm({ mode: 'project' });
+  });
+  $('#o-add-feature').addEventListener('click', () => {
+    const project = featureProject();
+    if (project) openForm({ mode: 'workspace', project, worktree: true });
+  });
+  $('.o-side-tabs').addEventListener('click', e => {
+    const v = e.target.closest('[data-view]')?.dataset.view;
+    if (v && v !== view) setView(v);
+  });
+  initFilter();
   $('#o-form-cancel').addEventListener('click', closeForm);
   wtEl.addEventListener('change', () => { baseEl.hidden = !wtEl.checked; });
   formEl.addEventListener('submit', e => {
@@ -67,31 +87,101 @@ export function initSidebar() {
   const target = new URLSearchParams(location.search).get('open');
   if (target) {
     history.replaceState(null, '', location.pathname);
+    if (view !== 'projects') setView('projects');
     openForm({ mode: 'project' });
     nameEl.value = target;
     openTarget(target);
   }
 }
 
-function renderSidebar() {
+function setView(v) {
+  view = v;
+  localStorage.setItem('punk0.sideView', v);
+  if (formFor) closeForm(); // its + may belong to the other view
+  renderSidebar();
+}
+
+function initFilter() {
+  const box = $('#o-filter');
+  const btn = $('#o-filter-btn');
+  const input = $('#o-filter-input');
+  const running = $('#o-filter-running');
+  const sync = () => {
+    filter.text = input.value.trim().toLowerCase();
+    filter.running = running.checked;
+    btn.classList.toggle('on', !!(filter.text || filter.running));
+    renderSidebar();
+  };
+  btn.addEventListener('click', () => {
+    box.hidden = !box.hidden;
+    btn.setAttribute('aria-pressed', String(!box.hidden));
+    if (!box.hidden) input.focus();
+  });
+  input.addEventListener('input', sync);
+  running.addEventListener('change', sync);
+  // Esc clears the filter and folds it away.
+  box.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    input.value = '';
+    running.checked = false;
+    box.hidden = true;
+    btn.setAttribute('aria-pressed', 'false');
+    sync();
+    btn.focus();
+  });
+}
+
+// featureProject is where the header's new-worktree button adds one: the
+// selected workspace's project, else the first project.
+function featureProject() {
   const projects = state.projects.filter(p => !p.scratch);
+  return projects.find(p => p.workspaces.some(w => w.id === state.ws)) || projects[0] || null;
+}
+
+const filtering = () => !!(filter.text || filter.running);
+const isRunning = w => w.backend === 'running' || w.tabs.some(t => t.running);
+const textMatch = (...s) => !filter.text || s.some(x => x && x.toLowerCase().includes(filter.text));
+
+// shownWorkspaces is what the filter leaves of a project's workspaces: all
+// of them when the project's own name matches, else those whose name or
+// branch does.
+function shownWorkspaces(p) {
+  const own = !p.scratch && filter.text && textMatch(p.name);
+  return p.workspaces.filter(w => (!filter.running || isRunning(w)) && (own || textMatch(w.name, w.branch)));
+}
+
+function renderSidebar() {
+  for (const b of document.querySelectorAll('.o-side-tabs [data-view]')) b.setAttribute('aria-selected', String(b.dataset.view === view));
   const scratch = state.projects.find(p => p.scratch);
-  let html = projects.length ? projects.map(renderProject).join('') : `
+  $('#o-list-title').textContent = view === 'scratch' ? 'Chats' : 'Projects';
+  $('#o-add-feature').hidden = view === 'scratch';
+  $('#o-add-feature').disabled = !featureProject();
+  const add = $('#o-add-project');
+  add.title = view === 'scratch' ? 'New scratch chat' : 'Add a folder or a pull request';
+  add.setAttribute('aria-label', add.title);
+  listEl.innerHTML = view === 'scratch' ? renderScratch(scratch) : renderProjects();
+}
+
+function renderProjects() {
+  const projects = state.projects.filter(p => !p.scratch);
+  if (!projects.length) return `
     <div class="o-side-empty">
       <p>No projects yet.</p>
       <button type="button" class="wb-btn wb-primary" data-act="add-project">Add a folder</button>
     </div>`;
-  if (scratch) html += renderScratch(scratch);
-  html += renderReviews();
-  listEl.innerHTML = html;
+  const html = projects.map(renderProject).join('') + renderReviews();
+  return html.trim() ? html : '<p class="o-note">Nothing matches the filter.</p>';
 }
 
 function renderProject(p) {
-  const open = !collapsed.has(p.id);
+  const ws = shownWorkspaces(p);
+  if (filtering() && !ws.length) return '';
+  // A filter shows every match, folded projects included.
+  const open = filtering() || !collapsed.has(p.id);
   return `
     <div class="o-proj" data-project="${esc(p.id)}">
-      <div class="o-proj-row" data-act="toggle" title="${esc(tildify(p.dir))}">
-        <span class="o-arrow${open ? ' open' : ''}"></span>
+      <div class="o-proj-row" data-act="toggle" title="${esc(tildify(p.dir))}" aria-expanded="${open}">
+        <span class="o-proj-ico">${open ? ICON_FOLDER_OPEN : ICON_FOLDER}</span>
         <span class="o-proj-name">${esc(p.name)}</span>
         <span class="o-proj-branch">${esc(p.branch || '')}</span>
         <span class="o-acts">
@@ -99,19 +189,21 @@ function renderProject(p) {
           <button type="button" class="mini o-del" data-act="del-project" title="Remove project from punk0" aria-label="Remove project">${ICON_X}</button>
         </span>
       </div>
-      ${open ? p.workspaces.map(renderWorkspace).join('') : ''}
+      ${open ? ws.map(renderWorkspace).join('') : ''}
     </div>`;
 }
 
 function renderScratch(p) {
-  return `
-    <div class="o-proj o-scratch" data-project="${esc(p.id)}">
-      <div class="o-section" title="${esc(tildify(p.dir))}">
-        <span>Scratch</span>
-        <span class="o-acts"><button type="button" class="mini" data-act="add-ws" title="New scratch chat" aria-label="New scratch chat">${ICON_PLUS}</button></span>
-      </div>
-      ${p.workspaces.map(renderWorkspace).join('')}
+  if (!p) return '';
+  if (!p.workspaces.length) return `
+    <div class="o-side-empty">
+      <p>No scratch chats yet.</p>
+      <p class="wb-faint">A chat with Claude in a folder of its own, outside any project.</p>
+      <button type="button" class="wb-btn wb-primary" data-act="add-ws" data-project="${esc(p.id)}">New chat</button>
     </div>`;
+  const ws = shownWorkspaces(p);
+  if (!ws.length) return '<p class="o-note">Nothing matches the filter.</p>';
+  return `<div class="o-proj o-scratch" data-project="${esc(p.id)}" title="${esc(tildify(p.dir))}">${ws.map(renderWorkspace).join('')}</div>`;
 }
 
 // statusOf is the most urgent status of a workspace's running tabs.
@@ -151,11 +243,12 @@ function renderWorkspace(w) {
 }
 
 function renderReviews() {
-  if (!state.reviews.length) return '';
+  const items = state.reviews.filter(it => (!filter.running || it.state === 'running') && textMatch(it.title, it.repo, String(it.number)));
+  if (!items.length) return '';
   return `
     <div class="o-proj o-reviews">
       <div class="o-section"><span>Reviews</span></div>
-      ${state.reviews.map(renderReview).join('')}
+      ${items.map(renderReview).join('')}
     </div>`;
 }
 
@@ -243,13 +336,17 @@ function openForm(f) {
   hideClone();
   showMsg('');
   nameEl.value = '';
+  // The header's feature button asks for a worktree: its own folder and
+  // branch. A folder that is not a git repository can only have local ones.
+  const wt = ws && !!f.worktree && f.project.git;
   nameEl.placeholder = !ws ? '~/path/to/folder or pull request URL'
-    : f.project.scratch ? 'new scratch chat, e.g. research-auth' : `new workspace in ${f.project.name}`;
+    : f.project.scratch ? 'new scratch chat, e.g. research-auth'
+    : wt ? `new feature branch in ${f.project.name}` : `new workspace in ${f.project.name}`;
   nameEl.setAttribute('aria-label', !ws ? 'Folder path or pull request URL' : 'Workspace name');
-  wtEl.checked = false;
+  wtEl.checked = wt;
   wtRowEl.hidden = !ws || !f.project.git;
   baseEl.value = '';
-  baseEl.hidden = true;
+  baseEl.hidden = !wt;
   submitEl.textContent = ws ? 'Create' : 'Add';
   formEl.hidden = false;
   nameEl.focus();

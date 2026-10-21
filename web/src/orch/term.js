@@ -60,8 +60,17 @@ function boot() {
     term.loadAddon(fit);
     term.open(termEl);
     // A hidden pane has no size; fitting it would shrink the PTY to 2 columns.
-    const refit = () => termEl.clientWidth && termEl.clientHeight && fit.fit();
-    refit();
+    const fitNow = () => termEl.clientWidth && termEl.clientHeight && fit.fit();
+    // While a pane border is dragged (resize.js), refit once the pointer
+    // rests: every column change resizes the PTY and makes a TUI such as
+    // Claude Code redraw, which would stutter at 60 a second.
+    let settle = 0;
+    const refit = () => {
+      clearTimeout(settle);
+      if (document.body.classList.contains('wb-resizing')) settle = setTimeout(fitNow, 120);
+      else fitNow();
+    };
+    fitNow();
     new ResizeObserver(refit).observe(termEl);
     on('theme:changed', () => { term.options.theme = termColors(); });
 

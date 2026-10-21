@@ -3,7 +3,9 @@
    (panel buttons, tree rows, tabs, code rows, palette rows, the #status bar,
    metrics chip and menu, kbd, toast); this file only lays them out.
    Colours come from theme tokens only. */
-#wb-app { display: flex; flex-direction: column; height: 100vh; }
+/* --wb-left / --wb-right: the side panes' widths, set by resize.js; the
+   status bar's left section follows --wb-left. */
+#wb-app { display: flex; flex-direction: column; height: 100vh; --wb-left: 260px; --wb-right: 260px; }
 .wb .grow { flex: 1; }
 .wb-faint { color: var(--faint); }
 
@@ -42,14 +44,84 @@
 
 /* The app's status bar, standing alone at the bottom of the page. */
 .wb-status { gap: 10px; }
-.wb-status .side-actions { margin-left: 0; }
-#st-running { color: var(--faint); }
+/* punk[0]: drawn in text in the style of px0's px[0] logo, so it follows the theme. */
+.wb-logo {
+  flex: none; padding: 1px 3px; border-radius: var(--r);
+  font: 600 12px/1 var(--mono); color: var(--fg); text-decoration: none;
+}
+.wb-logo span { color: var(--mark-active); }
+.wb-logo:hover { background: var(--bg4); }
+/* Logo and version at the left, the buttons at the right: exactly the
+   sidebar's width, with its border carried down, as px0's footer sits under
+   its file tree. The bar's own left padding moves inside this box. */
+#status.wb-status { padding-left: 0; } /* the id: style.css sets #status padding */
+/* Spacing as px0's .side-foot: 6px between logo, version and buttons; the
+   buttons keep style.css's 2px apart. */
+.wb-status-side {
+  width: var(--wb-left); align-self: stretch; display: flex; align-items: center; gap: 6px;
+  padding: 0 8px; border-right: 1px solid var(--line);
+}
+/* Running terminals, running agents, total RAM: one button, so hovering any
+   of them lights all three, and a click opens #wb-res. */
+.wb-res-btn {
+  display: inline-flex; align-items: center; gap: 10px; height: 18px; padding: 0 6px; margin-right: -6px;
+  border: 0; border-radius: var(--r); background: none; cursor: pointer;
+  font: 11px var(--mono); color: var(--dim);
+}
+.wb-res-btn:hover, .wb-res-btn[aria-expanded="true"] { color: var(--fg); background: var(--bg4); }
+.wb-res-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.wb-res-btn .wb-count { display: inline-flex; align-items: center; gap: 5px; }
+.wb-res-btn svg { display: block; flex: none; color: var(--faint); }
+.wb-res-btn .metric-divider { margin: 0 -4px; }
 /* Shed detail on narrow screens, as the app's status bar does (fit-N rules). */
 @media (max-width: 560px) {
-  .wb-status .metric-label, .wb-status #st-running, .wb-status .status-sep, .wb-status #st-ver { display: none; }
+  .wb-status #st-ver { display: none; }
 }
 
-/* Theme picker, opened from the palette button; placed like #metrics-menu. */
+/* Resource panel over the bar's right end: a table of CPU and RAM. Columns:
+   name, sparkline, CPU, RAM. */
+.wb-res {
+  position: fixed; z-index: 70; width: 400px; max-width: calc(100vw - 16px); max-height: 70vh;
+  display: flex; flex-direction: column;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
+  font: 12px var(--ui); color: var(--fg);
+}
+.wb-res[hidden] { display: none; }
+.wb-res-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 6px 12px; color: var(--dim); }
+.wb-res-head svg { flex: none; }
+.wb-res-title { flex: 1; font-weight: 600; color: var(--fg); }
+.wb-res-head .mini { margin-left: 0; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.wb-res-sum { display: flex; align-items: baseline; gap: 8px; padding: 0 12px 8px; border-bottom: 1px solid var(--line); }
+.wb-res-big { font: 600 12px var(--mono); }
+.wb-res-faint { color: var(--faint); font-size: 11px; }
+.wb-res-cols, .wb-res-row { display: grid; grid-template-columns: minmax(0, 1fr) 56px 52px 72px; align-items: center; column-gap: 10px; padding: 0 12px; }
+.wb-res-cols { height: 24px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--faint); }
+.wb-res-cols span:first-child { grid-column: 1 / 3; }
+.wb-res-cols span:not(:first-child), .wb-res-num { text-align: right; }
+.wb-res-rows { overflow-y: auto; padding: 4px 0; }
+.wb-res-row { min-height: 26px; }
+.wb-res-num { font: 11px var(--mono); color: var(--dim); white-space: nowrap; }
+.wb-res-name { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.wb-res-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-res-group { cursor: pointer; border-radius: var(--r); }
+.wb-res-group:hover { background: var(--bg4); }
+.wb-res-group:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.wb-res-group .wb-res-label { font-weight: 600; }
+.wb-res-chev { flex: none; display: inline-flex; color: var(--faint); transition: transform .12s; }
+.wb-res-chev.open { transform: rotate(90deg); }
+.wb-res-sub .wb-res-name { padding-left: 15px; }
+.wb-res-sub .wb-res-label { color: var(--dim); }
+.wb-res-ic { flex: none; display: inline-flex; color: var(--faint); }
+.wb-res-spark { display: block; color: var(--accent-fg); opacity: .8; }
+.wb-res-self { margin-top: 4px; border-top: 1px solid var(--line); min-height: 30px; }
+.wb-res-self .wb-res-label { font: 600 12px var(--mono); }
+.wb-res-zero { color: var(--mark-active); }
+@media (prefers-reduced-motion: reduce) { .wb-res-chev { transition: none; } }
+
+/* Rows sit 4px in so the hover reads as a pill; their text stays on the header's columns. */
+.wb-res-rows .wb-res-row { margin: 0 4px; padding: 0 8px; }
+
+/* Theme picker, opened from the palette button. */
 .wb-menu {
   position: fixed; z-index: 70; min-width: 200px; max-height: 60vh; overflow: auto;
   list-style: none; margin: 0; padding: 4px 0;
@@ -62,11 +134,40 @@
 /* ---------- orchestrator: three panes ---------- */
 #o-main { flex: 1; min-height: 0; display: flex; }
 #o-side, #o-files {
-  width: 260px; flex: none; display: flex; flex-direction: column; min-width: 0;
+  flex: none; display: flex; flex-direction: column; min-width: 0;
   background: var(--bg2);
 }
-#o-side { border-right: 1px solid var(--line); }
-#o-files { border-left: 1px solid var(--line); overflow: hidden; }
+#o-side { width: var(--wb-left); border-right: 1px solid var(--line); }
+#o-files { width: var(--wb-right); border-left: 1px solid var(--line); overflow: hidden; }
+
+/* A pane border's drag handle: no width of its own, an 8px hit area over
+   the border, and an accent line once hovered a moment or dragged. */
+.o-resizer { position: relative; flex: none; width: 0; z-index: 20; }
+.o-resizer::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none;
+}
+.o-resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px;
+  background: var(--accent); opacity: 0; transition: opacity .12s;
+}
+.o-resizer:hover::after { opacity: 1; transition-delay: .25s; }
+.o-resizer.active::after, .o-resizer:focus-visible::after { opacity: 1; transition-delay: 0s; }
+.o-resizer:focus-visible { outline: none; }
+/* While dragging: the col-resize cursor everywhere, no text selection, and
+   nothing under the pointer (a terminal, the viewer) takes the events. */
+body.wb-resizing { cursor: col-resize; user-select: none; }
+body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .o-resizer::after { transition: none; } }
+/* A hidden side pane (resize.js): gone with its border, and the tab bar
+   offers it back at that edge. The status bar's left section then only
+   wraps its contents. */
+#wb-app.hide-left #o-side, #wb-app.hide-left .o-resizer[data-side="left"],
+#wb-app.hide-right #o-files, #wb-app.hide-right .o-resizer[data-side="right"] { display: none; }
+#o-tab-head .o-show { display: none; }
+#wb-app.hide-left #o-show-left, #wb-app.hide-right #o-show-right { display: inline-flex; }
+#o-show-left { margin: 0 4px 0 6px; }
+#o-show-right { margin-left: auto; }
+#wb-app.hide-left .wb-status-side { width: auto; border-right: 0; }
 #o-center { flex: 1; min-width: 320px; display: flex; flex-direction: column; position: relative; background: var(--bg); }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 
@@ -98,7 +199,29 @@
 .o-acts .mini:hover { background: var(--bg4); }
 
 /* ---------- left: projects, workspaces, scratch, reviews ---------- */
-#o-projects { padding: 4px 0 12px; }
+/* Pane headers: each pane's hide button sits at its inner edge, 4px in;
+   in the projects pane after the Projects | Scratch switch. */
+.o-side-head { gap: 6px; padding: 0 4px 0 8px; }
+.o-files-head { gap: 6px; padding: 0 8px 0 4px; }
+#o-hide-left { margin-left: auto; }
+.o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
+.o-side-tabs button {
+  height: 20px; padding: 0 10px; border-radius: var(--r); font-size: 11.5px; font-weight: 500; color: var(--dim);
+}
+.o-side-tabs button:hover { color: var(--fg); }
+.o-side-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg3); }
+.o-side-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* Under it, Orca-style: the list's name and its filter / new worktree / add buttons. */
+.o-list-head { flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 4px 8px 0 14px; user-select: none; }
+.o-list-title { font-size: 12px; font-weight: 600; color: var(--dim); }
+.o-list-head .mini { margin-left: 0; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.o-list-head .mini:hover { background: var(--bg4); }
+.o-list-head .mini:disabled { opacity: .4; cursor: default; background: none; }
+/* An active filter tints its button, so a narrowed list is not mistaken for all of it. */
+#o-filter-btn.on, #o-filter-btn[aria-pressed="true"] { color: var(--accent-fg); }
+.o-filter { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 2px 8px 8px; }
+.o-filter[hidden] { display: none; }
+#o-projects { padding: 2px 0 12px; }
 .o-form {
   flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px;
   background: var(--bg); border-bottom: 1px solid var(--line);
@@ -120,34 +243,36 @@
 .o-side-empty p { margin: 0; }
 
 .o-proj-row, .o-ws-row, .o-pr-row {
-  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px 0 8px;
+  display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 8px;
   white-space: nowrap; cursor: pointer; user-select: none;
 }
-.o-proj-row:hover, .o-ws-row:hover, .o-pr-row:hover { background: var(--bg3); }
-.o-ws-row { padding-left: 24px; }
+.o-pr-row:hover { background: var(--bg3); }
+/* A project: its folder icon (open while expanded) and name, then its
+   workspaces as rounded rows; the selected one is a card, as in Orca. */
+.o-proj + .o-proj { margin-top: 6px; }
+.o-proj-row { gap: 8px; padding: 0 6px 0 14px; }
+.o-proj-ico { flex: none; display: inline-flex; color: var(--faint); }
+.o-proj-row:hover .o-proj-ico { color: var(--dim); }
+.o-ws-row {
+  height: 30px; margin: 1px 6px; padding: 0 4px 0 16px; gap: 8px;
+  border: 1px solid transparent; border-radius: var(--r-lg);
+}
 .o-scratch .o-ws-row { padding-left: 12px; }
-.o-ws-row.active { background: var(--sel); }
+.o-ws-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.o-ws-row.active {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-color: color-mix(in srgb, var(--fg) 16%, transparent);
+}
 /* Row actions show on hover, so names keep the width otherwise. */
 .o-proj-row .o-acts, .o-ws-row .o-acts, .o-pr-row .o-acts { display: none; }
 .o-proj-row:hover .o-acts, .o-ws-row:hover .o-acts, .o-pr-row:hover .o-acts,
 .o-proj-row:focus-within .o-acts, .o-ws-row:focus-within .o-acts, .o-pr-row:focus-within .o-acts { display: flex; }
 
-/* Same drawn disclosure triangle as the tree's folders. */
-.o-arrow { width: 12px; height: 12px; flex: none; position: relative; transition: transform .12s ease; }
-.o-arrow::before {
-  content: ""; position: absolute; left: 3px; top: 2px;
-  border: 4px solid transparent; border-left-color: var(--faint); border-right-width: 0;
-}
-.o-arrow.open { transform: rotate(90deg); }
 .o-proj-name { flex: 0 1 auto; min-width: 48px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--fg); }
 .o-proj-branch { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 11px var(--mono); color: var(--faint); }
 
-.o-section {
-  display: flex; align-items: center; height: 24px; margin-top: 10px; padding: 0 6px 0 12px;
-  border-top: 1px solid var(--line);
-  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--dim);
-}
-.o-section .o-acts { display: flex; }
+/* Reviews, under the projects: titled like the list head above. */
+.o-section { display: flex; align-items: center; height: 28px; margin-top: 12px; padding: 0 6px 0 14px; font-size: 12px; font-weight: 600; color: var(--dim); }
 
 /* The workspace's editor backend: hollow when stopped. */
 .o-backend { width: 7px; height: 7px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
@@ -238,13 +363,39 @@
 #o-code-vp.o-image #o-code-rows { position: static; width: auto; padding: 16px; }
 #o-code-vp.o-image img { display: block; max-width: 100%; }
 
-#o-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--dim); text-align: center; padding: 0 16px; }
-#o-empty p { display: none; margin: 0; }
+/* The welcome view: a faint dot grid behind a centred card. */
+#o-empty {
+  flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  color: var(--dim); text-align: center;
+  background-image: radial-gradient(color-mix(in srgb, var(--faint) 35%, transparent) 1px, transparent 1.2px); background-size: 18px 18px; background-position: center;
+}
+#o-empty p, #o-empty .o-welcome-acts { display: none; margin: 0; }
 #o-empty .wb-faint { font-size: 12px; }
 #o-empty b { color: var(--fg); }
 #o-empty[data-ws="none"] .o-empty-none,
 #o-empty[data-ws="yes"] .o-empty-yes,
-#o-empty[data-ws="missing"] .o-empty-missing { display: block; }
+#o-empty[data-ws="missing"] .o-empty-missing,
+#o-empty .o-welcome-tag, #o-empty .o-welcome-foot { display: block; }
+#o-empty[data-ws="yes"] .o-welcome-acts { display: flex; }
+.o-welcome {
+  width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 28px 24px 22px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--bg); box-shadow: var(--shadow);
+}
+.o-welcome-mark { display: flex; align-items: baseline; gap: 2px; font: 600 34px/1 var(--mono); color: var(--fg); letter-spacing: -.02em; }
+.o-welcome-mark span { color: var(--mark-active); }
+.o-welcome-mark small { margin-left: 10px; font: 12px var(--mono); color: var(--faint); letter-spacing: 0; }
+#o-empty .o-welcome-tag { margin-bottom: 14px; font-size: 12.5px; }
+.o-welcome-ws { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#o-empty .o-welcome-acts { width: 100%; flex-direction: column; gap: 2px; margin: 8px 0 4px; }
+.o-welcome-acts button {
+  display: grid; grid-template-columns: 14px auto 1fr; align-items: baseline; column-gap: 10px;
+  padding: 7px 10px; border-radius: var(--r); text-align: left; font-size: 12.5px; color: var(--fg);
+}
+.o-welcome-acts button .wb-faint { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-welcome-acts button:hover, .o-welcome-acts button:focus-visible { background: var(--bg3); outline: none; }
+.o-welcome-acts code { font: 11px var(--mono); }
+#o-empty .o-welcome-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); width: 100%; font-size: 11.5px; }
 
 /* Open file picker: the app's palette rows (.pi) in a box over the center. */
 #o-picker {

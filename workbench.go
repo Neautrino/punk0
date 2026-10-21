@@ -343,6 +343,8 @@ type workbench struct {
 	children map[string]*wbChild
 	closing  bool
 
+	cpu cpuMeter // per-process CPU deltas for /api/resources
+
 	mux *http.ServeMux
 }
 
@@ -415,7 +417,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc(wb.route("/api/wb/ping"), wb.handlePing)
 	wb.mux.HandleFunc(wb.route("/api/wb/state"), wb.handleState)
 	wb.mux.HandleFunc(wb.route("/api/wb/complete"), wb.handleComplete)
-	wb.mux.HandleFunc(wb.route("/api/metrics"), wb.handleMetrics)
+	wb.mux.HandleFunc(wb.route("/api/resources"), wb.handleResources)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
 	wb.mux.HandleFunc(wb.route("/api/wb/open"), wb.handleOpen)
 	wb.mux.HandleFunc(wb.route("/api/wb/stop"), wb.handleStop)
@@ -962,68 +964,6 @@ func (wb *workbench) handleComplete(w http.ResponseWriter, r *http.Request) {
 		out = out[:50]
 	}
 	writeJSON(w, map[string]any{"dir": dir, "entries": out})
-}
-
-// handleMetrics sums the workbench and every running workspace, the way the
-// app's status bar shows one process, and lists each part for the menu.
-func (wb *workbench) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	type part struct {
-		Name string `json:"name"`
-		ProcessMetrics
-	}
-	self := getProcessMetrics(nil)
-	parts := []part{{Name: "workbench", ProcessMetrics: self}}
-
-	type running struct{ name, url string }
-	var targets []running
-	wb.mu.Lock()
-	for id, c := range wb.children {
-		if c.state == "running" {
-			targets = append(targets, running{c.title, "http://" + c.addr + wb.childBase(id) + "api/metrics"})
-		}
-	}
-	wb.mu.Unlock()
-
-	client := &http.Client{Timeout: time.Second}
-	results := make([]*part, len(targets))
-	var wg sync.WaitGroup
-	for i, t := range targets {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := client.Get(t.url)
-			if err != nil {
-				return
-			}
-			defer resp.Body.Close()
-			var m ProcessMetrics
-			if json.NewDecoder(resp.Body).Decode(&m) == nil {
-				results[i] = &part{Name: t.name, ProcessMetrics: m}
-			}
-		}()
-	}
-	wg.Wait()
-
-	total := self
-	for _, p := range results {
-		if p == nil {
-			continue
-		}
-		parts = append(parts, *p)
-		total.RSSBytes += p.RSSBytes
-		total.CPUUsage += p.CPUUsage
-		total.Goroutine += p.Goroutine
-		total.LSPMemBytes += p.LSPMemBytes
-		total.LSPEnabled = total.LSPEnabled || p.LSPEnabled
-	}
-	writeJSON(w, map[string]any{
-		"rssBytes":    total.RSSBytes,
-		"cpuUsage":    total.CPUUsage,
-		"goroutines":  total.Goroutine,
-		"lspEnabled":  total.LSPEnabled,
-		"lspMemBytes": total.LSPMemBytes,
-		"parts":       parts,
-	})
 }
 
 // handleSettings saves the theme picked on the workbench page. Only the

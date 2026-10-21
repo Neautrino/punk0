@@ -167,6 +167,9 @@ func (s *Shell) IdleFor() time.Duration {
 	return time.Since(time.Unix(0, s.lastIO.Load()))
 }
 
+// Pid is the shell's process id; whatever runs in the tab is below it.
+func (s *Shell) Pid() int { return s.cmd.Process.Pid }
+
 // Foreground reports whether the shell itself is what the terminal is talking
 // to: no job is running in front of it, so hanging it up loses no work. Only
 // Unix knows; elsewhere an idle shell is never stopped.

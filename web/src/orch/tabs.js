@@ -1,7 +1,8 @@
 // web/src/orch/tabs.js
 // Tab bar of the selected workspace: shells, Claude Code chats and open
-// files. "+" offers a new Claude or shell tab, or the open file picker.
-// Double-click renames a terminal tab after what it is for.
+// files. "+" offers a new Claude or shell tab, or the open file picker; the
+// empty center's welcome view offers the same. Double-click renames a
+// terminal tab after what it is for.
 import { $, esc } from '../state.js';
 import { call, failed } from './api.js';
 import { subscribe, reload, workspace, tabsOf, activeTab, selectTab, closeFile } from './store.js';
@@ -22,8 +23,11 @@ export function initTabs() {
     const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
     if (!kind) return;
     closeNewMenu();
-    if (kind === 'file') openPicker();
-    else addTab(kind);
+    startNew(kind);
+  });
+  $('#o-empty').addEventListener('click', e => {
+    const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
+    if (kind) startNew(kind);
   });
   document.addEventListener('mousedown', e => {
     if (!menuEl.contains(e.target) && !addEl.contains(e.target)) closeNewMenu();
@@ -108,6 +112,11 @@ async function onRename(e) {
   const res = await call('PATCH', `api/tabs/${encodeURIComponent(t.id)}`, { name });
   if (!res.ok) return failed(res);
   reload();
+}
+
+function startNew(kind) {
+  if (kind === 'file') openPicker();
+  else addTab(kind);
 }
 
 async function addTab(kind) {

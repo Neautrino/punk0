@@ -1,21 +1,22 @@
 // web/src/orch/statusbar.js
-// The status bar under the three panes: version, what is running, the
-// CPU · RAM · LSP chip shared with the app (metricsview.js), and the theme
-// picker.
+// The status bar under the three panes. Left: version, then the theme picker,
+// GitHub and settings. Right: one button with the running terminals, running
+// agents and total RAM, which opens the resource panel (resources.js).
 import { $, esc } from '../state.js';
 import { listThemes, currentTheme, setTheme, getStoredTheme, chooseThemePreference } from '../theme.js';
-import { showMetrics, initMetricsMenu } from '../metricsview.js';
-import { call } from './api.js';
-import { state, subscribe } from './store.js';
+import { openEditor } from './api.js';
+import { state, subscribe, workspace } from './store.js';
+import { initResources, refreshResources } from './resources.js';
 
 const themeMenu = $('#wb-theme-menu');
 let themeSel = 0;
 let themeBefore = null;
 
+// The theme button sits at the left of the bar, so the menu opens rightward.
 function placeThemeMenu() {
   const r = $('#btn-theme').getBoundingClientRect();
   themeMenu.style.bottom = (innerHeight - r.top + 6) + 'px';
-  themeMenu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+  themeMenu.style.left = Math.max(8, r.left) + 'px';
 }
 
 function renderThemeMenu() {
@@ -48,21 +49,26 @@ function previewTheme(i) {
   renderThemeMenu();
 }
 
-async function refreshMetrics() {
-  const res = await call('GET', 'api/metrics');
-  if (res.ok) showMetrics(res.data);
-}
-
 function renderStatus() {
   const { version } = state.wb;
+  $('#o-empty-ver').textContent = version ? 'v' + version : '';
   $('#st-ver').textContent = version ? 'v' + version : '';
-  const ws = state.projects.flatMap(p => p.workspaces);
-  const terms = ws.reduce((n, w) => n + w.tabs.filter(t => t.running).length, 0);
-  const editors = ws.filter(w => w.backend === 'running').length + state.reviews.filter(r => r.state === 'running').length;
-  const parts = [];
-  if (terms) parts.push(`${terms} terminal${terms === 1 ? '' : 's'}`);
-  if (editors) parts.push(`${editors} editor${editors === 1 ? '' : 's'}`);
-  $('#st-running').textContent = parts.length ? parts.join(' · ') + ' running' : '';
+  const running = state.projects.flatMap(p => p.workspaces).flatMap(w => w.tabs).filter(t => t.running);
+  const agents = running.filter(t => t.kind === 'claude').length;
+  const terms = running.length - agents;
+  $('#st-terms-n').textContent = terms;
+  $('#st-agents-n').textContent = agents;
+  $('#st-res').title = `${terms} terminal${terms === 1 ? '' : 's'} and ${agents} agent${agents === 1 ? '' : 's'} running. Click for what each uses`;
+  $('#btn-settings').disabled = !settingsTarget();
+}
+
+// Settings live in the editor: the workbench saves only its theme
+// (handleSettings in workbench.go). The gear opens the selected workspace's
+// editor, or the first one whose folder still exists, with settings showing.
+function settingsTarget() {
+  const w = workspace();
+  if (w && !w.missing) return w;
+  return state.projects.flatMap(p => p.workspaces).find(x => !x.missing) || null;
 }
 
 export function initStatusBar() {
@@ -70,6 +76,10 @@ export function initStatusBar() {
   // wins the same way it does in the app (theme-preference.js).
   setTheme(chooseThemePreference(getStoredTheme(), currentTheme()), false);
 
+  $('#btn-settings').addEventListener('click', () => {
+    const w = settingsTarget();
+    if (w) openEditor(w.href, '?settings');
+  });
   $('#btn-theme').addEventListener('click', e => {
     e.stopPropagation();
     if (themeMenu.hidden) openThemeMenu();
@@ -103,7 +113,7 @@ export function initStatusBar() {
     }
   });
 
-  initMetricsMenu(refreshMetrics);
+  initResources();
   subscribe(renderStatus);
-  return refreshMetrics;
+  return refreshResources;
 }

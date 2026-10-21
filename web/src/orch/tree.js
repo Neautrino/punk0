@@ -34,14 +34,13 @@ export function fileKind(name) {
   return (i > 0 && FILE_KIND[name.slice(i + 1).toLowerCase()]) || 'other';
 }
 
-let treeEl, rootEl, footEl, branchEl;
+let treeEl, footEl, branchEl;
 let treeWs = ''; // workspace id the tree shows
 let treeHref = ''; // its folder's backend, "w/<id>/"
 let activePath = null;
 
 export function initTree() {
   treeEl = $('#o-tree');
-  rootEl = $('#o-files-root');
   footEl = $('#o-files-foot');
   branchEl = $('#o-files-branch');
   treeEl.addEventListener('click', onTreeClick);
@@ -60,8 +59,6 @@ function renderTree() {
     else if (w) drawDir('', treeEl, 0);
   }
   const p = w && projectOf(w.id);
-  rootEl.textContent = w ? (p.scratch ? w.name : p.name) : 'Files';
-  rootEl.title = w?.dir || '';
   const branch = w?.kind === 'worktree' ? w.branch : w?.kind === 'local' ? p.branch : '';
   footEl.hidden = !branch;
   branchEl.textContent = branch || '';

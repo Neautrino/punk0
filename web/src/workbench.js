@@ -8,8 +8,8 @@
 // Three panes: projects and workspaces on the left, the selected workspace's
 // tabs in the middle (terminals from the parent, files from the folder's
 // editor backend), its files on the right.
-import { $ } from './state.js';
-import { state, subscribe, reload, workspace, activeTab } from './orch/store.js';
+import { $, esc } from './state.js';
+import { state, subscribe, reload, workspace, activeTab, projectOf, tildify } from './orch/store.js';
 import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
 import { initTabs } from './orch/tabs.js';
@@ -17,6 +17,7 @@ import { initTree } from './orch/tree.js';
 import { initPicker } from './orch/picker.js';
 import { initViewer, showFile, forgetClosed } from './orch/viewer.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
+import { initResize } from './orch/resize.js';
 
 // Editor windows link back here by this name (main.js), so going back
 // reuses this window instead of opening another orchestrator.
@@ -26,7 +27,8 @@ const termPane = $('#o-term');
 const viewerPane = $('#o-viewer');
 const emptyPane = $('#o-empty');
 
-const pollMetrics = initStatusBar();
+initResize(); // first: the panes take their widths before anything measures them
+const pollResources = initStatusBar();
 initSidebar();
 initTabs();
 initTree();
@@ -49,6 +51,8 @@ subscribe(() => {
     if (t?.kind === 'file' && shownTerm) attachTerm((shownTerm = null)); // not this workspace's terminal
   }
   emptyPane.dataset.ws = !w ? 'none' : w.missing ? 'missing' : 'yes';
+  const p = w && projectOf(w.id);
+  $('#o-empty-ws').innerHTML = w ? `<b>${esc(p && !p.scratch ? p.name + ' / ' + w.name : w.name)}</b> <span class="wb-faint">${esc(tildify(w.dir))}</span>` : '';
   if ((t?.id || null) === shown) return;
   shown = t?.id || null;
 
@@ -67,7 +71,7 @@ subscribe(() => {
 const tick = () => {
   if (document.hidden) return;
   reload();
-  pollMetrics();
+  pollResources();
 };
 setInterval(tick, 3000);
 document.addEventListener('visibilitychange', tick);

@@ -23,16 +23,38 @@
 <body class="wb">
 <div id="wb-app">
   <div id="o-main">
-    <!-- Left: projects and their workspaces, scratch chats, reviews -->
+    <!-- Left: projects and their workspaces with reviews, or the scratch
+         chats; a tab switches between them (sidebar.js). -->
     <aside id="o-side">
-      <header class="o-head">
-        <span class="o-title">Projects</span>
+      <!-- The view switch, then the pane's hide button at its inner edge,
+           facing the files pane's own across the middle. -->
+      <header class="o-head o-side-head">
+        <div class="o-side-tabs" role="tablist" aria-label="Sidebar view">
+          <button type="button" role="tab" data-view="projects" aria-selected="true">Projects</button>
+          <button type="button" role="tab" data-view="scratch" aria-selected="false">Scratch</button>
+        </div>
+        <button id="o-hide-left" type="button" class="mini" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+      </header>
+      <div class="o-list-head">
+        <span class="o-list-title" id="o-list-title">Projects</span>
         <span class="o-head-acts">
+          <button id="o-filter-btn" type="button" class="mini" title="Filter" aria-label="Filter" aria-pressed="false" aria-controls="o-filter">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+          </button>
+          <button id="o-add-feature" type="button" class="mini" title="New worktree or feature workspace" aria-label="New worktree or feature workspace">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M12 10v6M9 13h6"/></svg>
+          </button>
           <button id="o-add-project" type="button" class="mini" title="Add a folder or a pull request" aria-label="Add a folder or a pull request">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </span>
-      </header>
+      </div>
+      <div id="o-filter" class="o-filter" hidden>
+        <input id="o-filter-input" class="o-input" type="search" placeholder="Filter by name or branch" spellcheck="false" autocomplete="off" aria-label="Filter by name or branch">
+        <label class="o-check"><input id="o-filter-running" type="checkbox"> Running only</label>
+      </div>
       <form id="o-form" class="o-form" autocomplete="off" hidden>
         <div class="o-field">
           <input id="o-form-name" type="text" spellcheck="false" autocapitalize="off" aria-autocomplete="list" aria-controls="o-suggest">
@@ -63,13 +85,21 @@
       </form>
       <div id="o-projects" class="o-scroll"></div>
     </aside>
+    <div class="o-resizer" data-side="left" role="separator" aria-orientation="vertical" aria-label="Resize projects" tabindex="0"></div>
 
     <!-- Middle: the selected workspace's tabs, terminals and files alike -->
     <section id="o-center">
       <header class="o-head" id="o-tab-head">
+        <!-- Show a hidden sidebar again; only there while it is hidden. -->
+        <button id="o-show-left" type="button" class="mini o-show" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
         <div id="o-tabs" role="tablist"></div>
         <button id="o-new-tab" type="button" class="mini" title="New tab" aria-label="New tab" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button id="o-show-right" type="button" class="mini o-show" title="Show files (Ctrl+Alt+B)" aria-label="Show files">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
         </button>
       </header>
       <div id="o-new-menu" class="o-menu" role="menu" hidden>
@@ -89,12 +119,23 @@
           </div>
         </div>
       </main>
+      <!-- The welcome view, behind the tabs: what the center shows when the
+           selected workspace has no tab open (a new project starts so). -->
       <div id="o-empty" data-ws="none">
-        <p class="o-empty-none">Add a folder on the left to start.</p>
-        <p class="o-empty-none wb-faint">Each project gets workspaces: its own folder, git worktrees, or scratch chats.</p>
-        <p class="o-empty-yes">No tabs open.</p>
-        <p class="o-empty-yes wb-faint">Use <b>+</b> to start Claude Code or a shell, or pick a file on the right.</p>
-        <p class="o-empty-missing">The folder of this workspace is gone.</p>
+        <div class="o-welcome">
+          <div class="o-welcome-mark">punk<span>[0]</span><small id="o-empty-ver"></small></div>
+          <p class="o-welcome-tag">Code review and agent orchestration in your browser</p>
+          <p class="o-empty-yes o-welcome-ws" id="o-empty-ws"></p>
+          <div class="o-empty-yes o-welcome-acts">
+            <button type="button" data-new-tab="claude"><span class="o-menu-kind claude">✳</span><span>New Claude Code chat</span><span class="wb-faint">runs <code>claude</code> in this folder</span></button>
+            <button type="button" data-new-tab="shell"><span class="o-menu-kind">$</span><span>New shell</span><span class="wb-faint">your own shell, in a real terminal</span></button>
+            <button type="button" data-new-tab="file"><span class="o-menu-kind file"></span><span>Open file…</span><span class="wb-faint">or pick one in the tree on the right</span></button>
+          </div>
+          <p class="o-empty-none">Add a folder on the left to start.</p>
+          <p class="o-empty-none wb-faint">Each project gets workspaces: its own folder, git worktrees, or scratch chats.</p>
+          <p class="o-empty-missing">The folder of this workspace is gone.</p>
+          <p class="o-welcome-foot wb-faint">Terminals keep running when you close this page. The resource panel in the status bar shows what each one costs.</p>
+        </div>
       </div>
       <div id="o-picker" hidden>
         <div id="o-picker-box">
@@ -103,11 +144,16 @@
         </div>
       </div>
     </section>
+    <div class="o-resizer" data-side="right" role="separator" aria-orientation="vertical" aria-label="Resize files" tabindex="0"></div>
 
     <!-- Right: the selected workspace's files -->
     <aside id="o-files">
-      <header class="o-head">
-        <span class="o-title" id="o-files-root">Files</span>
+      <!-- The pane's own hide button first, as in the projects pane; the
+           folder's name is on the workspace row and the welcome view. -->
+      <header class="o-head o-files-head">
+        <button id="o-hide-right" type="button" class="mini" title="Hide files (Ctrl+Alt+B)" aria-label="Hide files">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
         <span class="o-head-acts">
           <button id="o-tree-refresh" type="button" class="mini" title="Refresh" aria-label="Refresh">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
@@ -125,37 +171,57 @@
     </aside>
   </div>
 
-  <!-- Same status bar as the app: logo and version, then the CPU · RAM · LSP
-       chip, here summed over the parent and every running editor. -->
+  <!-- The status bar: logo, version and the theme / GitHub / settings buttons
+       on the left. On the right one button holds the running terminals,
+       running agents and total RAM, and opens the resource panel
+       (web/src/orch/resources.js, /api/resources in wbresources.go). -->
   <footer id="status" class="wb-status">
-    <a class="side-logo" href="https://px0.ai" target="_blank" rel="noopener" title="px0.ai">
-      <img class="logo-dark" src="https://px0.ai/logo/px0-logo-dark.png" alt="px0" width="35" height="13">
-      <img class="logo-light" src="https://px0.ai/logo/px0-logo-light.png" alt="px0" width="35" height="13">
-    </a>
+    <span class="wb-status-side">
+    <a class="wb-logo" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub">punk<span>[0]</span></a>
     <span id="st-ver" class="status-ver" title="punk0 version"></span>
-    <span class="status-sep"></span>
-    <span id="st-running"></span>
-    <span class="grow"></span>
-    <span id="st-metrics" class="status-metrics" role="button" tabindex="0" title="Process metrics: punk0 plus every running editor">
-      <span class="metric"><span class="metric-label">CPU</span> <span id="st-cpu">--%</span></span>
-      <span class="metric-divider">·</span>
-      <span class="metric"><span class="metric-label">RAM</span> <span id="st-ram">-- MB</span></span>
-      <span id="st-lspmem-wrap" class="status-metrics-group" hidden>
-        <span class="metric-divider">·</span>
-        <span class="metric"><span class="metric-label">LSP</span> <span id="st-lspmem">-- MB</span></span>
-      </span>
-    </span>
     <span class="side-actions">
-      <a class="mini" href="https://github.com/px0-ai/px0" target="_blank" rel="noopener" title="px0 on GitHub" aria-label="px0 on GitHub">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      </a>
       <button class="mini" id="btn-theme" title="Select theme" aria-label="Select theme" aria-haspopup="listbox">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
       </button>
+      <a class="mini" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub" aria-label="punk0 on GitHub">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+      <button class="mini" id="btn-settings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </span>
+    </span>
+    <span class="grow"></span>
+    <button type="button" id="st-res" class="wb-res-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-res">
+      <span id="st-terms" class="wb-count">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span id="st-terms-n">0</span>
+      </span>
+      <span class="metric-divider">·</span>
+      <span id="st-agents" class="wb-count">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
+        <span id="st-agents-n">0</span>
+      </span>
+      <span class="metric-divider">·</span>
+      <span class="wb-count">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M12 11V9M16 11V9M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
+        <span id="st-mem">-- MB</span>
+      </span>
+    </button>
   </footer>
 </div>
-<div id="metrics-menu" role="menu" hidden></div>
+<section id="wb-res" class="wb-res" role="dialog" aria-label="Resources" hidden>
+  <header class="wb-res-head">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M12 11V9M16 11V9M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
+    <span class="wb-res-title">Resources</span>
+    <button type="button" class="mini" id="wb-res-refresh" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+  </header>
+  <div id="wb-res-sum" class="wb-res-sum"></div>
+  <div class="wb-res-cols" aria-hidden="true"><span>Name</span><span>CPU</span><span>RAM</span></div>
+  <div id="wb-res-rows" class="wb-res-rows"></div>
+</section>
 <ul id="wb-theme-menu" class="wb-menu" role="listbox" aria-label="Themes" hidden></ul>
 <div id="toast" hidden></div>
 <script src="static/workbench.js"></script>
