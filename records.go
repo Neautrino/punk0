@@ -798,13 +798,14 @@ func addWorktree(repo, dir, branch, base string) error {
 	return nil
 }
 
-// newWorkspace opens with one tab: a shell, or Claude for a scratch chat.
+// newWorkspace opens empty, on the page's welcome view, except a scratch
+// chat: the chat is its Claude tab.
 func newWorkspace(name, kind, dir, branch string) *Workspace {
-	first := tabShell
+	tabs := []*Satellite{}
 	if kind == kindFolder {
-		first = tabClaude
+		tabs = append(tabs, newTab(tabClaude, dir))
 	}
-	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: []*Satellite{newTab(first, dir)}}
+	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: tabs}
 }
 
 func newTab(kind, dir string) *Satellite {

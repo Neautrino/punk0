@@ -615,11 +615,8 @@ func TestWorkbenchProjectRoutes(t *testing.T) {
 		t.Fatalf("project view: %+v", p)
 	}
 	ws := p.Workspaces[0]
-	if ws.Kind != kindLocal || ws.Backend != "stopped" || ws.LSP || ws.Href != opened["href"] || len(ws.Tabs) != 1 {
+	if ws.Kind != kindLocal || ws.Backend != "stopped" || ws.LSP || ws.Href != opened["href"] || len(ws.Tabs) != 0 {
 		t.Fatalf("workspace view: %+v", ws)
-	}
-	if ws.Tabs[0].Kind != tabShell || ws.Tabs[0].Running || ws.Tabs[0].Status != "" {
-		t.Fatalf("tab view: %+v", ws.Tabs[0])
 	}
 	if !scratch.Scratch {
 		t.Fatalf("scratch missing: %+v", scratch)
@@ -641,8 +638,9 @@ func TestWorkbenchProjectRoutes(t *testing.T) {
 		t.Fatalf("add workspace: %d %s", w.Code, w.Body.String())
 	}
 	json.Unmarshal(w.Body.Bytes(), &second)
-	if second.ID == "" || second.Kind != kindLocal || second.Href != ws.Href || len(second.Tabs) != 1 {
-		t.Fatalf("second workspace: %+v", second)
+	// No tabs encodes as [], not null: the page reads w.tabs as an array.
+	if second.ID == "" || second.Kind != kindLocal || second.Href != ws.Href || !strings.Contains(w.Body.String(), `"tabs":[]`) {
+		t.Fatalf("second workspace: %s", w.Body.String())
 	}
 
 	var tab struct {

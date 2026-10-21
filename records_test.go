@@ -70,11 +70,8 @@ func TestProjectAddAndReload(t *testing.T) {
 	if again, _ := rec.AddProject(repo); again != p {
 		t.Fatal("adding the same repository twice made a second project")
 	}
-	if len(p.Workspaces) != 1 || p.Workspaces[0].Kind != kindLocal || p.Workspaces[0].Name != "main" || len(p.Workspaces[0].Tabs) != 1 {
-		t.Fatalf("new project should hold one local workspace on main with one tab: %+v", p.Workspaces)
-	}
-	if p.Workspaces[0].Tabs[0].Kind != tabShell {
-		t.Fatalf("new project should open on a shell tab: %+v", p.Workspaces[0].Tabs[0])
+	if len(p.Workspaces) != 1 || p.Workspaces[0].Kind != kindLocal || p.Workspaces[0].Name != "main" || len(p.Workspaces[0].Tabs) != 0 {
+		t.Fatalf("new project should hold one local workspace on main, with no tabs: %+v", p.Workspaces)
 	}
 	local, err := rec.AddWorkspace(p.ID, "sidebar design", false, "")
 	if err != nil {
@@ -98,14 +95,14 @@ func TestProjectAddAndReload(t *testing.T) {
 		t.Fatalf("reloaded project: %+v", pv)
 	}
 	tabs := pv.Workspaces[1].Tabs
-	if len(tabs) != 2 || tabs[1].ID != claude.ID || tabs[1].Running || tabs[1].Status != "" {
+	if len(tabs) != 1 || tabs[0].ID != claude.ID || tabs[0].Running || tabs[0].Status != "" {
 		t.Fatalf("reloaded tabs: %+v", tabs)
 	}
-	if tabs[1].tab.Session != claude.Session {
-		t.Fatalf("reloaded claude tab lost its session: %q", tabs[1].tab.Session)
+	if tabs[0].tab.Session != claude.Session {
+		t.Fatalf("reloaded claude tab lost its session: %q", tabs[0].tab.Session)
 	}
-	if tabs[1].tab.dir != repo {
-		t.Fatalf("reloaded tab would start in %q", tabs[1].tab.dir)
+	if tabs[0].tab.dir != repo {
+		t.Fatalf("reloaded tab would start in %q", tabs[0].tab.dir)
 	}
 
 	if err := rec.RemoveWorkspace(local.ID, false); err != nil {
