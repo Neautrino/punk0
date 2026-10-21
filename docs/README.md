@@ -11,7 +11,7 @@ This directory houses the comprehensive documentation for px0, split into user-f
 ### 1. [Feature Guides](features/README.md)
 Detailed walkthroughs of all px0 features, capabilities, developer workflows, and configuration options without low-level implementation noise.
 - **[Features Overview & Catalog](features/README.md)**: Master index of all feature areas.
-- **[Review Workbench](features/workbench.md)**: Single-port launcher (`px0`), folder completion, filesystem browser, worktree-backed PRs, and pinned/recent workspaces.
+- **[Agents Page (Orchestrator)](features/workbench.md)**: What `punk0` opens: projects, local / worktree / scratch workspaces, shell and Claude Code terminal tabs with agent status, per-folder editors and language servers, and worktree-backed PR reviews.
 - **[Fuzzy File Search & Quick Open](features/fuzzy-file-search.md)**: Rapid multi-file discovery with recency weighting (`Cmd/Ctrl+P`, `Cmd/Ctrl+K`).
 - **[Workspace Text & Regex Search](features/workspace-search.md)**: Full-repository pattern matching and symbol exploration (`Cmd/Ctrl+Shift+F`).
 - **[Symbol Outline & Navigation](features/symbol-outline.md)**: In-file structural symbol trees with LSP and regex fallbacks (`Cmd/Ctrl+Shift+O`).
@@ -40,7 +40,7 @@ Detailed walkthroughs of all px0 features, capabilities, developer workflows, an
 In-depth technical write-ups covering px0's Go server runtime, concurrency pipelines, AST manipulation, custom virtual DOM scroller, and data structures.
 - **[Subsystem Architecture Map](internals/README.md#1-subsystem-architecture-map)**
 - **[System Architecture & Runtime Lifecycle](internals/architecture.md)**
-- **[Review Workbench Architecture](internals/workbench.md)**
+- **[Orchestrator Architecture](internals/workbench.md)**
 - **[Filesystem Indexing & Ignore Engine](internals/indexing-and-ignore.md)**
 - **[Fuzzy Path Matching Algorithm](internals/fuzzy-search.md)**
 - **[Workspace Search & Parallel Grep](internals/workspace-search.md)**

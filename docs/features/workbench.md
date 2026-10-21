@@ -1,85 +1,89 @@
-# Review Workbench
+# Agents Page (Orchestrator)
 
-Running `px0` with no arguments opens the **workbench**: one page for opening any directory on the machine or any pull request, and for getting back to what you opened before.
+Running `punk0` with no arguments opens the **agents page** at `/`: your projects and their workspaces on the left, the selected workspace's terminal and file tabs in the middle, and its file tree on the right. Each folder's full editor (px0's single-folder view) opens in a browser tab of its own.
 
 ---
 
-## Opening things
+## Starting punk0
 
-- **Type a path or paste a PR URL** into the box at the top and press Enter. Paths may be absolute, relative to the directory px0 was started in, or start with `~`. A path to a file opens its repository.
-- **Folder completion.** As you type a path, folders whose names start with what you typed (ignoring case) are listed below the box, with a `git` tag on repositories. Press **Tab** (or click) to complete into the highlighted folder and list what is inside it, **↑/↓** to choose, **Enter** to open, **Esc** to dismiss. Hidden folders are listed once you type the leading dot. The Browse panel follows along.
-- **Browse** the filesystem on the right. Folders that are git repositories carry a `git` tag. Click a folder to go into it, use **Open** on its row, or **Open this folder** for the one you are in. Tick **hidden** to list dot-folders.
-- **Open \<cwd\>** opens the directory px0 was started in, which is what a bare `px0` did before the workbench.
-- **Recent** lists every directory and pull request opened before, most recent first, including ones opened directly with `px0 <dir>` or `px0 <pr-url>`. Click a row to reopen it; Cmd/Ctrl-click opens it in a new tab.
-
-Each workspace opens at its own address, `/w/<id>/`, on the workbench's port. The address is stable, so a bookmarked or reloaded review simply reopens. The ▦ button in the explorer header leads back to the workbench.
-
-## Managing the list
-
-Hover a row for its actions:
-
-| Action | Effect |
+| Command | Effect |
 | :--- | :--- |
-| ☆ / ★ | Pin to the top of the list, or unpin. Pinned entries are never dropped. |
-| ■ | Stop the running workspace and free its memory. Opening it again restarts it. |
-| ✕ | Stop it and remove it from the list. |
+| `punk0` | Starts punk0 and opens the agents page. |
+| `punk0 <dir>`, `punk0 <file>[:line]` | Adds the folder (a repository's top level) as a project and opens its editor view at `/w/<id>/`. If punk0 is not running yet, it starts and opens both the agents page and the editor. |
+| `punk0 <pr-url>` | Reviews a pull request on its own, outside the agents page (see [Pull Request Review](github-pr-review.md)). |
 
-A status dot shows workspaces that are **running**, **starting**, or **failed** (hover for the error). Up to 50 unpinned entries are kept.
+Only one punk0 runs per machine. A second `punk0` or `punk0 <dir>` hands its folder to the running one, opens the page there and exits; `-host` and `-port` only apply to the first.
 
----
+## Sidebar
 
-## Keyboard Shortcuts & Controls
+- **Projects.** **+** at the top takes a folder path (with folder completion: **Tab** completes, **↑/↓** choose, **Esc** dismisses) or a pull request URL. A folder inside a git repository adds the repository. A new project starts with one local workspace holding a shell tab. ✕ removes the project from punk0 and stops its tabs; no files are deleted, and its worktrees come back if it is added again.
+- **Workspaces.** **+** on a project creates one. A local workspace works in the project folder itself. Tick the worktree box (git projects only) to give it its own `git worktree` on a new branch, optionally from a base you name. ✕ deletes a workspace: its tabs stop, a worktree folder is removed (punk0 asks again if it has uncommitted changes) and the branch is kept.
+- **Scratch.** Chats that belong to no project, each in its own folder under the state directory.
+- **Reviews.** Pull requests opened from the **+** box or from the editor's **Git: Open Pull Request…**. Click one to open its review; ■ stops it, ✕ removes it from the list.
 
-| Shortcut / Control | Context | Action |
-| :--- | :--- | :--- |
-| `/` | Workbench Page | Focus the path / PR URL input box |
-| `Tab` | Path Input | Complete into the highlighted folder suggestion |
-| `↑` / `↓` | Path Suggestions | Navigate up / down through folder suggestions |
-| `Enter` | Path Input / Suggestion | Open the entered folder, PR URL, or highlighted suggestion |
-| `Esc` | Path Suggestions / Theme | Dismiss folder suggestions or restore previous theme |
-| `Cmd/Ctrl + Click` | Recent Workspaces | Open workspace in a new browser tab |
-| `☆` / `★` | Workspace Row | Pin workspace to the top of the list, or unpin |
-| `■` | Workspace Row | Stop running workspace child process and free RAM |
-| `✕` | Workspace Row | Stop workspace and remove from list |
-| `▦` | Workspace Header | Return to the Review Workbench from any open workspace |
-| `Palette button` / `Arrow keys` | Status Bar | Preview and select workbench color theme |
+Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, and its actions: **LSP** (see below), open in editor, delete.
+
+## Tabs
+
+The tab bar holds the selected workspace's terminals and open files. **+** offers a new Claude Code tab, a shell tab, or a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it.
+
+- **Terminals are real.** Each terminal tab is your shell in a PTY, started when you first open the tab. A Claude tab runs `claude` in that shell.
+- **They outlive the browser.** Closing or reloading the page leaves every terminal running; reattaching replays its recent output. Everything stops when punk0 stops (Ctrl-C). After a restart, a Claude tab resumes its own chat.
+- **Agent status.** Claude tabs report what the agent is doing through Claude Code hooks. A dot on the tab shows **working**, **waiting** (needs you: a permission prompt or a question) or **idle** (done).
+- **Idle stop.** A terminal that has carried nothing for `terminal.idleStop` minutes (default 30, `0` never) is stopped: a shell only while it sits at its prompt with nothing running in it (Unix only; elsewhere shells are never stopped), a Claude tab only when it is idle. Opening the tab again starts it again.
+
+## Editor view
+
+The editor icon on a workspace row opens the folder in px0's full editor at `/w/<id>/`, in a browser tab named for that folder, so opening it again reuses the tab. The address is stable, so a bookmarked or reloaded editor reopens. The ▦ button in the explorer header goes back to the agents page, in its own window.
+
+Workspaces that share a folder share one editor process. It starts on the first request for the folder and is stopped after `workspace.idleStop` minutes (default 5, `0` never) with nothing open; the next request starts it again.
+
+## Language servers
+
+Language servers are **off** by default for every folder: they cost hundreds of megabytes to gigabytes each (gopls measured at about 260–316 MB per folder, rust-analyzer at 852 MB steady and 1.5 GB peak on a small Anchor project). The **LSP** button on a workspace row turns them on or off for its folder, which restarts that folder's editor. The choice is saved. Starting punk0 with `-no-lsp` keeps them off everywhere.
 
 ## Pull requests
 
-A pull request always opens as a `git worktree` of a local clone of its repository: a separate checkout that shares the clone's history, so opening a PR costs a checkout and never a fresh clone. The PR is checked out again each time it is opened, so it is always current, and the worktree is removed when the workspace stops. Your clone's own branch and working tree are not touched. Unsubmitted review drafts are kept across reopenings.
+A pull request always opens as a `git worktree` of a local clone of its repository: a separate checkout that shares the clone's history, so opening a PR costs a checkout and never a fresh clone. The PR is checked out again each time it is opened, so it is always current, and the worktree is removed when its editor stops. Your clone's own branch and working tree are not touched. Unsubmitted review drafts are kept across reopenings.
 
-The first time you open a PR of a repository, px0 finds the clone:
+The first time you open a PR of a repository, punk0 finds the clone:
 
 1. a clone you used for that repository before;
-2. one of your recent folders, or the folder px0 was started in;
-3. a quick scan (a few levels deep, at most 1.5 seconds) of the usual code folders in your home directory (`~/workspace`, `~/code`, `~/src`, `~/projects`, `~/dev`, `~/repos`, `~/go/src/github.com`, ...) and the folders around your recent ones.
+2. the folder punk0 was started in;
+3. a quick scan (a few levels deep, at most 1.5 seconds) of the usual code folders in your home directory (`~/workspace`, `~/code`, `~/src`, `~/projects`, `~/dev`, `~/repos`, `~/go/src/github.com`, ...) and the folders around the one punk0 was started in.
 
 A clone matches when any of its remotes (`origin`, `upstream` for a fork, or another) points at the PR's repository. The clone is remembered, so every later PR of that repository opens straight away.
 
-If no clone is found, the page asks. You can **use your clone**: type its path (with folder completion) or browse to it and press **Use as clone**. Or you can **let px0 clone it**: px0 makes one partial clone under `~/.px0/repos/<owner>/<repo>`, without a checkout of its own, and reuses it for every later PR of that repository.
+If no clone is found, the sidebar asks. You can **use your clone**: type its path (with folder completion). Or you can **let punk0 clone it**: punk0 makes one partial clone under `<state>/repos/<owner>/<repo>`, without a checkout of its own, and reuses it for every later PR of that repository.
 
-A plain `px0 <pr-url>` run outside the repository uses the remembered clone too.
+A plain `punk0 <pr-url>` run outside the repository uses the remembered clone too.
 
-If a pull request cannot be opened (a typo in the URL, no access), the page explains why and the entry is left out of the list.
+If a pull request cannot be opened (a typo in the URL, no access), the error is shown and the entry is left out of the list.
 
 ## Status bar and themes
 
-The bottom bar matches the app's: logo and version, the number of running workspaces, and the **CPU · RAM · LSP** chip. Here the chip shows the workbench and every running workspace added together; click it for a breakdown by process. The palette button opens the theme list. Arrow keys preview a theme, Enter or a click keeps it, and Esc restores the one you had. The choice is saved to settings, so the workspaces use it too.
-
-## Resources
-
-Every workspace runs as its own px0 process with its own index and language servers. A workspace that has had no open tab for 30 minutes is stopped to free its memory; it restarts the next time it is opened. Stopping the workbench (Ctrl-C) stops every workspace and removes their PR checkouts.
-
-Running `px0` again while a workbench is already running opens the existing one instead of starting a second.
+The bottom bar shows the version, what is running, and the **CPU · RAM · LSP** chip. The chip adds up punk0 and every running editor; click it for a breakdown by process. The palette button opens the theme list. Arrow keys preview a theme, Enter or a click keeps it, and Esc restores the one you had. The choice is saved to settings, so the editors use it too.
 
 ## Security
 
-The workbench can list and open **any directory the px0 process can read**. On the default `-host 127.0.0.1` that is only you. With `-host 0.0.0.0`, anyone who can reach the address can browse the machine's folders and open any of them for reading and editing, and px0 prints a warning saying so. Expose it only over networks you trust. The same DNS rebinding and same-origin checks as the rest of px0 apply.
+Terminals are shells on your machine, so they are served only while punk0 listens on loopback (the default `-host 127.0.0.1`); otherwise opening one is refused. The page can also list and open **any directory the punk0 process can read**. With `-host 0.0.0.0`, anyone who can reach the address can browse the machine's folders and open any of them for reading and editing, and punk0 prints a warning saying so. Expose it only over networks you trust. The same DNS rebinding and same-origin checks as the rest of punk0 apply, including to the agents' hook reports.
 
 ## Where state lives
 
-What you opened, and which clone each repository's PRs use, is saved in `$XDG_STATE_HOME/px0/workbench.json`, falling back to `~/.px0/workbench.json`. Clones px0 makes live in `repos/` beside it. Nothing is written inside your repositories, apart from the temporary worktree registrations and `refs/px0/*` refs that px0 already uses for PR review and removes on exit.
+Everything is kept in the state directory, `$XDG_STATE_HOME/punk0`, falling back to `~/.punk0`:
+
+| Path | Holds |
+| :--- | :--- |
+| `records.json` | Projects, workspaces, tabs, and the folders language servers are on in |
+| `worktrees/<project>/<name>` | Worktree workspaces |
+| `scratch/<name>` | Scratch chats |
+| `workbench.json` | Pull requests in the Reviews list, and the clone each repository's PRs use |
+| `repos/` | Clones punk0 makes for PRs |
+| `claude-hooks.json` | The hook settings Claude tabs start with |
+| `workbench.lock` | The running punk0's address |
+
+Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs) and the `refs/px0/*` refs that PR review uses and removes on exit.
 
 ## Flags
 
-The workbench passes `-no-lsp`, `-no-git`, `-no-agent`, `-no-telemetry` and `-agent` on to every workspace it opens. `-host`, `-port`, `-base-path` and `-no-open` apply to the workbench itself. To open the current directory directly, as before, run `px0 .`.
+`-no-lsp`, `-no-git`, `-no-agent`, `-no-telemetry` and `-agent` are passed on to every editor punk0 starts. `-host`, `-port`, `-base-path` and `-no-open` apply to punk0 itself.

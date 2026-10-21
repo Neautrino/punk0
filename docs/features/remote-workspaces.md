@@ -25,9 +25,9 @@ px0 simplifies remote code inspection into a single shell command. Because the e
   - **DNS Rebinding Defense**: Inspects incoming HTTP `Host` headers to prevent cross-site scripting attacks via malicious DNS records.
   - **Agent Security Restrictions**: Agent editing commands are permitted only over direct IP addresses or `localhost`. Access over external hostnames or tunnel proxies automatically disables agent modifications to protect remote machines.
 - **Direct Terminal Ergonomics**: Launch px0 targeting specific files or line numbers directly from the command line:
-  - `px0` (opens the [review workbench](workbench.md); `px0 .` opens the current directory)
-  - `px0 ~/projects/kernel` (opens specified repository)
-  - `px0 main.go:42` (opens directly to line 42)
+  - `punk0` (opens the [agents page](workbench.md))
+  - `punk0 ~/projects/kernel` (adds the repository as a project and opens its editor, in the running punk0 if there is one)
+  - `punk0 main.go:42` (opens its editor directly at line 42)
 - **Built-in Self-Updater (`px0 --update`)**: Checks GitHub releases and seamlessly upgrades the single binary in place.
 
 ---

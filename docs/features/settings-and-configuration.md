@@ -63,6 +63,8 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `bitbucket.token` | Bitbucket | `""` | any string | Bitbucket Cloud access token, or an Atlassian API token together with `bitbucket.email`. Takes precedence over `BITBUCKET_TOKEN`. Masked in the Settings UI. |
 | `bitbucket.email` | Bitbucket | `""` | email | The Atlassian account email of an API token; empty for an access token. Falls back to `BITBUCKET_EMAIL`. |
 | `server.basePath` | Server | `"/"` | any path prefix (e.g. `"/rev-123/"`) | Base URL path prefix to serve endpoints and assets from. Overridden by the `-base-path` CLI flag. |
+| `workspace.idleStop` | Server | `5` | minutes, `0` never | Stop Idle Workspace After: how long a folder's editor process keeps running with no open request before punk0 stops it; the next request starts it again. |
+| `terminal.idleStop` | Server | `30` | minutes, `0` never | Stop Idle Terminal After: how long a terminal tab may carry nothing before it is stopped. A shell is only stopped at its prompt, a Claude tab only when its agent is idle. |
 
 ---
 

@@ -27,21 +27,21 @@ install -d ~/.local/bin && install punk0 ~/.local/bin/
 ## Usage
 
 ```bash
-# Open the workbench: pick any directory or paste a PR URL
+# Open the agents page: projects, workspaces, terminal tabs
 punk0
 
-# Open a directory, or a file at a line
+# Add a folder as a project and open its editor (hands it to a running punk0)
 punk0 ~/workspace/project
 punk0 main.go:42
 
-# Review a pull request (GitHub, GitLab, Gitea/Forgejo/Codeberg, Bitbucket Cloud)
+# Review a pull request on its own (GitHub, GitLab, Gitea/Forgejo/Codeberg, Bitbucket Cloud)
 punk0 https://github.com/owner/repo/pull/123
 
-# Remote or headless server mode
+# Remote or headless server mode (terminal tabs are refused off loopback)
 punk0 -host 0.0.0.0 -port 7777 ~/workspace
 ```
 
-punk0 listens on <http://127.0.0.1:7777> by default.
+punk0 listens on <http://127.0.0.1:7777> by default. See [Agents Page](docs/features/workbench.md).
 
 ## What punk0 adds
 
@@ -65,7 +65,7 @@ In progress, moving over from the `scratch` branch.
 
 **08 · Viewer** — ~280 languages via Chroma, 400,000-line files without lag, Markdown with Mermaid, CSV/TSV tables, images, 14 themes, Vim keybindings, quick edits (`Cmd/Ctrl+E`).
 
-**09 · Remote mode** — Serve a workspace from a server or VM with `-host 0.0.0.0`. Anyone who can reach the address can edit files in it, and once terminal tabs land, run commands as you: expose it only over trusted networks.
+**09 · Remote mode** — Serve from a server or VM with `-host 0.0.0.0`. Anyone who can reach the address can browse and edit files; terminal tabs are served only while punk0 listens on loopback. Expose it only over trusted networks.
 
 ## What's different from px0
 
