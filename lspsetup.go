@@ -261,7 +261,7 @@ func (t *tailBuffer) String() string {
 // ---------------------------------------------------------------- HTTP
 
 // localPost admits a request that changes the machine only when it is a POST
-// from px0's own page. Browsers send Origin on every POST, so a page from another
+// from punk0's own page. Browsers send Origin on every POST, so a page from another
 // site cannot pass. Requiring the Host to be an IP address or localhost also
 // shuts out DNS rebinding, where an attacker's domain is pointed at this machine
 // and its Origin would otherwise match.
@@ -276,7 +276,7 @@ func localPost(w http.ResponseWriter, r *http.Request) bool {
 	}
 	host = strings.Trim(host, "[]")
 	if host != "localhost" && net.ParseIP(host) == nil {
-		fail(w, http.StatusForbidden, "open punk0 by IP address or localhost to set up language servers")
+		fail(w, http.StatusForbidden, "open punk0 by IP address or localhost")
 		return false
 	}
 	if o, err := url.Parse(r.Header.Get("Origin")); err != nil || o.Host != r.Host {

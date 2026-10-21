@@ -119,6 +119,15 @@ func newTestServer(t *testing.T) (*Server, string) {
 	return NewServer(ix, nil), root
 }
 
+// localJSONPost builds the request punk0's own page sends: a POST from a
+// loopback Host with a matching Origin.
+func localJSONPost(path string, body []byte) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Host = "127.0.0.1:7777"
+	req.Header.Set("Origin", "http://127.0.0.1:7777")
+	return req
+}
+
 func get(t *testing.T, s *Server, url string) (int, map[string]any) {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -1373,7 +1382,7 @@ func TestFileSave(t *testing.T) {
 		"content": newContent,
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/file/save", bytes.NewReader(body))
+	req := localJSONPost("/api/file/save", body)
 	req.Header.Set("Content-Type", "application/json")
 	s.ServeHTTP(rec, req)
 
@@ -1394,7 +1403,7 @@ func TestFileSave(t *testing.T) {
 		"content": "bad",
 	})
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/file/save", bytes.NewReader(body))
+	req = localJSONPost("/api/file/save", body)
 	s.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for path traversal, got %d", rec.Code)
@@ -1406,7 +1415,7 @@ func TestFileSave(t *testing.T) {
 		"content": "bad",
 	})
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/file/save", bytes.NewReader(body))
+	req = localJSONPost("/api/file/save", body)
 	s.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for directory target, got %d", rec.Code)
@@ -1422,7 +1431,7 @@ func TestFSNew(t *testing.T) {
 		"type": "file",
 	})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/fs/new", bytes.NewReader(body))
+	req := localJSONPost("/api/fs/new", body)
 	req.Header.Set("Content-Type", "application/json")
 	s.ServeHTTP(rec, req)
 
@@ -1440,7 +1449,7 @@ func TestFSNew(t *testing.T) {
 
 	// 2. Creating already existing file should fail with 409 Conflict
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/fs/new", bytes.NewReader(body))
+	req = localJSONPost("/api/fs/new", body)
 	s.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409 conflict, got %d", rec.Code)
@@ -1452,7 +1461,7 @@ func TestFSNew(t *testing.T) {
 		"type": "dir",
 	})
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/fs/new", bytes.NewReader(body))
+	req = localJSONPost("/api/fs/new", body)
 	s.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1469,14 +1478,34 @@ func TestFSNew(t *testing.T) {
 		"type": "file",
 	})
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/fs/new", bytes.NewReader(body))
+	req = localJSONPost("/api/fs/new", body)
 	s.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for path traversal, got %d", rec.Code)
 	}
 }
 
-
-
-
-
+// Any web page can POST text/plain to 127.0.0.1 without a CORS preflight, and
+// a DNS-rebound one can even match Origin to Host. Neither may write a file.
+func TestFileWritesRejectCrossOrigin(t *testing.T) {
+	s, root := newTestServer(t)
+	for _, c := range []struct{ path, body, host, origin string }{
+		{"/api/file/save", `{"path":"pwned.txt","content":"x"}`, "127.0.0.1:7777", "http://evil.example.com"},
+		{"/api/fs/new", `{"path":"pwned.txt","type":"file"}`, "127.0.0.1:7777", "http://evil.example.com"},
+		{"/api/file/save", `{"path":"pwned.txt","content":"x"}`, "attacker.example:7777", "http://attacker.example:7777"},
+		{"/api/fs/new", `{"path":"pwned.txt","type":"file"}`, "attacker.example:7777", "http://attacker.example:7777"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, c.path, strings.NewReader(c.body))
+		req.Host = c.host
+		req.Header.Set("Origin", c.origin)
+		req.Header.Set("Content-Type", "text/plain")
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s from %s = %d, want 403", c.path, c.origin, rec.Code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "pwned.txt")); !os.IsNotExist(err) {
+		t.Fatal("a cross-origin request wrote a file")
+	}
+}

@@ -1356,8 +1356,7 @@ type fileSaveRequest struct {
 }
 
 func (s *Server) handleFileSave(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !localPost(w, r) {
 		return
 	}
 	var req fileSaveRequest
@@ -1410,8 +1409,7 @@ type fsNewRequest struct {
 }
 
 func (s *Server) handleFSNew(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !localPost(w, r) {
 		return
 	}
 	var req fsNewRequest
