@@ -55,7 +55,7 @@ func (g *GiteaProvider) TokenSetup(host string) TokenSetup {
 	return TokenSetup{
 		URL: "https://" + host + "/user/settings/applications",
 		Steps: []string{
-			"Under Generate new token, name it (e.g. px0).",
+			"Under Generate new token, name it (e.g. punk0).",
 			"Under Select permissions, set repository and issue to Read and write.",
 			"Generate the token and copy it.",
 		},

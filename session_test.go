@@ -56,7 +56,7 @@ func TestSessionAPIEndpoints(t *testing.T) {
 	}
 
 	// 3. Verify file was written to disk under rev-999.json
-	sessFile := filepath.Join(tmpDir, "px0", "sessions", "rev-999.json")
+	sessFile := filepath.Join(tmpDir, "punk0", "sessions", "rev-999.json")
 	if _, err := os.Stat(sessFile); err != nil {
 		t.Fatalf("session file not found on disk: %v", err)
 	}

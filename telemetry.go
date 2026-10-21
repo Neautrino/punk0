@@ -86,11 +86,11 @@ func filesBucket(n int) string {
 }
 
 // getOrGenerateDistinctID retrieves or initializes a persistent anonymous UUID.
-// Saved to ~/.px0/anonymous_id. If writing fails, an ephemeral ID is returned.
+// Saved to ~/.punk0/anonymous_id. If writing fails, an ephemeral ID is returned.
 func getOrGenerateDistinctID() string {
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
-		idPath := filepath.Join(home, ".px0", "anonymous_id")
+		idPath := filepath.Join(home, ".punk0", "anonymous_id")
 		if data, err := os.ReadFile(idPath); err == nil {
 			id := strings.TrimSpace(string(data))
 			if len(id) >= 16 {
@@ -106,7 +106,7 @@ func getOrGenerateDistinctID() string {
 	id := hex.EncodeToString(b)
 
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dir := filepath.Join(home, ".px0")
+		dir := filepath.Join(home, ".punk0")
 		if err := os.MkdirAll(dir, 0755); err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "anonymous_id"), []byte(id), 0644)
 		}

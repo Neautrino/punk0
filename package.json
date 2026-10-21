@@ -1,6 +1,6 @@
 {
-  "name": "px0",
-  "version": "0.1.16",
+  "name": "punk0",
+  "version": "0.1.0",
   "type": "module",
   "private": true,
   "description": "High-performance code reader and review engine",

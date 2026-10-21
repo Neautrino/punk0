@@ -104,7 +104,7 @@ func computeDiffBase(worktree, srcRepo, srcRemote string, fg forgeGit, baseRef s
 		if fetchErr != "" {
 			diffBaseWarning = fmt.Sprintf("%s (%s)", diffBaseWarning, fetchErr)
 		}
-		fmt.Fprintln(os.Stderr, "px0: warning:", diffBaseWarning)
+		fmt.Fprintln(os.Stderr, "punk0: warning:", diffBaseWarning)
 		if onProgress != nil {
 			onProgress("Warning: " + diffBaseWarning)
 		}

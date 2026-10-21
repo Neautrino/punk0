@@ -62,7 +62,7 @@ func (g *GitHubProvider) TokenSetup(host string) TokenSetup {
 	return TokenSetup{
 		URL: "https://github.com/settings/personal-access-tokens/new",
 		Steps: []string{
-			"Name the token (e.g. px0) and pick an expiration.",
+			"Name the token (e.g. punk0) and pick an expiration.",
 			"Under Repository access, choose the repositories you review (or All repositories).",
 			"Under Repository permissions, set Contents and Pull requests to Read and write.",
 			"Generate the token and copy it.",

@@ -178,7 +178,7 @@ func (m *lspManager) Install(name string, option int) (*lspJob, error) {
 	}
 	in := opts[option]
 	if !in.Auto {
-		return nil, fmt.Errorf("px0 does not run %q; run it in a terminal", strings.Join(in.Cmd, " "))
+		return nil, fmt.Errorf("punk0 does not run %q; run it in a terminal", strings.Join(in.Cmd, " "))
 	}
 	tool, ok := lookPathIn(in.Cmd[0], lspBinDirs())
 	if !ok {
@@ -276,11 +276,11 @@ func localPost(w http.ResponseWriter, r *http.Request) bool {
 	}
 	host = strings.Trim(host, "[]")
 	if host != "localhost" && net.ParseIP(host) == nil {
-		fail(w, http.StatusForbidden, "open px0 by IP address or localhost to set up language servers")
+		fail(w, http.StatusForbidden, "open punk0 by IP address or localhost to set up language servers")
 		return false
 	}
 	if o, err := url.Parse(r.Header.Get("Origin")); err != nil || o.Host != r.Host {
-		fail(w, http.StatusForbidden, "request did not come from px0")
+		fail(w, http.StatusForbidden, "request did not come from punk0")
 		return false
 	}
 	return true

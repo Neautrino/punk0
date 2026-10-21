@@ -353,8 +353,8 @@ func TestWorkbenchForgetsNewItemThatFails(t *testing.T) {
 	}
 	newTestStore(t)
 	dir := t.TempDir()
-	exe := filepath.Join(dir, "fake-px0")
-	os.WriteFile(exe, []byte("#!/bin/sh\necho 'px0: px0: github: fetch PR #9: 404 Not Found' >&2\nexit 1\n"), 0o755)
+	exe := filepath.Join(dir, "fake-punk0")
+	os.WriteFile(exe, []byte("#!/bin/sh\necho 'punk0: punk0: github: fetch PR #9: 404 Not Found' >&2\nexit 1\n"), 0o755)
 	wb := newWorkbench("/", dir, exe, nil)
 	defer wb.Close()
 

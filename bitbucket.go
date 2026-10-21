@@ -50,9 +50,9 @@ func (b *BitbucketProvider) TokenSetup(host string) TokenSetup {
 	return TokenSetup{
 		URL: "https://id.atlassian.com/manage-profile/security/api-tokens",
 		Steps: []string{
-			"Select Create API token with scopes, name it (e.g. px0) and pick an expiry.",
+			"Select Create API token with scopes, name it (e.g. punk0) and pick an expiry.",
 			"Choose Bitbucket as the app.",
-			"Grant read and write access to repositories and pull requests, and read access to your account (px0 uses it to check push access).",
+			"Grant read and write access to repositories and pull requests, and read access to your account (punk0 uses it to check push access).",
 			"Create the token, copy it, and enter your Atlassian account email below.",
 		},
 		Env: "BITBUCKET_TOKEN",

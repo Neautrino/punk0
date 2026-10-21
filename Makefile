@@ -24,8 +24,8 @@ endif
 all: build
 
 help:
-	@echo "px0 make targets:"
-	@echo "  make build             - build px0 binary for current platform (optional: POSTHOG_KEY=phc_...)"
+	@echo "punk0 make targets:"
+	@echo "  make build             - build punk0 binary for current platform (optional: POSTHOG_KEY=phc_...)"
 	@echo "  make web               - bundle web assets (JS/CSS/themes)"
 	@echo "  make test              - run go test suite"
 	@echo "  make test-short        - run fast unit tests (short mode)"
@@ -39,9 +39,9 @@ web:
 	@node ./scripts/build-web.js
 
 build: web
-	@echo "Building px0 for local system..."
-	go build -trimpath -ldflags="$(LDFLAGS)" -o px0 .
-	@echo "Built ./px0 ($$(du -h px0 | cut -f1))"
+	@echo "Building punk0 for local system..."
+	go build -trimpath -ldflags="$(LDFLAGS)" -o punk0 .
+	@echo "Built ./punk0 ($$(du -h punk0 | cut -f1))"
 
 test: web
 	go test -v .
@@ -81,6 +81,6 @@ publish:
 	@echo "  git push origin master --tags"
 
 clean:
-	rm -f px0 web/app.js web/workbench.js
+	rm -f punk0 web/app.js web/workbench.js
 	touch web/app.js web/workbench.js
 	rm -rf dist/

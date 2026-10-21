@@ -300,7 +300,7 @@ func (m *agentManager) Select(name string, modelOpt ...string) error {
 	m.mu.Lock()
 	if m.pinned {
 		m.mu.Unlock()
-		return errors.New("px0 was started with -agent, so the harness is fixed for this run")
+		return errors.New("punk0 was started with -agent, so the harness is fixed for this run")
 	}
 	m.mu.Unlock()
 

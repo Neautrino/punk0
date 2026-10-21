@@ -263,7 +263,7 @@ async function refresh() {
   const cwd = $('#wb-cwd');
   cwd.hidden = !state.cwd;
   cwd.textContent = 'Open ' + tildify(state.cwd);
-  cwd.title = 'Open the folder px0 was started in: ' + state.cwd;
+  cwd.title = 'Open the folder punk0 was started in: ' + state.cwd;
   if (!browsePath) browse(state.cwd);
 }
 

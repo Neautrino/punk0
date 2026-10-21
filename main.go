@@ -37,8 +37,8 @@ func main() {
 		noGit        = flag.Bool("no-git", false, "disable git awareness")
 		showVer      = flag.Bool("version", false, "print version and exit")
 		showVerShort = flag.Bool("v", false, "print version and exit (shorthand)")
-		doUpdate     = flag.Bool("update", false, "check for and install latest version of px0")
-		noUpdate     = flag.Bool("no-update", false, "do not auto-update px0 on startup")
+		doUpdate     = flag.Bool("update", false, "check for and install latest version of punk0")
+		noUpdate     = flag.Bool("no-update", false, "do not auto-update punk0 on startup")
 		noColor      = flag.Bool("no-color", false, "disable colour output")
 		quiet        = flag.Bool("quiet", false, "suppress narration")
 		verbose      = flag.Bool("verbose", false, "log startup steps, requests, searches, symbols, and agent prompts to terminal")
@@ -51,7 +51,7 @@ func main() {
 		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the px0 workbench")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "px0 %s - a code navigator\n\nusage:\n  px0 [flags]                      open the workbench\n  px0 [flags] <file or directory>\n  px0 [flags] <pr-url>\n\nflags:\n", version)
+		fmt.Fprintf(os.Stderr, "punk0 %s - a code navigator\n\nusage:\n  punk0 [flags]                      open the workbench\n  punk0 [flags] <file or directory>\n  punk0 [flags] <pr-url>\n\nflags:\n", version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -71,7 +71,7 @@ func main() {
 	}
 
 	if *showVer || *showVerShort || (flag.NArg() == 1 && flag.Arg(0) == "version") {
-		fmt.Printf("px0 %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("punk0 %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
 		return
 	}
 
@@ -111,7 +111,7 @@ func main() {
 	if flag.NArg() > 0 {
 		arg0 := flag.Arg(0)
 		if arg0 == "pr" {
-			fatal(fmt.Errorf("'px0 pr' is no longer supported; open pull requests directly with: px0 <url>"))
+			fatal(fmt.Errorf("'punk0 pr' is no longer supported; open pull requests directly with: punk0 <url>"))
 		}
 		if provider, pt, ok := DetectPRURL(arg0); ok {
 			prProvider, prTarget, isPR = provider, pt, true
@@ -120,7 +120,7 @@ func main() {
 		}
 	}
 	if isPR && gitDisabled {
-		fatal(fmt.Errorf("px0: git is required for PR review; remove -no-git"))
+		fatal(fmt.Errorf("punk0: git is required for PR review; remove -no-git"))
 	}
 
 	var pr *prSession
@@ -145,7 +145,7 @@ func main() {
 		cancel()
 		if err != nil {
 			sp.Fail(fmt.Sprintf("Failed to prepare PR #%d: %v", prTarget.Number, err))
-			fatal(fmt.Errorf("px0: %w", err))
+			fatal(fmt.Errorf("punk0: %w", err))
 		}
 		if p.meta.Merged {
 			sp.Success(fmt.Sprintf("PR #%d checked out [merged] (%s)", prTarget.Number, p.meta.Title))
@@ -216,7 +216,7 @@ func main() {
 	}
 
 	url := viewerURL(addr, initialFile, initialLine, configuredBasePath)
-	uiHeading("px0 "+version, nil, os.Stdout)
+	uiHeading("punk0 "+version, nil, os.Stdout)
 	if pr != nil {
 		prTitle := fmt.Sprintf("#%d %s", pr.meta.Number, pr.meta.Title)
 		if pr.meta.Merged {
@@ -324,7 +324,7 @@ func main() {
 		<-stop
 		interrupted = true
 		fmt.Print("\r")
-		uiStatus("info", "px0 stopped", "", 0, os.Stderr)
+		uiStatus("info", "punk0 stopped", "", 0, os.Stderr)
 		go func() {
 			<-stop // Second interrupt forces immediate exit
 			os.Exit(130)
@@ -397,7 +397,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 	writeWorkbenchLock(viewerURL(net.JoinHostPort("127.0.0.1", boundPort), "", 0, basePath))
 	defer removeWorkbenchLock()
 
-	uiHeading("px0 "+version, nil, os.Stdout)
+	uiHeading("punk0 "+version, nil, os.Stdout)
 	uiKV("workbench", uiAccent(u, os.Stdout), 11, os.Stdout)
 	if host == "0.0.0.0" {
 		for _, networkURL := range networkURLs(addr, "", 0) {
@@ -422,7 +422,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 		<-stop
 		interrupted = true
 		fmt.Print("\r")
-		uiStatus("info", "px0 stopped", "", 0, os.Stderr)
+		uiStatus("info", "punk0 stopped", "", 0, os.Stderr)
 		go func() {
 			<-stop
 			os.Exit(130)
@@ -695,6 +695,6 @@ func isWSL() bool {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "px0:", err)
+	fmt.Fprintln(os.Stderr, "punk0:", err)
 	os.Exit(1)
 }

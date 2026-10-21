@@ -16,7 +16,7 @@ import { openSettings } from './settings.js';
 const connectModal = () => $('#forge-connect-modal');
 
 const SOURCES = {
-  settings: 'a token saved in px0 Settings',
+  settings: 'a token saved in punk0 Settings',
   env: 'an environment variable',
   gh: 'the GitHub CLI (gh)',
   glab: 'the GitLab CLI (glab)',
@@ -65,7 +65,7 @@ export function openForgeConnect(reason = '') {
   $('#forge-connect-host').textContent = host || '';
 
   let why = hasToken
-    ? `px0 is using ${SOURCES[source] || 'a token'} for ${esc(host)}. Paste a new one to replace it.`
+    ? `punk0 is using ${SOURCES[source] || 'a token'} for ${esc(host)}. Paste a new one to replace it.`
     : `${esc(setup.readonly || '')}`;
   if (reason && !hasToken) why = `A ${esc(info.label)} token is needed ${esc(reason)}. ` + why;
   $('#forge-connect-why').innerHTML = why;
@@ -87,11 +87,11 @@ export function openForgeConnect(reason = '') {
 
   const alts = [`set ${codeTag(setup.env)}`];
   if (setup.cli) alts.push(`run ${codeTag(setup.cli)}`);
-  $('#forge-connect-alt').innerHTML = `Or ${alts.join(' or ')} in your shell, then restart px0.` +
-    (setup.hostKey ? ` px0 sends the token only to ${esc(host)}.` : '');
+  $('#forge-connect-alt').innerHTML = `Or ${alts.join(' or ')} in your shell, then restart punk0.` +
+    (setup.hostKey ? ` punk0 sends the token only to ${esc(host)}.` : '');
   $('#forge-connect-check').textContent = pr
-    ? 'px0 checks the token by reading this pull request with it before saving it.'
-    : 'Saved to your px0 settings. It is checked the next time you open a pull request.';
+    ? 'punk0 checks the token by reading this pull request with it before saving it.'
+    : 'Saved to your punk0 settings. It is checked the next time you open a pull request.';
 
   $('#forge-connect-token').value = '';
   $('#forge-connect-extra-input').value = '';

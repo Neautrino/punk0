@@ -143,7 +143,7 @@ func TestSettingsPreserveNonAgentValues(t *testing.T) {
 	}
 
 	// Step 4: Verify file on disk
-	data, err := os.ReadFile(filepath.Join(cfg, "px0", "settings.json"))
+	data, err := os.ReadFile(filepath.Join(cfg, "punk0", "settings.json"))
 	if err != nil {
 		t.Fatalf("failed to read settings file: %v", err)
 	}

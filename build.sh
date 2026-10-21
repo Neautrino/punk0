@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Build px0 for every supported platform into dist/.
+# Build punk0 for every supported platform into dist/.
 set -eu
 
 VERSION=$(cat VERSION | tr -d ' \r\n')
@@ -29,7 +29,7 @@ for t in $TARGETS; do
   arch=${t#*/}
   ext=""
   [ "$os" = "windows" ] && ext=".exe"
-  name="px0-$VERSION-$os-$arch$ext"
+  name="punk0-$VERSION-$os-$arch$ext"
   printf '  %-28s' "$name"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
     go build -trimpath -ldflags="$LDFLAGS" -o "$OUT/$name" .

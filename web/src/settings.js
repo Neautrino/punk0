@@ -286,7 +286,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "server.basePath",
     title: "Base Path",
-    description: "Base URL path prefix for the px0 server and web interface (e.g. /rev-123/).",
+    description: "Base URL path prefix for the punk0 server and web interface (e.g. /rev-123/).",
     category: "Server",
     type: "string",
     default: "/"
@@ -294,7 +294,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "tips.enabled",
     title: "Show Tips in Interface",
-    description: "Controls whether px0 periodically shows helpful tips and tricks in the interface.",
+    description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",
     category: "General",
     type: "boolean",
     default: true
@@ -306,7 +306,7 @@ let settingsData = {
   defaults: Object.fromEntries(BUILTIN_SCHEMA.map(s => [s.key, s.default])),
   schema: BUILTIN_SCHEMA,
   raw: '{\n}\n',
-  path: '~/.px0/settings.json'
+  path: '~/.punk0/settings.json'
 };
 let activeSettingsCategory = 'Commonly Used';
 let settingsViewMode = 'ui'; // 'ui' | 'json'

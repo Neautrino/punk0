@@ -196,7 +196,7 @@ func TestAgentSelectPersistsOutsideWorkspace(t *testing.T) {
 		t.Fatalf("selected = %q, want echo", m.Name())
 	}
 
-	if _, err := os.Stat(filepath.Join(cfg, "px0", "settings.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(cfg, "punk0", "settings.json")); err != nil {
 		t.Fatalf("settings file not written: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "settings.json")); !os.IsNotExist(err) {

@@ -31,13 +31,13 @@ func TestRunSelfUpdateMock(t *testing.T) {
 		t.Fatalf("failed to write fake binary: %v", err)
 	}
 
-	assetName := fmt.Sprintf("px0-0.2.0-%s-%s%s", runtime.GOOS, runtime.GOARCH, ext)
+	assetName := fmt.Sprintf("punk0-0.2.0-%s-%s%s", runtime.GOOS, runtime.GOARCH, ext)
 
 	// Setup mock server
 	var serverURL string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/test/px0/releases/latest":
+		case "/repos/test/punk0/releases/latest":
 			rel := githubRelease{
 				TagName: "v0.2.0",
 				Name:    "px0 v0.2.0",
@@ -62,11 +62,11 @@ func TestRunSelfUpdateMock(t *testing.T) {
 	defer ts.Close()
 	serverURL = ts.URL
 
-	t.Setenv("PX0_REPO", "test/px0")
-	t.Setenv("PX0_UPDATE_URL", ts.URL+"/repos/test/px0/releases/latest")
+	t.Setenv("PUNK0_REPO", "test/punk0")
+	t.Setenv("PUNK0_UPDATE_URL", ts.URL+"/repos/test/punk0/releases/latest")
 	t.Setenv("XDG_STATE_HOME", tmpDir)
 
-	rel, err := fetchLatestRelease("test/px0")
+	rel, err := fetchLatestRelease("test/punk0")
 	if err != nil {
 		t.Fatalf("fetchLatestRelease returned error: %v", err)
 	}
@@ -87,12 +87,12 @@ func TestInstallUpdate(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	execPath := filepath.Join(tmpDir, "px0")
+	execPath := filepath.Join(tmpDir, "punk0")
 	if err := os.WriteFile(execPath, []byte("#!/bin/sh\necho 'px0 0.1.0'\n"), 0o755); err != nil {
 		t.Fatalf("failed to seed current binary: %v", err)
 	}
 
-	assetName := fmt.Sprintf("px0-0.2.0-%s-%s", runtime.GOOS, runtime.GOARCH)
+	assetName := fmt.Sprintf("punk0-0.2.0-%s-%s", runtime.GOOS, runtime.GOARCH)
 	newBinary := []byte("#!/bin/sh\necho 'px0 0.2.0'\n")
 	digest := fmt.Sprintf("%x", sha256.Sum256(newBinary))
 
@@ -146,7 +146,7 @@ func TestInstallUpdate(t *testing.T) {
 func TestAutoUpdateFastPathSkipsNetwork(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", tmpDir)
-	t.Setenv("PX0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
+	t.Setenv("PUNK0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
 
 	writeUpdateState(&updateState{LastChecked: time.Now(), LatestVer: "0.1.0"})
 
@@ -168,7 +168,7 @@ func TestAutoUpdateDueCheckSkipsInstallWhenUpToDate(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(rel)
 	}))
 	defer ts.Close()
-	t.Setenv("PX0_UPDATE_URL", ts.URL)
+	t.Setenv("PUNK0_UPDATE_URL", ts.URL)
 
 	autoUpdate("0.1.0")
 
@@ -217,7 +217,7 @@ func TestAutoUpdateVerbosePrintsUpToDate(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(rel)
 	}))
 	defer ts.Close()
-	t.Setenv("PX0_UPDATE_URL", ts.URL)
+	t.Setenv("PUNK0_UPDATE_URL", ts.URL)
 
 	out := captureAutoUpdateStdout(t, func() { autoUpdate("0.1.0") })
 	if !strings.Contains(out, "up to date") {
@@ -233,7 +233,7 @@ func TestAutoUpdateVerbosePrintsUpToDateFromCache(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", tmpDir)
-	t.Setenv("PX0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
+	t.Setenv("PUNK0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
 
 	writeUpdateState(&updateState{LastChecked: time.Now(), LatestVer: "0.1.0"})
 
@@ -259,7 +259,7 @@ func TestAutoUpdateQuietWhenNotVerbose(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(rel)
 	}))
 	defer ts.Close()
-	t.Setenv("PX0_UPDATE_URL", ts.URL)
+	t.Setenv("PUNK0_UPDATE_URL", ts.URL)
 
 	out := captureAutoUpdateStdout(t, func() { autoUpdate("0.1.0") })
 	if out != "" {

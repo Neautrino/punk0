@@ -72,15 +72,15 @@ type wbFile struct {
 }
 
 // workbenchStateDir is where workbench.json and the instance lock live:
-// $XDG_STATE_HOME/px0 when set, otherwise ~/.px0, like the session files.
+// $XDG_STATE_HOME/punk0 when set, otherwise ~/.punk0, like the session files.
 func workbenchStateDir() string {
 	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "px0")
+		return filepath.Join(xdg, "punk0")
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".px0")
+		return filepath.Join(home, ".punk0")
 	}
-	return filepath.Join(os.TempDir(), "px0")
+	return filepath.Join(os.TempDir(), "punk0")
 }
 
 func workbenchStorePath() string { return filepath.Join(workbenchStateDir(), "workbench.json") }
@@ -306,15 +306,15 @@ func (lw *lineWriter) emit(line string) {
 }
 
 // failure picks the line that best explains why a child exited: the last
-// "px0: ..." line fatal() wrote, otherwise the last thing it said.
+// "punk0: ..." line fatal() wrote, otherwise the last thing it said.
 func (c *wbChild) failure() string {
 	c.logMu.Lock()
 	defer c.logMu.Unlock()
 	for i := len(c.log) - 1; i >= 0; i-- {
-		if strings.HasPrefix(c.log[i], "px0: ") {
+		if strings.HasPrefix(c.log[i], "punk0: ") {
 			msg := c.log[i]
-			for strings.HasPrefix(msg, "px0: ") {
-				msg = strings.TrimPrefix(msg, "px0: ")
+			for strings.HasPrefix(msg, "punk0: ") {
+				msg = strings.TrimPrefix(msg, "punk0: ")
 			}
 			return msg
 		}
@@ -324,7 +324,7 @@ func (c *wbChild) failure() string {
 			return s
 		}
 	}
-	return "px0 exited unexpectedly"
+	return "punk0 exited unexpectedly"
 }
 
 type workbench struct {
@@ -416,7 +416,7 @@ func (wb *workbench) start(it wbItem, forget bool) *wbChild {
 		ctx: ctx, cancel: cancel, lastActive: time.Now()}
 	wb.children[it.ID] = c
 	if wb.closing {
-		c.state, c.err = "failed", "px0 is shutting down"
+		c.state, c.err = "failed", "punk0 is shutting down"
 		cancel()
 		close(c.done)
 		return c
@@ -542,7 +542,7 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 	case err := <-exited:
 		msg := c.failure()
 		if err == nil && msg == "" {
-			msg = "px0 exited before it was ready"
+			msg = "punk0 exited before it was ready"
 		}
 		failed(msg)
 		return
@@ -683,7 +683,7 @@ func trustedGet(w http.ResponseWriter, r *http.Request) bool {
 	}
 	host = strings.Trim(host, "[]")
 	if host != "localhost" && net.ParseIP(host) == nil {
-		fail(w, http.StatusForbidden, "open px0 by IP address or localhost")
+		fail(w, http.StatusForbidden, "open punk0 by IP address or localhost")
 		return false
 	}
 	return true
@@ -1052,7 +1052,7 @@ func (wb *workbench) resolveTarget(target string) (wbItem, error) {
 	}
 	if _, pt, ok := DetectPRURL(target); ok {
 		if gitDisabled {
-			return wbItem{}, errors.New("git is required for PR review; restart px0 without -no-git")
+			return wbItem{}, errors.New("git is required for PR review; restart punk0 without -no-git")
 		}
 		return wbPRItem(pt), nil
 	}

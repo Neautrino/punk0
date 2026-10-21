@@ -736,12 +736,12 @@ var (
 
 func vendorCacheDir() string {
 	if c := os.Getenv("XDG_CACHE_HOME"); c != "" {
-		return filepath.Join(c, "px0", "vendor")
+		return filepath.Join(c, "punk0", "vendor")
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".px0", "cache", "vendor")
+		return filepath.Join(home, ".punk0", "cache", "vendor")
 	}
-	return filepath.Join(os.TempDir(), "px0-cache", "vendor")
+	return filepath.Join(os.TempDir(), "punk0-cache", "vendor")
 }
 
 type memGzFile struct {
