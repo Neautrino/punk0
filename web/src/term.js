@@ -16,7 +16,9 @@ export function initTerm(el, onChange) {
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(el);
-  fit.fit();
+  // A hidden pane has no size; fitting it would shrink the shell to 2 columns.
+  const refit = () => el.clientWidth && fit.fit();
+  refit();
 
   const enc = new TextEncoder();
   let ws = null;
@@ -51,7 +53,7 @@ export function initTerm(el, onChange) {
   term.onData((s) => (ended ? attach(tab) : send(enc.encode(s))));
   term.onBinary((s) => send(Uint8Array.from(s, (c) => c.charCodeAt(0))));
   term.onResize(sendSize);
-  new ResizeObserver(() => fit.fit()).observe(el);
+  new ResizeObserver(refit).observe(el);
 
   // xterm.js has no kitty keyboard protocol: send Shift+Enter as ESC CR
   // (Alt+Enter), which Claude Code reads as a newline.
@@ -62,5 +64,5 @@ export function initTerm(el, onChange) {
     return false;
   });
 
-  return { attach };
+  return { attach, focus: () => term.focus() };
 }

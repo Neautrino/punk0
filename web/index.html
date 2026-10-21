@@ -9,7 +9,7 @@
 </head>
 <body>
 <div id="app">
-  <!-- Left Sidebar: Projects and their workspaces -->
+  <!-- Left: projects and their workspaces -->
   <aside id="pane-projects">
     <header class="pane-head">
       <span class="head-title">Projects</span>
@@ -27,33 +27,21 @@
     </div>
   </aside>
 
-  <!-- Middle Pane: tabs of the selected workspace -->
-  <section id="pane-term" class="pane">
-    <header class="pane-head">
+  <!-- Middle: the selected workspace's tabs, terminals and files alike -->
+  <section id="pane-center" class="pane">
+    <header class="pane-head" id="tab-head">
       <div id="tabs"></div>
-      <div class="head-left">
-        <button class="new-tab accent" type="button" data-new-tab="claude" title="New Claude Code tab">+ Claude</button>
-        <button class="new-tab" type="button" data-new-tab="shell" title="New shell tab">+ Shell</button>
-      </div>
+      <button id="btn-new-tab" class="icon-btn" type="button" title="New tab" aria-haspopup="menu">+</button>
     </header>
-    <div id="term"></div>
-  </section>
-
-  <!-- Split Divider -->
-  <div id="resizer" aria-hidden="true"></div>
-
-  <!-- Right Pane: Code Explorer & Viewer -->
-  <section id="pane-view" class="pane">
-    <aside id="sidebar">
-      <header class="pane-head">
-        <span class="head-title">Files</span>
-      </header>
-      <div id="tree"></div>
-    </aside>
-
-    <main id="viewer">
-      <header class="pane-head" id="view-head">
-        <span class="head-title" id="file-title">Select a file</span>
+    <div id="new-tab-menu" class="menu hidden" role="menu">
+      <button type="button" role="menuitem" data-new-tab="claude"><span class="menu-kind claude">✳</span>Claude Code</button>
+      <button type="button" role="menuitem" data-new-tab="shell"><span class="menu-kind">$</span>Shell</button>
+      <button type="button" role="menuitem" data-new-tab="file"><span class="menu-kind file"></span>Open file…</button>
+    </div>
+    <div id="term" class="hidden"></div>
+    <main id="viewer" class="hidden">
+      <header id="view-head">
+        <span id="file-title"></span>
         <span class="file-meta" id="file-meta"></span>
       </header>
       <div id="code-vp">
@@ -62,7 +50,32 @@
         </div>
       </div>
     </main>
+    <div id="center-empty" class="hidden">
+      <p>No tabs open.</p>
+      <p class="hint">Use <b>+</b> to start Claude Code or a shell, or pick a file on the right.</p>
+    </div>
+    <div id="picker" class="hidden">
+      <div id="picker-box">
+        <input id="picker-input" type="text" placeholder="Open file by name" spellcheck="false" autocomplete="off" />
+        <div id="picker-list"></div>
+      </div>
+    </div>
   </section>
+
+  <!-- Right: the selected workspace's files -->
+  <aside id="pane-files">
+    <header class="pane-head">
+      <span class="head-title" id="files-root"></span>
+      <button id="btn-collapse" class="icon-btn" type="button" title="Collapse all folders">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>
+      </button>
+    </header>
+    <div id="tree"></div>
+    <footer id="files-foot" class="hidden">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7"/><path d="M18 10.5c0 4-6 3-11 5.5"/></svg>
+      <span id="files-branch"></span>
+    </footer>
+  </aside>
 </div>
 <script type="module" src="src/main.js"></script>
 </body>

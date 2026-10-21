@@ -2,7 +2,7 @@
 
 ---
 
-punk0 is a minimal agent orchestrator that runs in your browser. Each project gets its own workspaces: the main checkout, git worktrees, or scratch folders. Each workspace gets tabs running your shell or Claude Code, with a fast code viewer beside the terminal.
+punk0 is a minimal agent orchestrator that runs in your browser. Each project gets its own workspaces: the main checkout, git worktrees, or scratch folders. Each workspace gets tabs running your shell or Claude Code, or showing a file, with the workspace's files in a sidebar on the right.
 
 As coding agents do more of the typing, the work shifts to running several of them side by side, keeping them out of each other's files, and checking what they changed. punk0 gives every agent its own worktree and terminal, keeps those terminals alive when the browser closes, and lets you read the code without leaving the page.
 
@@ -13,12 +13,15 @@ As coding agents do more of the typing, the work shifts to running several of th
 
 ## Features
 
-- Projects, workspaces and tabs: A left sidebar lists projects, and under each one its workspaces, each with its own tabs. Projects are any folder; workspaces are the project folder itself, a git worktree, or a scratch folder.
+- Three columns: projects and workspaces on the left, the selected workspace's tabs in the middle, its files on the right with the current branch at the bottom.
+- Projects and workspaces: Projects are any folder; workspaces are the project folder itself, a git worktree, or a scratch folder, each with its own tabs.
 - Worktree workspaces: Each worktree gets its own branch under `~/.punk0/worktrees/<project>/<name>`, so parallel agents never touch each other's files. Deleting one with uncommitted changes asks a second time; its branch is always kept.
-- Claude tabs: `+ Claude` starts Claude Code with its own session id and resumes that same chat whenever the tab is reopened, even after a restart. `Shift+Enter` inserts a newline.
-- Shell tabs: `+ Shell` opens your `$SHELL` in the workspace folder; double-click a tab to rename it.
+- One tab bar for everything: `+` opens a Claude Code tab, a shell tab, or the open file picker. Terminals and files share the bar; a terminal keeps running while a file is in front of it.
+- Claude tabs: start Claude Code with their own session id and resume that same chat whenever the tab is reopened, even after a restart. `Shift+Enter` inserts a newline.
+- Shell tabs: open your `$SHELL` in the workspace folder; double-click a tab to rename it.
 - Shells that outlive the browser: Closing or reloading the page keeps every tab running; reconnecting replays the recent output.
 - Scratch chats: Claude chats outside any project, each in its own folder under `~/.punk0/scratch/<name>`.
+- File tabs: click a file in the tree, or fuzzy-find it by name from `+` → Open file. Each file tab keeps its scroll position; open files are remembered per workspace in the browser.
 - Code viewer: File tree that honours `.gitignore` and shows git status, syntax highlighting via Chroma, and virtual rendering that mounts only the visible rows of large files.
 
 ## Installation

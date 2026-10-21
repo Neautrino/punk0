@@ -9,6 +9,7 @@ export const state = {
   projects: [],
   ws: localStorage.getItem('punk0.ws') || '', // selected workspace id
   tabs: JSON.parse(localStorage.getItem('punk0.tabs') || '{}'), // workspace id -> last tab id
+  files: JSON.parse(localStorage.getItem('punk0.files') || '{}'), // workspace id -> open file paths
 };
 
 export function subscribe(fn) {
@@ -23,12 +24,22 @@ export async function reload() {
   const res = await fetch('/api/projects');
   if (!res.ok) return;
   state.projects = await res.json();
+  pruneFiles();
   if (!workspace()) {
     const first = state.projects.flatMap((p) => p.workspaces)[0];
     selectWorkspace(first ? first.id : '');
     return;
   }
   emit();
+}
+
+// pruneFiles forgets the open files of workspaces that no longer exist.
+function pruneFiles() {
+  const ids = new Set(state.projects.flatMap((p) => p.workspaces.map((w) => w.id)));
+  const stale = Object.keys(state.files).filter((id) => !ids.has(id));
+  if (!stale.length) return;
+  for (const id of stale) delete state.files[id];
+  saveFiles();
 }
 
 // workspace returns the workspace with id, or the selected one.
@@ -44,11 +55,25 @@ export function projectOf(wsId) {
   return state.projects.find((p) => p.workspaces.some((w) => w.id === wsId)) || null;
 }
 
+// tabsOf lists a workspace's tabs: its shells and Claude chats from the
+// server, then the files open in it, which only this browser remembers.
+export function tabsOf(w) {
+  if (!w) return [];
+  const files = (state.files[w.id] || []).map((path) => ({
+    id: fileTabId(path),
+    kind: 'file',
+    path,
+    name: path.slice(path.lastIndexOf('/') + 1),
+  }));
+  return [...w.tabs, ...files];
+}
+
+export const fileTabId = (path) => `file:${path}`;
+
 // activeTab is the selected workspace's last used tab, else its first.
 export function activeTab() {
-  const w = workspace();
-  if (!w) return null;
-  return w.tabs.find((t) => t.id === state.tabs[w.id]) || w.tabs[0] || null;
+  const tabs = tabsOf(workspace());
+  return tabs.find((t) => t.id === state.tabs[state.ws]) || tabs[0] || null;
 }
 
 export function selectWorkspace(id) {
@@ -61,6 +86,27 @@ export function selectTab(id) {
   state.tabs[state.ws] = id;
   localStorage.setItem('punk0.tabs', JSON.stringify(state.tabs));
   emit();
+}
+
+// openFile shows path in a tab of the selected workspace, reusing its tab
+// if it is already open.
+export function openFile(path) {
+  const open = (state.files[state.ws] ||= []);
+  if (!open.includes(path)) {
+    open.push(path);
+    saveFiles();
+  }
+  selectTab(fileTabId(path));
+}
+
+export function closeFile(path) {
+  state.files[state.ws] = (state.files[state.ws] || []).filter((p) => p !== path);
+  saveFiles();
+  emit();
+}
+
+function saveFiles() {
+  localStorage.setItem('punk0.files', JSON.stringify(state.files));
 }
 
 // api sends a JSON request and returns { ok, status, data }; data holds the
