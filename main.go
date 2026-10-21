@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -70,6 +71,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/workspaces/{id}", handleRemoveWorkspace(rec))
 	mux.HandleFunc("GET /api/workspaces/{id}/tree", handleTree(rec))
 	mux.HandleFunc("GET /api/workspaces/{id}/file", handleFile(rec))
+	mux.HandleFunc("GET /api/workspaces/{id}/find", handleFind(rec))
 	mux.HandleFunc("POST /api/workspaces/{id}/tabs", handleAddTab(rec))
 	mux.HandleFunc("PATCH /api/tabs/{id}", handleRenameTab(rec))
 	mux.HandleFunc("DELETE /api/tabs/{id}", handleRemoveTab(rec))
@@ -326,6 +328,22 @@ func handleFile(rec *Records) http.HandlerFunc {
 			"lines":   lines,
 			"exact":   exact,
 		})
+	}
+}
+
+// handleFind ranks the workspace's indexed files against ?q= for the open
+// file picker. A first query waits briefly for the index to finish building.
+func handleFind(rec *Records) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ws := workspaceOf(rec, w, r)
+		if ws == nil {
+			return
+		}
+		ix := ws.Index()
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		ix.WaitReady(ctx) // an index still building answers from what it has
+		writeJSON(w, map[string]any{"results": FuzzyFind(ix.Files(), r.URL.Query().Get("q"), 50)})
 	}
 }
 
