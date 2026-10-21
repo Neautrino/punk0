@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,6 +32,13 @@ var rawVersion string
 var version = strings.TrimSpace(rawVersion)
 
 func main() {
+	// `punk0 hook` is what Claude Code runs for a tab's hook events: it has
+	// to report them and get out of the way, before flags, updates or
+	// anything else that could print.
+	if len(os.Args) == 2 && os.Args[1] == "hook" {
+		runHook()
+		return
+	}
 	var (
 		port         = flag.Int("port", 7777, "port to listen on (0 picks a free one)")
 		host         = flag.String("host", "127.0.0.1", "address to bind")
@@ -52,7 +62,7 @@ func main() {
 		wbHost       = flag.String("workbench-host", "", "internal: the address the workbench that started this child listens on")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "punk0 %s - a code navigator\n\nusage:\n  punk0 [flags]                      open the workbench\n  punk0 [flags] <file or directory>\n  punk0 [flags] <pr-url>\n\nflags:\n", version)
+		fmt.Fprintf(os.Stderr, "punk0 %s - an agent orchestrator and code navigator\n\nusage:\n  punk0 [flags]                      open the agents page\n  punk0 [flags] <file or directory>  open its workspace there\n  punk0 [flags] <pr-url>             review a pull request\n\nflags:\n", version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -83,28 +93,9 @@ func main() {
 		return
 	}
 
-	// Without a target, px0 opens the workbench: a launcher for directories
-	// and pull requests that runs each one as a child px0 (workbench.go).
-	if flag.NArg() == 0 && !*wbChild {
-		var childArgs []string
-		for _, f := range []struct {
-			on   bool
-			flag string
-		}{{*noLSP, "-no-lsp"}, {*noGit, "-no-git"}, {*noAgent, "-no-agent"}, {*noTelemetry, "-no-telemetry"}} {
-			if f.on {
-				childArgs = append(childArgs, f.flag)
-			}
-		}
-		if *agentCmd != "" {
-			childArgs = append(childArgs, "-agent", *agentCmd)
-		}
-		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate, childArgs)
-		return
-	}
-
 	// A full pull or merge request URL (see prURLExamples)
 	// checks out the PR's full source tree instead of resolving a local file/directory.
-	// Only full URLs via "px0 <url>" are supported for PR review.
+	// Only full URLs via "punk0 <url>" are supported for PR review.
 	target := "."
 	var prProvider GitProvider
 	var prTarget PRTarget
@@ -124,6 +115,32 @@ func main() {
 		fatal(fmt.Errorf("punk0: git is required for PR review; remove -no-git"))
 	}
 
+	// Everything that is not a pull request opens in the orchestrator: the
+	// page that lists projects and agents, which serves each folder through a
+	// child punk0 (workbench.go). A bare `punk0` just opens the page; a
+	// folder or file opens its editor view there. Only a child started by
+	// that parent serves a folder on its own.
+	if !isPR && !*wbChild {
+		var childArgs []string
+		for _, f := range []struct {
+			on   bool
+			flag string
+		}{{*noLSP, "-no-lsp"}, {*noGit, "-no-git"}, {*noAgent, "-no-agent"}, {*noTelemetry, "-no-telemetry"}} {
+			if f.on {
+				childArgs = append(childArgs, f.flag)
+			}
+		}
+		if *agentCmd != "" {
+			childArgs = append(childArgs, "-agent", *agentCmd)
+		}
+		initial := ""
+		if flag.NArg() > 0 {
+			initial = target
+		}
+		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate, childArgs, initial)
+		return
+	}
+
 	var pr *prSession
 	var root, initialFile string
 	var initialLine int
@@ -131,12 +148,13 @@ func main() {
 	if isPR {
 		sp := newSpinner(fmt.Sprintf("Preparing PR #%d (%s/%s)...", prTarget.Number, prTarget.Owner, prTarget.Repo), os.Stdout)
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		// Outside a clone of the PR's repository, use one the workbench knows,
-		// so the checkout is a worktree rather than a fresh clone.
+		// Outside a clone of the PR's repository, use one punk0 knows (the
+		// remembered clone or a registered project), so the checkout is a
+		// worktree rather than a fresh clone.
 		cloneDir := "."
 		if top, _ := findPRRemote(".", prTarget.Owner, prTarget.Repo); top == "" {
 			st := &wbStore{path: workbenchStorePath()}
-			if known := knownClone(st.Load(), prTarget.Owner+"/"+prTarget.Repo); known != "" {
+			if known := knownClone(st.Load(), prTarget.Owner+"/"+prTarget.Repo, recordedProjectDirs(workbenchStateDir())...); known != "" {
 				cloneDir = known
 			}
 		}
@@ -201,8 +219,6 @@ func main() {
 		it := wbPRItem(prTarget)
 		it.Title = pr.meta.Title
 		go recordRecent(it)
-	} else {
-		go recordRecent(wbDirItem(root))
 	}
 	if pr != nil {
 		pxSrv.SetPR(pr)
@@ -366,14 +382,14 @@ func main() {
 	}
 }
 
-// runWorkbench serves the workbench until interrupted, then stops every
-// workspace it started.
-func runWorkbench(host string, port int, basePathFlag string, open, update bool, childArgs []string) {
+// runWorkbench serves the orchestrator until interrupted, then stops every
+// terminal and workspace it started. initial is the folder `punk0 <dir>`
+// named: it is registered as a project and opened in the editor view.
+func runWorkbench(host string, port int, basePathFlag string, open, update bool, childArgs []string, initial string) {
+	// One orchestrator per machine: a second punk0 hands its folder to the
+	// one already running instead of serving a rival page.
 	if u := runningWorkbench(); u != "" {
-		uiStatus("ok", "workbench already running", u, 0, os.Stdout)
-		if open {
-			openBrowser(u)
-		}
+		handOff(u, initial, port, open)
 		return
 	}
 	exe, err := os.Executable()
@@ -398,17 +414,41 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 	if err != nil {
 		fatal(err)
 	}
-	wb := newWorkbench(basePath, cwd, exe, append(childArgs, "-workbench-host", host))
+	wb, err := newWorkbench(basePath, cwd, exe, append(childArgs, "-workbench-host", host))
+	if err != nil {
+		fatal(err)
+	}
 	wb.localOnly = loopbackBind(host)
 	srv := &http.Server{Handler: wb}
 
 	u := viewerURL(addr, "", 0, basePath)
 	_, boundPort, _ := net.SplitHostPort(addr)
-	writeWorkbenchLock(viewerURL(net.JoinHostPort("127.0.0.1", boundPort), "", 0, basePath))
+	// Agents report their hooks to punk0 itself, never through whatever
+	// address the browser reached it on.
+	self := "http://" + net.JoinHostPort("127.0.0.1", boundPort) + basePath
+	writeWorkbenchLock(self)
 	defer removeWorkbenchLock()
+	wb.serveFrom(self)
+
+	// `punk0 <dir>` opens that folder's editor view next to the page.
+	editor := ""
+	if initial != "" {
+		root, file, line, err := resolveTarget(initial)
+		if err != nil {
+			fatal(err)
+		}
+		_, ws, err := wb.records.Open(root)
+		if err != nil {
+			fatal(err)
+		}
+		editor = editorURL(u, wb.childHref(wbItemID("dir", ws.Dir)), file, line)
+	}
 
 	uiHeading("punk0 "+version, nil, os.Stdout)
-	uiKV("workbench", uiAccent(u, os.Stdout), 11, os.Stdout)
+	uiKV("agents", uiAccent(u, os.Stdout), 11, os.Stdout)
+	if editor != "" {
+		uiKV("workspace", uiAccent(editor, os.Stdout), 11, os.Stdout)
+	}
 	if host == "0.0.0.0" {
 		for _, networkURL := range networkURLs(addr, "", 0) {
 			uiKV("network", uiAccent(networkURL, os.Stdout), 11, os.Stdout)
@@ -420,6 +460,9 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 	uiHint("ctrl-c to stop", os.Stdout)
 	if open {
 		go openBrowser(u)
+		if editor != "" {
+			go openBrowser(editor)
+		}
 	}
 	if update {
 		go autoUpdate(version)
@@ -453,6 +496,108 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 		removeWorkbenchLock()
 		fatal(err)
 	}
+}
+
+// handOff gives a folder to the punk0 that is already running and opens its
+// editor view there, so `punk0 <dir>` in a second terminal lands in the one
+// orchestrator instead of starting another.
+func handOff(base, initial string, port int, open bool) {
+	if flagSet("host") || flagSet("port") {
+		if u, err := url.Parse(base); err == nil && u.Port() != strconv.Itoa(port) {
+			uiStatus("warn", "punk0 already runs on "+base, "-host and -port only apply to the first one", 0, os.Stdout)
+		}
+	}
+	target := base
+	if initial != "" {
+		root, file, line, err := resolveTarget(initial)
+		if err != nil {
+			fatal(err)
+		}
+		href, err := postProject(base, root)
+		if err != nil {
+			fatal(fmt.Errorf("punk0 on %s: %w", base, err))
+		}
+		target = editorURL(base, href, file, line)
+	}
+	uiStatus("ok", "punk0 already running", target, 0, os.Stdout)
+	if open {
+		openBrowser(target)
+	}
+}
+
+// postProject registers dir with the running punk0, which answers with the
+// workspace that opens it; registering a folder it already holds is the same
+// request and gives the same answer.
+func postProject(base, dir string) (string, error) {
+	origin, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	body, err := json.Marshal(map[string]string{"dir": dir})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(base, "/")+"/api/projects", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin.Scheme+"://"+origin.Host)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Href  string `json:"href"`
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode != http.StatusOK || out.Href == "" {
+		if out.Error == "" {
+			out.Error = resp.Status
+		}
+		return "", errors.New(out.Error)
+	}
+	return out.Href, nil
+}
+
+// editorURL is a workspace's editor view under the orchestrator, opened on
+// the file and line the command line named (see viewerURL).
+func editorURL(base, href, initialFile string, initialLine int) string {
+	u, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	ref, err := url.Parse(href)
+	if err != nil {
+		return base
+	}
+	target := u.ResolveReference(ref)
+	q := target.Query()
+	if initialFile != "" {
+		q.Set("path", filepath.ToSlash(initialFile))
+	}
+	if initialLine > 0 {
+		q.Set("line", strconv.Itoa(initialLine))
+	}
+	if len(q) > 0 {
+		target.RawQuery = q.Encode()
+	}
+	return target.String()
+}
+
+// flagSet reports whether a flag was given on the command line, as opposed to
+// left at its default.
+func flagSet(name string) bool {
+	seen := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			seen = true
+		}
+	})
+	return seen
 }
 
 // workbenchBaseOf turns a workspace's base path (/<wb>/w/<id>/) back into the

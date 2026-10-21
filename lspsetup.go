@@ -270,6 +270,12 @@ func localPost(w http.ResponseWriter, r *http.Request) bool {
 		fail(w, http.StatusMethodNotAllowed, "POST only")
 		return false
 	}
+	return localOrigin(w, r)
+}
+
+// localOrigin is the same check without the method: the orchestrator's
+// PATCH and DELETE routes fix their method in the router already.
+func localOrigin(w http.ResponseWriter, r *http.Request) bool {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h

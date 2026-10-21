@@ -41,6 +41,8 @@ type settings struct {
 	BitbucketEmail              *string  `json:"bitbucket.email,omitempty"`
 	GitCommitMessageInstruction *string  `json:"git.commitMessageInstruction,omitempty"`
 	ServerBasePath              *string  `json:"server.basePath,omitempty"`
+	WorkspaceIdleStop           *float64 `json:"workspace.idleStop,omitempty"`
+	TerminalIdleStop            *float64 `json:"terminal.idleStop,omitempty"`
 	ExplorerAutoReveal          *bool    `json:"explorer.autoReveal,omitempty"`
 	TipsEnabled                 *bool    `json:"tips.enabled,omitempty"`
 }
@@ -427,6 +429,28 @@ var settingsSchema = []settingSchemaItem{
 		Category:    "Server",
 		Type:        "string",
 		Default:     "/",
+	},
+	{
+		Key:         "workspace.idleStop",
+		Title:       "Stop Idle Workspace After (Minutes)",
+		Description: "Controls how long a workspace's files keep being served after the last request before punk0 stops it to free memory; the next request starts it again. 0 never stops it.",
+		Category:    "Server",
+		Type:        "number",
+		Default:     5.0,
+		Min:         numPtr(0),
+		Max:         numPtr(1440.0),
+		Step:        numPtr(1.0),
+	},
+	{
+		Key:         "terminal.idleStop",
+		Title:       "Stop Idle Terminal After (Minutes)",
+		Description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt and an agent only when it is done; 0 never stops them.",
+		Category:    "Server",
+		Type:        "number",
+		Default:     30.0,
+		Min:         numPtr(0),
+		Max:         numPtr(1440.0),
+		Step:        numPtr(1.0),
 	},
 	{
 		Key:         "tips.enabled",

@@ -22,6 +22,18 @@ func newTestStore(t *testing.T) *wbStore {
 	return &wbStore{path: workbenchStorePath()}
 }
 
+// testWorkbench builds a workbench on the temporary state directory
+// newTestStore set up, and stops whatever it started when the test ends.
+func testWorkbench(t *testing.T, basePath, cwd, exe string, childArgs []string) *workbench {
+	t.Helper()
+	wb, err := newWorkbench(basePath, cwd, exe, childArgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(wb.Close)
+	return wb
+}
+
 func TestWorkbenchItemIDsAreStable(t *testing.T) {
 	a := wbDirItem("/work/repo/")
 	b := wbDirItem("/work/repo")
@@ -38,14 +50,11 @@ func TestWorkbenchItemIDsAreStable(t *testing.T) {
 	}
 }
 
-func TestWorkbenchStoreRecordKeepsPinAndTitle(t *testing.T) {
+func TestWorkbenchStoreRecordKeepsTitle(t *testing.T) {
 	st := newTestStore(t)
 	it := wbPRItem(PRTarget{Provider: "github", Owner: "o", Repo: "r", Number: 1, URL: "u"})
 	it.Title = "Fix things"
 	if err := st.Record(it); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Update(func(f *wbFile) { f.Items[0].Pinned = true }); err != nil {
 		t.Fatal(err)
 	}
 	it.Title = "" // reopened before the title is known again
@@ -53,7 +62,7 @@ func TestWorkbenchStoreRecordKeepsPinAndTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := st.Get(it.ID)
-	if !ok || !got.Pinned || got.Title != "Fix things" || got.LastOpened == 0 {
+	if !ok || got.Title != "Fix things" || got.LastOpened == 0 {
 		t.Fatalf("got %+v", got)
 	}
 	if n := len(st.Load().Items); n != 1 {
@@ -61,13 +70,12 @@ func TestWorkbenchStoreRecordKeepsPinAndTitle(t *testing.T) {
 	}
 }
 
-func TestWorkbenchStoreTrimsOldUnpinned(t *testing.T) {
+func TestWorkbenchStoreTrimsOldest(t *testing.T) {
 	st := newTestStore(t)
 	err := st.Update(func(f *wbFile) {
-		for i := 0; i < wbMaxRecent+10; i++ {
-			it := wbDirItem(filepath.Join("/d", string(rune('a'+i%26)), strings.Repeat("x", i)))
+		for i := range wbMaxRecent + 10 {
+			it := wbPRItem(PRTarget{Provider: "github", Owner: "o", Repo: "r", Number: i, URL: "u"})
 			it.LastOpened = int64(i)
-			it.Pinned = i == 0 // the oldest, but pinned
 			f.Items = append(f.Items, it)
 		}
 	})
@@ -75,18 +83,14 @@ func TestWorkbenchStoreTrimsOldUnpinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	items := st.Load().Items
-	if len(items) != wbMaxRecent+1 {
-		t.Fatalf("want %d items, got %d", wbMaxRecent+1, len(items))
+	if len(items) != wbMaxRecent {
+		t.Fatalf("want %d items, got %d", wbMaxRecent, len(items))
 	}
 	if items[0].LastOpened != wbMaxRecent+9 {
 		t.Fatalf("not most recent first: %d", items[0].LastOpened)
 	}
-	pinned := false
-	for _, it := range items {
-		pinned = pinned || it.Pinned
-	}
-	if !pinned {
-		t.Fatal("pinned item was dropped")
+	if items[len(items)-1].LastOpened != 10 {
+		t.Fatalf("oldest kept: %d", items[len(items)-1].LastOpened)
 	}
 }
 
@@ -169,55 +173,24 @@ func TestWorkbenchResolveTarget(t *testing.T) {
 	os.Mkdir(filepath.Join(dir, "sub"), 0o755)
 	wb := &workbench{cwd: dir}
 
-	it, err := wb.resolveTarget("sub")
-	if err != nil || it.Kind != "dir" || filepath.Base(it.Path) != "sub" {
-		t.Fatalf("relative dir: %+v %v", it, err)
+	it, folder, err := wb.resolveTarget("sub")
+	if err != nil || it.Kind != "" || filepath.Base(folder) != "sub" {
+		t.Fatalf("relative dir: %+v %q %v", it, folder, err)
 	}
-	it, err = wb.resolveTarget("https://github.com/px0-ai/px0/pull/12")
-	if err != nil || it.Kind != "pr" || it.Repo != "px0-ai/px0" || it.Number != 12 {
-		t.Fatalf("pr: %+v %v", it, err)
+	it, folder, err = wb.resolveTarget("https://github.com/px0-ai/px0/pull/12")
+	if err != nil || it.Kind != "pr" || it.Repo != "px0-ai/px0" || it.Number != 12 || folder != "" {
+		t.Fatalf("pr: %+v %q %v", it, folder, err)
 	}
 	for _, bad := range []string{"", "https://github.com/px0-ai/px0", filepath.Join(dir, "missing")} {
-		if _, err := wb.resolveTarget(bad); err == nil {
+		if _, _, err := wb.resolveTarget(bad); err == nil {
 			t.Errorf("%q: want error", bad)
 		}
 	}
 }
 
-func TestWorkbenchBrowseListsOnlyFolders(t *testing.T) {
-	newTestStore(t)
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "repo", ".git"), 0o755)
-	os.Mkdir(filepath.Join(dir, "plain"), 0o755)
-	os.Mkdir(filepath.Join(dir, ".hidden"), 0o755)
-	os.WriteFile(filepath.Join(dir, "file.txt"), nil, 0o644)
-	wb := newWorkbench("/", dir, "", nil)
-
-	get := func(target, host string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("GET", target, nil)
-		r.Host = host
-		w := httptest.NewRecorder()
-		wb.ServeHTTP(w, r)
-		return w
-	}
-	w := get("/api/wb/browse?path="+dir, "127.0.0.1:7777")
-	var res struct {
-		Entries []wbEntry `json:"entries"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
-		t.Fatal(err, w.Body.String())
-	}
-	if len(res.Entries) != 2 || res.Entries[0].Name != "plain" || res.Entries[1].Name != "repo" || !res.Entries[1].Git {
-		t.Fatalf("got %+v", res.Entries)
-	}
-	if w := get("/api/wb/browse?path="+dir, "evil.example:7777"); w.Code != http.StatusForbidden {
-		t.Fatalf("rebound host: got %d", w.Code)
-	}
-}
-
 func TestWorkbenchOpenRequiresLocalPost(t *testing.T) {
 	newTestStore(t)
-	wb := newWorkbench("/", t.TempDir(), "", nil)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
 	r := httptest.NewRequest("POST", "/api/wb/open", strings.NewReader(`{"target":"."}`))
 	r.Host = "127.0.0.1:7777"
 	r.Header.Set("Origin", "https://evil.example")
@@ -233,7 +206,7 @@ func TestWorkbenchOpenRequiresLocalPost(t *testing.T) {
 
 func TestWorkbenchUnknownWorkspace(t *testing.T) {
 	newTestStore(t)
-	wb := newWorkbench("/", t.TempDir(), "", nil)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
 	r := httptest.NewRequest("GET", "/w/000000000000/", nil)
 	r.Host = "127.0.0.1:7777"
 	w := httptest.NewRecorder()
@@ -244,8 +217,8 @@ func TestWorkbenchUnknownWorkspace(t *testing.T) {
 	r = httptest.NewRequest("GET", "/w/000000000000/api/meta", nil)
 	w = httptest.NewRecorder()
 	wb.ServeHTTP(w, r)
-	if w.Code != http.StatusServiceUnavailable {
-		t.Fatalf("api on stopped workspace: got %d", w.Code)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("api on unknown workspace: got %d", w.Code)
 	}
 }
 
@@ -263,7 +236,7 @@ func TestWorkbenchRunsChildThroughProxy(t *testing.T) {
 	ws := t.TempDir()
 	os.WriteFile(filepath.Join(ws, "hello.go"), []byte("package hello\n"), 0o644)
 
-	wb := newWorkbench("/base/", ws, exe, []string{"-no-lsp", "-no-agent", "-no-telemetry"})
+	wb := testWorkbench(t, "/base/", ws, exe, []string{"-no-lsp", "-no-agent", "-no-telemetry"})
 	srv := httptest.NewServer(wb)
 	defer srv.Close()
 	defer wb.Close()
@@ -281,26 +254,16 @@ func TestWorkbenchRunsChildThroughProxy(t *testing.T) {
 		return m
 	}
 	opened := post("/base/api/wb/open", `{"target":"`+ws+`"}`)
-	id, _ := opened["id"].(string)
-	if id == "" || opened["href"] != "/base/w/"+id+"/" {
+	href, _ := opened["href"].(string)
+	if opened["project"] == nil || opened["workspace"] == nil || !strings.HasPrefix(href, "w/") {
 		t.Fatalf("open: %v", opened)
 	}
-
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		wb.mu.Lock()
-		c := wb.children[id]
-		state, msg := c.state, c.err
-		wb.mu.Unlock()
-		if state == "running" {
-			break
-		}
-		if state == "failed" || time.Now().After(deadline) {
-			t.Fatalf("child %s: %s", state, msg)
-		}
-		time.Sleep(50 * time.Millisecond)
+	id := strings.TrimSuffix(strings.TrimPrefix(href, "w/"), "/")
+	if wb.childState(id) != "stopped" {
+		t.Fatalf("open started a child before anything asked for the folder")
 	}
 
+	// An API request starts the child and waits for it, rather than failing.
 	resp, err := http.Get(srv.URL + "/base/w/" + id + "/api/meta")
 	if err != nil {
 		t.Fatal(err)
@@ -355,7 +318,7 @@ func TestWorkbenchForgetsNewItemThatFails(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "fake-punk0")
 	os.WriteFile(exe, []byte("#!/bin/sh\necho 'punk0: punk0: github: fetch PR #9: 404 Not Found' >&2\nexit 1\n"), 0o755)
-	wb := newWorkbench("/", dir, exe, nil)
+	wb := testWorkbench(t, "/", dir, exe, nil)
 	defer wb.Close()
 
 	it := wbPRItem(PRTarget{Provider: "github", Owner: "o", Repo: "r", Number: 9, URL: "https://github.com/o/r/pull/9"})
@@ -380,6 +343,27 @@ func TestWorkbenchForgetsNewItemThatFails(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "404 Not Found") || strings.Contains(body, "retry=1") {
 		t.Fatalf("holding page:\n%s", body)
+	}
+}
+
+// The holding page that starts a stopped workspace refreshes to the same
+// file and line, so `punk0 <file>:<n>` against a cold workspace still lands
+// there; only ?retry is dropped.
+func TestWorkbenchHoldingPageKeepsFileAndLine(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	defer wb.Close()
+	var opened map[string]any
+	json.Unmarshal(reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+repo+`"}`).Body.Bytes(), &opened)
+	href, _ := opened["href"].(string)
+	r := httptest.NewRequest("GET", "/"+href+"?line=3&path=go.mod&retry=1", nil)
+	r.Host = "127.0.0.1:7777"
+	w := httptest.NewRecorder()
+	wb.ServeHTTP(w, r)
+	body := w.Body.String()
+	if !strings.Contains(body, "line=3&amp;path=go.mod") || strings.Contains(body, "retry=1") {
+		t.Fatalf("holding page refresh lost the query:\n%s", body)
 	}
 }
 
@@ -439,12 +423,7 @@ func TestScanForCloneFindsNestedClone(t *testing.T) {
 
 func postJSON(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := httptest.NewRequest("POST", path, strings.NewReader(body))
-	r.Host = "127.0.0.1:7777"
-	r.Header.Set("Origin", "http://127.0.0.1:7777")
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, r)
-	return w
+	return reqJSON(t, h, "POST", path, body)
 }
 
 // Opening a PR with no known clone asks for one and records nothing; giving
@@ -452,7 +431,7 @@ func postJSON(t *testing.T, h http.Handler, path, body string) *httptest.Respons
 func TestWorkbenchOpenPRAsksForClone(t *testing.T) {
 	newTestStore(t)
 	t.Setenv("HOME", t.TempDir()) // keep the scan away from real code folders
-	wb := newWorkbench("/", t.TempDir(), "/nonexistent/px0", nil)
+	wb := testWorkbench(t, "/", t.TempDir(), "/nonexistent/px0", nil)
 	defer wb.Close()
 	pr := "https://github.com/acme/widget/pull/5"
 
@@ -493,7 +472,7 @@ func TestWorkbenchCompleteFolders(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(dir, "profile.txt"), nil, 0o644)
 	os.MkdirAll(filepath.Join(dir, "proto", ".git"), 0o755)
-	wb := newWorkbench("/", dir, "", nil)
+	wb := testWorkbench(t, "/", dir, "", nil)
 
 	complete := func(q string) []wbEntry {
 		r := httptest.NewRequest("GET", "/api/wb/complete?q="+url.QueryEscape(q), nil)
@@ -526,12 +505,20 @@ func TestWorkbenchCompleteFolders(t *testing.T) {
 	if got := complete("https://github.com/x"); len(got) != 0 {
 		t.Fatalf("URL completed: %v", got)
 	}
+	// It lists folders anywhere on disk: a DNS-rebound page must not read it.
+	r := httptest.NewRequest("GET", "/api/wb/complete?q="+url.QueryEscape(dir+"/"), nil)
+	r.Host = "evil.example:7777"
+	w := httptest.NewRecorder()
+	wb.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("rebound host: got %d", w.Code)
+	}
 }
 
 func TestWorkbenchSettingsOnlyTakesTheme(t *testing.T) {
 	newTestStore(t)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	wb := newWorkbench("/", t.TempDir(), "", nil)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
 	if w := postJSON(t, wb, "/api/settings", `{"github.token":"x"}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("token accepted: %d", w.Code)
 	}
@@ -540,5 +527,311 @@ func TestWorkbenchSettingsOnlyTakesTheme(t *testing.T) {
 	}
 	if got := wbTheme(); got != "rose-pine" {
 		t.Fatalf("theme %q", got)
+	}
+}
+
+// reqJSON sends a write the way punk0's own page does.
+func reqJSON(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Host = "127.0.0.1:7777"
+	r.Header.Set("Origin", "http://127.0.0.1:7777")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func getJSON(t *testing.T, h http.Handler, path string, v any) {
+	t.Helper()
+	r := httptest.NewRequest("GET", path, nil)
+	r.Host = "127.0.0.1:7777"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", path, w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), v); err != nil {
+		t.Fatalf("GET %s: %v\n%s", path, err, w.Body.String())
+	}
+}
+
+type testProject struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Dir        string `json:"dir"`
+	Git        bool   `json:"git"`
+	Branch     string `json:"branch"`
+	Scratch    bool   `json:"scratch"`
+	Workspaces []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Kind    string `json:"kind"`
+		Dir     string `json:"dir"`
+		Href    string `json:"href"`
+		Backend string `json:"backend"`
+		LSP     bool   `json:"lsp"`
+		Missing bool   `json:"missing"`
+		Tabs    []struct {
+			ID      string `json:"id"`
+			Kind    string `json:"kind"`
+			Name    string `json:"name"`
+			Running bool   `json:"running"`
+			Status  string `json:"status"`
+		} `json:"tabs"`
+	} `json:"workspaces"`
+}
+
+// Registering a folder is the same request however often it is made, and the
+// workspaces of one folder share the child that serves it.
+func TestWorkbenchProjectRoutes(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+
+	var opened, again map[string]any
+	w := reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+repo+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("add project: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &opened)
+	json.Unmarshal(reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+filepath.Join(repo, "sub")+`"}`).Body.Bytes(), &again)
+	if opened["href"] != wb.childHref(wbItemID("dir", repo)) {
+		t.Fatalf("href %v", opened["href"])
+	}
+	if again["project"] != opened["project"] || again["workspace"] != opened["workspace"] {
+		t.Fatalf("a folder inside the project made %v, want %v", again, opened)
+	}
+
+	var projects []testProject
+	getJSON(t, wb, "/api/projects", &projects)
+	if len(projects) != 2 {
+		t.Fatalf("want the project and Scratch: %+v", projects)
+	}
+	p, scratch := projects[0], projects[1]
+	if p.Scratch {
+		p, scratch = projects[1], projects[0]
+	}
+	if p.ID != opened["project"] || !p.Git || p.Branch != "main" || len(p.Workspaces) != 1 {
+		t.Fatalf("project view: %+v", p)
+	}
+	ws := p.Workspaces[0]
+	if ws.Kind != kindLocal || ws.Backend != "stopped" || ws.LSP || ws.Href != opened["href"] || len(ws.Tabs) != 1 {
+		t.Fatalf("workspace view: %+v", ws)
+	}
+	if ws.Tabs[0].Kind != tabShell || ws.Tabs[0].Running || ws.Tabs[0].Status != "" {
+		t.Fatalf("tab view: %+v", ws.Tabs[0])
+	}
+	if !scratch.Scratch {
+		t.Fatalf("scratch missing: %+v", scratch)
+	}
+
+	// A second local workspace runs in the same folder, so it is served by
+	// the same child.
+	var second struct {
+		ID   string `json:"id"`
+		Kind string `json:"kind"`
+		Href string `json:"href"`
+		Tabs []struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"tabs"`
+	}
+	w = reqJSON(t, wb, "POST", "/api/projects/"+p.ID+"/workspaces", `{"name":"review"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("add workspace: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &second)
+	if second.ID == "" || second.Kind != kindLocal || second.Href != ws.Href || len(second.Tabs) != 1 {
+		t.Fatalf("second workspace: %+v", second)
+	}
+
+	var tab struct {
+		ID   string `json:"id"`
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+	}
+	w = reqJSON(t, wb, "POST", "/api/workspaces/"+second.ID+"/tabs", `{"kind":"claude"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("add tab: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &tab)
+	if tab.ID == "" || tab.Kind != tabClaude {
+		t.Fatalf("tab: %+v", tab)
+	}
+	if w := reqJSON(t, wb, "PATCH", "/api/tabs/"+tab.ID, `{"name":"review"}`); w.Code != http.StatusOK {
+		t.Fatalf("rename tab: %d %s", w.Code, w.Body.String())
+	}
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+second.ID+"/lsp", `{"on":true}`); w.Code != http.StatusOK {
+		t.Fatalf("lsp on: %d %s", w.Code, w.Body.String())
+	}
+	if !wb.records.LSPOn(repo) {
+		t.Fatal("language servers still off after the toggle")
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/tabs/"+tab.ID, ""); w.Code != http.StatusOK {
+		t.Fatalf("remove tab: %d %s", w.Code, w.Body.String())
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+second.ID, ""); w.Code != http.StatusOK {
+		t.Fatalf("remove workspace: %d %s", w.Code, w.Body.String())
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/projects/"+p.ID, ""); w.Code != http.StatusOK {
+		t.Fatalf("remove project: %d %s", w.Code, w.Body.String())
+	}
+	getJSON(t, wb, "/api/projects", &projects)
+	if len(projects) != 1 || !projects[0].Scratch {
+		t.Fatalf("after removal: %+v", projects)
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/projects/nope", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown project: %d", w.Code)
+	}
+}
+
+// A folder punk0 made a worktree in opens that worktree's workspace, not a
+// project of its own.
+func TestWorkbenchHandsOverWorktreeFolder(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	p, _, err := wb.records.Open(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := wb.records.AddWorkspace(p.ID, "feat-handoff", true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out map[string]any
+	w := reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+wt.Dir+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("hand over worktree: %d %s", w.Code, w.Body.String())
+	}
+	json.Unmarshal(w.Body.Bytes(), &out)
+	if out["project"] != p.ID || out["workspace"] != wt.ID || out["href"] != wb.childHref(wbItemID("dir", wt.Dir)) {
+		t.Fatalf("worktree folder opened %v", out)
+	}
+}
+
+// A worktree with uncommitted changes is kept until the page asks again with
+// force, so an agent's unsaved work is never thrown away by one click.
+func TestWorkbenchRefusesDirtyWorktreeDelete(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	p, _, err := wb.records.Open(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := wb.records.AddWorkspace(p.ID, "feat-dirty", true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(wt.Dir, "wip.txt"), []byte("agent output"), 0o644)
+
+	w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID, "")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("dirty delete: %d %s", w.Code, w.Body.String())
+	}
+	var res map[string]any
+	json.Unmarshal(w.Body.Bytes(), &res)
+	if res["dirty"] != true || res["error"] == "" {
+		t.Fatalf("409 body: %s", w.Body.String())
+	}
+	if wb.records.Workspace(wt.ID) == nil {
+		t.Fatal("refused delete still forgot the workspace")
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID+"?force=1", ""); w.Code != http.StatusOK {
+		t.Fatalf("forced delete: %d %s", w.Code, w.Body.String())
+	}
+	if wb.records.Workspace(wt.ID) != nil {
+		t.Fatal("forced delete kept the workspace")
+	}
+}
+
+// Terminals are shells on this machine: they are served only while punk0
+// listens on loopback.
+func TestWorkbenchTerminalsNeedLoopback(t *testing.T) {
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	r := httptest.NewRequest("GET", "/api/tabs/whatever/term", nil)
+	r.Host = "box.tailnet.ts.net:7777"
+	w := httptest.NewRecorder()
+	wb.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("remote terminal: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHookStatus(t *testing.T) {
+	cases := []struct {
+		body   string
+		want   string
+		known  bool
+		reason string
+	}{
+		{`{"hook_event_name":"SessionStart"}`, statusIdle, true, "a new session waits for a prompt"},
+		{`{"hook_event_name":"UserPromptSubmit"}`, statusWorking, true, ""},
+		{`{"hook_event_name":"PreToolUse"}`, statusWorking, true, ""},
+		{`{"hook_event_name":"PostToolUse"}`, statusWorking, true, ""},
+		{`{"hook_event_name":"PostToolUseFailure"}`, statusWorking, true, ""},
+		{`{"hook_event_name":"PermissionRequest"}`, statusWaiting, true, ""},
+		{`{"hook_event_name":"Notification","notification_type":"permission_prompt"}`, statusWaiting, true, ""},
+		{`{"hook_event_name":"Notification","notification_type":"elicitation_dialog"}`, statusWaiting, true, ""},
+		{`{"hook_event_name":"Notification","notification_type":"elicitation_url_dialog"}`, statusWaiting, true, ""},
+		{`{"hook_event_name":"Notification","notification_type":"idle_prompt"}`, statusIdle, true, ""},
+		{`{"hook_event_name":"Notification","notification_type":"something_new"}`, "", false, "an unknown notification says nothing"},
+		{`{"hook_event_name":"Stop"}`, statusIdle, true, ""},
+		{`{"hook_event_name":"StopFailure"}`, statusIdle, true, ""},
+		{`{"hook_event_name":"Stop","background_tasks":[]}`, statusIdle, true, ""},
+		{`{"hook_event_name":"Stop","background_tasks":[{"id":"1"}]}`, statusWorking, true, "a background task keeps running"},
+		{`{"hook_event_name":"SessionEnd"}`, "", true, "the session is gone"},
+		{`{"hook_event_name":"Whatever"}`, "", false, ""},
+		{`not json`, "", false, ""},
+	}
+	for _, c := range cases {
+		got, ok := hookStatus([]byte(c.body))
+		if got != c.want || ok != c.known {
+			t.Errorf("%s: got %q %v, want %q %v %s", c.body, got, ok, c.want, c.known, c.reason)
+		}
+	}
+}
+
+func TestStopIdleTab(t *testing.T) {
+	const limit = 30 * time.Minute
+	cases := []struct {
+		name       string
+		kind       string
+		status     string
+		foreground bool
+		idleFor    time.Duration
+		limit      time.Duration
+		want       bool
+	}{
+		{"shell at its prompt", tabShell, "", true, time.Hour, limit, true},
+		{"shell with a job running", tabShell, "", false, time.Hour, limit, false},
+		{"shell used recently", tabShell, "", true, time.Minute, limit, false},
+		{"shell with the rule off", tabShell, "", true, time.Hour, 0, false},
+		{"idle agent", tabClaude, statusIdle, false, time.Hour, limit, true},
+		{"working agent", tabClaude, statusWorking, true, time.Hour, limit, false},
+		{"agent waiting for an answer", tabClaude, statusWaiting, true, time.Hour, limit, false},
+		{"agent that reported nothing", tabClaude, "", true, time.Hour, limit, false},
+	}
+	for _, c := range cases {
+		if got := stopIdleTab(c.kind, c.status, c.foreground, c.idleFor, c.limit); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestIdleLimit(t *testing.T) {
+	five := 5.0
+	zero := 0.0
+	if got := idleLimit(nil, wbWorkspaceIdleStop); got != 5*time.Minute {
+		t.Errorf("default: %v", got)
+	}
+	if got := idleLimit(&five, wbTerminalIdleStop); got != 5*time.Minute {
+		t.Errorf("set: %v", got)
+	}
+	if got := idleLimit(&zero, wbTerminalIdleStop); got != 0 {
+		t.Errorf("0 should mean never: %v", got)
 	}
 }

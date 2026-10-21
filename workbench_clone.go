@@ -66,22 +66,16 @@ func cloneOf(dir, repo string) string {
 	return top
 }
 
-// knownClone looks only where it is cheap to: the remembered clone, the
-// recorded directories, and extra (the current directory).
-func knownClone(f wbFile, repo string, extra ...string) string {
+// knownClone looks only where it is cheap to: the remembered clone, then
+// dirs (the registered project folders and the current directory).
+func knownClone(f wbFile, repo string, dirs ...string) string {
 	if p := f.Clones[repoKey(repo)]; p != "" {
 		if top := cloneOf(p, repo); top != "" {
 			return top
 		}
 	}
 	seen := map[string]bool{}
-	var dirs []string
-	for _, it := range f.Items {
-		if it.Kind == "dir" {
-			dirs = append(dirs, it.Path)
-		}
-	}
-	for _, d := range append(dirs, extra...) {
+	for _, d := range dirs {
 		if d == "" || seen[d] {
 			continue
 		}
@@ -145,18 +139,16 @@ func scanForClone(ctx context.Context, roots []string, repo string) string {
 }
 
 // scanRoots lists the usual code folders under home plus the parents of the
-// recorded directories, which is where other clones tend to sit.
-func scanRoots(f wbFile, cwd string) []string {
+// project folders, which is where other clones tend to sit.
+func scanRoots(dirs []string, cwd string) []string {
 	var roots []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		for _, r := range wbScanRoots {
 			roots = append(roots, filepath.Join(home, r))
 		}
 	}
-	for _, it := range f.Items {
-		if it.Kind == "dir" {
-			roots = append(roots, filepath.Dir(it.Path))
-		}
+	for _, d := range dirs {
+		roots = append(roots, filepath.Dir(d))
 	}
 	if cwd != "" {
 		roots = append(roots, cwd, filepath.Dir(cwd))
@@ -167,9 +159,10 @@ func scanRoots(f wbFile, cwd string) []string {
 // findClone finds and remembers the local clone of repo, or returns "".
 func (wb *workbench) findClone(ctx context.Context, repo string) string {
 	f := wb.store.Load()
-	top := knownClone(f, repo, wb.cwd)
+	dirs := wb.records.ProjectDirs()
+	top := knownClone(f, repo, append(dirs, wb.cwd)...)
 	if top == "" {
-		top = scanForClone(ctx, scanRoots(f, wb.cwd), repo)
+		top = scanForClone(ctx, scanRoots(dirs, wb.cwd), repo)
 	}
 	if top != "" {
 		wb.rememberClone(repo, top)

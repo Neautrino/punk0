@@ -40,7 +40,7 @@ func TestRemoteServerAcceptsHostnames(t *testing.T) {
 
 func TestLoopbackWorkbenchRefusesReboundRequests(t *testing.T) {
 	newTestStore(t)
-	wb := newWorkbench("/", t.TempDir(), "punk0", nil)
+	wb := testWorkbench(t, "/", t.TempDir(), "punk0", nil)
 	defer wb.Close()
 	wb.localOnly = true
 	if code := requestAs(wb, "attacker.example:7777", "/"); code != http.StatusForbidden {

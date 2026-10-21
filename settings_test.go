@@ -46,6 +46,12 @@ func TestSettingsDefaults(t *testing.T) {
 	if m["server.basePath"] != "/" {
 		t.Errorf("expected server.basePath /, got %v", m["server.basePath"])
 	}
+	if m["workspace.idleStop"] != 5.0 {
+		t.Errorf("expected workspace.idleStop 5, got %v", m["workspace.idleStop"])
+	}
+	if m["terminal.idleStop"] != 30.0 {
+		t.Errorf("expected terminal.idleStop 30, got %v", m["terminal.idleStop"])
+	}
 }
 
 func TestSettingsAutoReveal(t *testing.T) {

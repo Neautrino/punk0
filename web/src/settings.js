@@ -292,6 +292,28 @@ const BUILTIN_SCHEMA = [
     default: "/"
   },
   {
+    key: "workspace.idleStop",
+    title: "Stop Idle Workspace After (Minutes)",
+    description: "Controls how long a workspace's files keep being served after the last request before punk0 stops it to free memory; the next request starts it again. 0 never stops it.",
+    category: "Server",
+    type: "number",
+    default: 5.0,
+    min: 0,
+    max: 1440.0,
+    step: 1.0
+  },
+  {
+    key: "terminal.idleStop",
+    title: "Stop Idle Terminal After (Minutes)",
+    description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt and an agent only when it is done; 0 never stops them.",
+    category: "Server",
+    type: "number",
+    default: 30.0,
+    min: 0,
+    max: 1440.0,
+    step: 1.0
+  },
+  {
     key: "tips.enabled",
     title: "Show Tips in Interface",
     description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",

@@ -1,19 +1,21 @@
 package main
 
-// The workbench is what a bare `px0` opens: a launcher page listing the
-// directories and pull requests opened before, with a folder browser and a box
-// for a path or PR URL. It holds no index and no language servers of its own.
-// Every workspace opened from it runs as a child px0 process bound to
-// 127.0.0.1 on a free port under the base path /w/<id>/, and the workbench
-// reverse-proxies that path to it, so the whole thing is reachable on one port.
+// The workbench is the process a bare `punk0` leaves running: it serves the
+// orchestrator page at / and owns the projects, workspaces, tabs and
+// terminals on it (records.go, term.go). It holds no index and no language
+// servers of its own. Every folder is served by a child punk0 process bound
+// to 127.0.0.1 on a free port under the base path /w/<id>/, which the
+// workbench reverse-proxies, so the whole thing is reachable on one port and
+// workspaces in one folder share one child.
 //
 // Children are tied to the workbench through their stdin: when the pipe closes,
 // because the workbench stopped them or died, they shut down the same way a
 // Ctrl-C would, which removes PR checkouts and stops language servers. A child
-// nobody has had open for wbIdleAfter is stopped to free its memory; opening it
-// again starts a new one.
+// nobody has had open for workspace.idleStop minutes is stopped to free its
+// memory; the next request for it starts a new one.
 //
-// What was opened is recorded in workbench.json (see workbenchStorePath). It
+// Pull requests, which are not folders, are recorded in workbench.json (see
+// workbenchStorePath) along with the clones they are checked out from. It
 // holds what to reopen, never live state: process IDs and ports are not saved.
 
 import (
@@ -33,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -40,17 +43,19 @@ import (
 )
 
 const (
-	wbReadyPrefix  = "px0-ready "     // a child prints this, then its address, once it is listening
-	wbStartTimeout = 3 * time.Minute  // a PR checkout may clone a large repository
-	wbIdleAfter    = 30 * time.Minute // stop a child nobody has had open for this long
-	wbStopGrace    = 5 * time.Second  // how long a child gets to clean up before it is killed
-	wbMaxRecent    = 50               // unpinned entries kept in workbench.json
-	wbMaxBrowse    = 5000             // directory entries listed by the folder browser
-	wbLogLines     = 20               // child output lines kept for error reports
-	wbPingTimeout  = 400 * time.Millisecond
+	wbReadyPrefix       = "px0-ready "    // a child prints this, then its address, once it is listening
+	wbStartTimeout      = 3 * time.Minute // a PR checkout may clone a large repository
+	wbAPIWait           = 30 * time.Second
+	wbWorkspaceIdleStop = 5.0  // minutes, unless workspace.idleStop says otherwise
+	wbTerminalIdleStop  = 30.0 // minutes, unless terminal.idleStop says otherwise
+	wbStopGrace         = 5 * time.Second
+	wbMaxRecent         = 50 // pull requests kept in workbench.json
+	wbLogLines          = 20 // child output lines kept for error reports
+	wbPingTimeout       = 400 * time.Millisecond
 )
 
-// wbItem is one entry in workbench.json: a directory or a pull request.
+// wbItem is one thing a /w/<id>/ URL can serve: a folder, which records.go
+// owns and which is never stored here, or a pull request, which is.
 type wbItem struct {
 	ID         string `json:"id"`
 	Kind       string `json:"kind"` // "dir" or "pr"
@@ -59,7 +64,6 @@ type wbItem struct {
 	Title      string `json:"title,omitempty"`
 	Repo       string `json:"repo,omitempty"` // owner/repo, PRs only
 	Number     int    `json:"number,omitempty"`
-	Pinned     bool   `json:"pinned,omitempty"`
 	LastOpened int64  `json:"lastOpened"` // unix milliseconds
 }
 
@@ -110,8 +114,8 @@ func wbPRItem(pt PRTarget) wbItem {
 }
 
 // wbStore reads and writes workbench.json. It keeps no copy in memory: every
-// change re-reads the file first, so entries recorded meanwhile by a plain
-// `px0 <dir>` in another terminal are not overwritten.
+// change re-reads the file first, so a pull request recorded meanwhile by a
+// plain `punk0 <pr-url>` in another terminal is not overwritten.
 type wbStore struct {
 	mu   sync.Mutex
 	path string
@@ -129,6 +133,15 @@ func (st *wbStore) load() wbFile {
 		return wbFile{Version: 1}
 	}
 	f.Version = 1
+	// Folders were recorded here before records.json owned them; a file
+	// written by an older punk0 still lists them.
+	kept := f.Items[:0]
+	for _, it := range f.Items {
+		if it.Kind == "pr" {
+			kept = append(kept, it)
+		}
+	}
+	f.Items = kept
 	return f
 }
 
@@ -156,14 +169,13 @@ func (st *wbStore) Get(id string) (wbItem, bool) {
 	return wbItem{}, false
 }
 
-// Record adds an item or refreshes an existing one, marking it opened now.
-// Pinned state survives; a title is only replaced by a non-empty one.
+// Record adds an item or refreshes an existing one, marking it opened now. A
+// title is only replaced by a non-empty one.
 func (st *wbStore) Record(it wbItem) error {
 	return st.Update(func(f *wbFile) {
 		it.LastOpened = time.Now().UnixMilli()
 		for i := range f.Items {
 			if f.Items[i].ID == it.ID {
-				it.Pinned = f.Items[i].Pinned
 				if it.Title == "" {
 					it.Title = f.Items[i].Title
 				}
@@ -175,21 +187,12 @@ func (st *wbStore) Record(it wbItem) error {
 	})
 }
 
-// trimRecent orders items most recent first and drops the oldest unpinned ones.
+// trimRecent orders items most recent first and drops the oldest ones.
 func trimRecent(f *wbFile) {
 	sort.SliceStable(f.Items, func(i, j int) bool { return f.Items[i].LastOpened > f.Items[j].LastOpened })
-	kept := f.Items[:0]
-	unpinned := 0
-	for _, it := range f.Items {
-		if !it.Pinned {
-			if unpinned >= wbMaxRecent {
-				continue
-			}
-			unpinned++
-		}
-		kept = append(kept, it)
+	if len(f.Items) > wbMaxRecent {
+		f.Items = f.Items[:wbMaxRecent]
 	}
-	f.Items = kept
 }
 
 func writeFileAtomic(p string, v any) error {
@@ -220,8 +223,8 @@ func writeFileAtomic(p string, v any) error {
 	return nil
 }
 
-// recordRecent notes a workspace opened outside the workbench (`px0 <dir>`,
-// `px0 <pr-url>`) so it shows up in the workbench later. Best effort.
+// recordRecent notes a pull request opened outside the orchestrator
+// (`punk0 <pr-url>`) so it shows up in its list later. Best effort.
 func recordRecent(it wbItem) {
 	st := &wbStore{path: workbenchStorePath()}
 	_ = st.Record(it)
@@ -329,6 +332,7 @@ func (c *wbChild) failure() string {
 
 type workbench struct {
 	store     *wbStore
+	records   *Records // projects, workspaces and the terminals in them
 	basePath  string
 	cwd       string
 	exe       string
@@ -342,9 +346,14 @@ type workbench struct {
 	mux *http.ServeMux
 }
 
-func newWorkbench(basePath, cwd, exe string, childArgs []string) *workbench {
+func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, error) {
+	rec, err := OpenRecords(workbenchStateDir())
+	if err != nil {
+		return nil, err
+	}
 	wb := &workbench{
 		store:     &wbStore{path: workbenchStorePath()},
+		records:   rec,
 		basePath:  cleanBasePath(basePath),
 		cwd:       cwd,
 		exe:       exe,
@@ -354,7 +363,17 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) *workbench {
 	}
 	wb.routes()
 	go wb.reapIdle()
-	return wb
+	return wb, nil
+}
+
+// serveFrom tells punk0 how to reach itself: a tab's agent reports its hooks
+// to this URL, and the hook settings a claude tab starts with name this
+// executable. Both are known only once the server is listening.
+func (wb *workbench) serveFrom(loopbackURL string) {
+	wb.records.SetHookBase(loopbackURL)
+	if err := writeClaudeHooks(wb.exe); err != nil {
+		uiStatus("warn", "claude hooks", err.Error(), 0, os.Stderr)
+	}
 }
 
 func (wb *workbench) route(sub string) string {
@@ -363,6 +382,31 @@ func (wb *workbench) route(sub string) string {
 
 func (wb *workbench) childBase(id string) string { return wb.route("/w/" + id + "/") }
 
+// childHref is the same link relative to the page's <base href>.
+func (wb *workbench) childHref(id string) string { return "w/" + id + "/" }
+
+// childState is how the child serving a folder is doing, for the list.
+func (wb *workbench) childState(id string) string {
+	wb.mu.Lock()
+	defer wb.mu.Unlock()
+	if c := wb.children[id]; c != nil {
+		return c.state
+	}
+	return "stopped"
+}
+
+// item resolves a /w/<id>/ id: a pull request from the store, or a folder
+// registered in records, which keeps no item of its own.
+func (wb *workbench) item(id string) (wbItem, bool) {
+	if it, ok := wb.store.Get(id); ok {
+		return it, true
+	}
+	if dir := wb.records.Folder(id); dir != "" {
+		return wbDirItem(dir), true
+	}
+	return wbItem{}, false
+}
+
 func (wb *workbench) routes() {
 	sub, _ := fs.Sub(assets, "web")
 	staticPrefix := wb.route("/static/")
@@ -370,14 +414,23 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc(wb.route("/static/themes.css"), (&Server{}).handleThemes)
 	wb.mux.HandleFunc(wb.route("/api/wb/ping"), wb.handlePing)
 	wb.mux.HandleFunc(wb.route("/api/wb/state"), wb.handleState)
-	wb.mux.HandleFunc(wb.route("/api/wb/browse"), wb.handleBrowse)
 	wb.mux.HandleFunc(wb.route("/api/wb/complete"), wb.handleComplete)
 	wb.mux.HandleFunc(wb.route("/api/metrics"), wb.handleMetrics)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
 	wb.mux.HandleFunc(wb.route("/api/wb/open"), wb.handleOpen)
 	wb.mux.HandleFunc(wb.route("/api/wb/stop"), wb.handleStop)
-	wb.mux.HandleFunc(wb.route("/api/wb/pin"), wb.handlePin)
 	wb.mux.HandleFunc(wb.route("/api/wb/remove"), wb.handleRemove)
+	wb.mux.HandleFunc("GET "+wb.route("/api/projects"), wb.handleProjectList)
+	wb.mux.HandleFunc("POST "+wb.route("/api/projects"), wb.handleProjectAdd)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/projects/{id}"), wb.handleProjectRemove)
+	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/workspaces"), wb.handleWorkspaceAdd)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
+	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
+	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
+	wb.mux.HandleFunc("PATCH "+wb.route("/api/tabs/{id}"), wb.handleTabRename)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
+	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
+	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/hook"), wb.handleHook)
 	wb.mux.HandleFunc(wb.route("/w/"), wb.handleWorkspace)
 	wb.mux.HandleFunc(wb.route("/"), wb.handleIndex)
 	if wb.basePath != "/" {
@@ -395,7 +448,7 @@ func (wb *workbench) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, wb.route("/w/")) {
 		// Proxied responses carry the child's own headers.
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+		w.Header().Set("Content-Security-Policy", wbCSP(r.Host))
 	}
 	if uiVerbose {
 		start := time.Now()
@@ -404,6 +457,22 @@ func (wb *workbench) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wb.mux.ServeHTTP(w, r)
+}
+
+// wbCSP is the app's policy with a websocket to this same host allowed: the
+// terminals connect back here, and older browsers do not read 'self' as
+// covering ws:. A Host that is not a plain name, address or port is left out
+// rather than copied into a header.
+func wbCSP(host string) string {
+	plain := func(r rune) bool {
+		return r == '.' || r == '-' || r == ':' || r == '[' || r == ']' ||
+			r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+	}
+	if host == "" || strings.IndexFunc(host, func(r rune) bool { return !plain(r) }) >= 0 {
+		return contentSecurityPolicy
+	}
+	return strings.Replace(contentSecurityPolicy, "connect-src 'self';",
+		"connect-src 'self' ws://"+host+" wss://"+host+";", 1)
 }
 
 // start launches the child for it unless one is already starting or running.
@@ -468,6 +537,13 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 		dir = clone
 		args = append(args, it.URL)
 	} else {
+		// Language servers are off unless the folder asked for them: an
+		// orchestrator keeps many folders open and one server per folder
+		// costs gigabytes. A parent started with -no-lsp already put the flag
+		// in childArgs, which forces them off everywhere.
+		if !wb.records.LSPOn(it.Path) && !slices.Contains(args, "-no-lsp") {
+			args = append(args, "-no-lsp")
+		}
 		args = append(args, it.Path)
 	}
 
@@ -640,7 +716,9 @@ func (wb *workbench) stop(id string) {
 	}
 }
 
-// Close stops every child, in parallel, and waits for them.
+// Close stops everything punk0 owns: the terminals first, so agents are hung
+// up while the folders they run in are still served, then every child, in
+// parallel.
 func (wb *workbench) Close() {
 	wb.mu.Lock()
 	wb.closing = true
@@ -649,6 +727,7 @@ func (wb *workbench) Close() {
 		ids = append(ids, id)
 	}
 	wb.mu.Unlock()
+	wb.records.Close()
 	var wg sync.WaitGroup
 	for _, id := range ids {
 		wg.Add(1)
@@ -657,23 +736,78 @@ func (wb *workbench) Close() {
 	wg.Wait()
 }
 
+// reapIdle stops what nobody is using: a child nobody has had open for
+// workspace.idleStop minutes, and a terminal that has carried nothing for
+// terminal.idleStop minutes. Both are read every tick, so a changed setting
+// takes effect without a restart; 0 means never.
 func (wb *workbench) reapIdle() {
 	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	for range tick.C {
-		var idle []string
-		wb.mu.Lock()
-		for id, c := range wb.children {
-			if c.state == "running" && c.active == 0 && time.Since(c.lastActive) > wbIdleAfter {
-				idle = append(idle, id)
-			}
-		}
-		wb.mu.Unlock()
-		for _, id := range idle {
-			uiStatus("info", "stopped idle workspace", id, 0, os.Stdout)
-			wb.stop(id)
+		cfg := readSettings()
+		wb.reapChildren(idleLimit(cfg.WorkspaceIdleStop, wbWorkspaceIdleStop))
+		wb.reapTabs(idleLimit(cfg.TerminalIdleStop, wbTerminalIdleStop))
+	}
+}
+
+// idleLimit turns a setting in minutes into a duration; an unset setting is
+// the default, and 0 means never.
+func idleLimit(set *float64, def float64) time.Duration {
+	if set != nil {
+		def = *set
+	}
+	if def <= 0 {
+		return 0
+	}
+	return time.Duration(def * float64(time.Minute))
+}
+
+func (wb *workbench) reapChildren(limit time.Duration) {
+	if limit == 0 {
+		return
+	}
+	var idle []string
+	wb.mu.Lock()
+	for id, c := range wb.children {
+		if c.state == "running" && c.active == 0 && time.Since(c.lastActive) > limit {
+			idle = append(idle, id)
 		}
 	}
+	wb.mu.Unlock()
+	for _, id := range idle {
+		uiStatus("info", "stopped idle workspace", id, 0, os.Stdout)
+		wb.stop(id)
+	}
+}
+
+func (wb *workbench) reapTabs(limit time.Duration) {
+	if limit == 0 {
+		return
+	}
+	for _, t := range wb.records.Tabs() {
+		sh := t.shell()
+		if sh == nil {
+			continue
+		}
+		if stopIdleTab(t.Kind, t.Status(), sh.Foreground(), sh.IdleFor(), limit) {
+			uiStatus("info", "stopped idle terminal", t.ID, 0, os.Stdout)
+			t.close()
+		}
+	}
+}
+
+// stopIdleTab decides whether a terminal nothing has used for idleFor may be
+// hung up. A shell only while it sits at its prompt, with no job in front of
+// it; an agent only when its hooks say it is done, since one that is working,
+// waiting for an answer, or reporting nothing at all may lose work.
+func stopIdleTab(kind, status string, foregroundIsShell bool, idleFor, limit time.Duration) bool {
+	if limit == 0 || idleFor < limit {
+		return false
+	}
+	if kind == tabClaude {
+		return status == statusIdle
+	}
+	return foregroundIsShell
 }
 
 /* ---------- HTTP ---------- */
@@ -729,7 +863,7 @@ type wbItemView struct {
 }
 
 func (wb *workbench) view(it wbItem) wbItemView {
-	v := wbItemView{wbItem: it, State: "stopped", Href: wb.childBase(it.ID)}
+	v := wbItemView{wbItem: it, State: "stopped", Href: wb.childHref(it.ID)}
 	wb.mu.Lock()
 	if c := wb.children[it.ID]; c != nil {
 		v.State, v.Error, v.Progress = c.state, c.err, c.progress
@@ -761,52 +895,6 @@ type wbEntry struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 	Git  bool   `json:"git,omitempty"`
-}
-
-func (wb *workbench) handleBrowse(w http.ResponseWriter, r *http.Request) {
-	if !trustedGet(w, r) {
-		return
-	}
-	dir, err := expandPath(r.URL.Query().Get("path"), wb.cwd)
-	if err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ents, err := os.ReadDir(dir)
-	if err != nil {
-		fail(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	showHidden := r.URL.Query().Get("hidden") == "1"
-	out := []wbEntry{}
-	for _, e := range ents {
-		if len(out) >= wbMaxBrowse {
-			break
-		}
-		name := e.Name()
-		if !showHidden && strings.HasPrefix(name, ".") {
-			continue
-		}
-		full := filepath.Join(dir, name)
-		isDir := e.IsDir()
-		if e.Type()&os.ModeSymlink != 0 {
-			if st, err := os.Stat(full); err == nil {
-				isDir = st.IsDir()
-			}
-		}
-		if !isDir {
-			continue
-		}
-		_, gitErr := os.Lstat(filepath.Join(full, ".git"))
-		out = append(out, wbEntry{Name: name, Path: full, Git: gitErr == nil})
-	}
-	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
-	parent := filepath.Dir(dir)
-	if parent == dir {
-		parent = ""
-	}
-	_, gitErr := os.Lstat(filepath.Join(dir, ".git"))
-	writeJSON(w, map[string]any{"path": dir, "parent": parent, "git": gitErr == nil, "entries": out})
 }
 
 // handleComplete completes the folder name being typed: q's last path
@@ -984,8 +1072,9 @@ func readJSONBody(r *http.Request, v any) error {
 	return json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(v)
 }
 
-// handleOpen records a directory or PR URL and starts its child. The page
-// then navigates to href, which shows progress until the child is ready.
+// handleOpen takes what the page's box holds: a pull request URL, which this
+// records and starts, or a folder, which is registered as a project. The page
+// then navigates to href.
 func (wb *workbench) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
@@ -1010,9 +1099,16 @@ func (wb *workbench) handleOpen(w http.ResponseWriter, r *http.Request) {
 		}
 		it = known
 	} else {
+		var dir string
 		var err error
-		if it, err = wb.resolveTarget(body.Target); err != nil {
+		if it, dir, err = wb.resolveTarget(body.Target); err != nil {
 			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if dir != "" {
+			// A folder is not an item: registering it as a project answers
+			// with the workspace to open, like POST /api/projects.
+			wb.openFolder(w, dir)
 			return
 		}
 	}
@@ -1046,32 +1142,35 @@ func (wb *workbench) handleOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wb.start(it, !known)
-	writeJSON(w, map[string]any{"id": it.ID, "href": wb.childBase(it.ID)})
+	writeJSON(w, map[string]any{"id": it.ID, "href": wb.childHref(it.ID)})
 }
 
-func (wb *workbench) resolveTarget(target string) (wbItem, error) {
+// resolveTarget classifies what was typed or passed on the command line: a
+// pull request, which is an item of its own, or a folder, which is not --
+// folders live in records, keyed on their path.
+func (wb *workbench) resolveTarget(target string) (wbItem, string, error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return wbItem{}, errors.New("enter a directory path or a pull request URL")
+		return wbItem{}, "", errors.New("enter a directory path or a pull request URL")
 	}
 	if _, pt, ok := DetectPRURL(target); ok {
 		if gitDisabled {
-			return wbItem{}, errors.New("git is required for PR review; restart punk0 without -no-git")
+			return wbItem{}, "", errors.New("git is required for PR review; restart punk0 without -no-git")
 		}
-		return wbPRItem(pt), nil
+		return wbPRItem(pt), "", nil
 	}
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-		return wbItem{}, errors.New("not a pull or merge request URL (e.g. " + prURLExamples + ")")
+		return wbItem{}, "", errors.New("not a pull or merge request URL (e.g. " + prURLExamples + ")")
 	}
 	p, err := expandPath(target, wb.cwd)
 	if err != nil {
-		return wbItem{}, err
+		return wbItem{}, "", err
 	}
 	root, _, _, err := resolveTarget(p)
 	if err != nil {
-		return wbItem{}, err
+		return wbItem{}, "", err
 	}
-	return wbDirItem(root), nil
+	return wbItem{}, root, nil
 }
 
 func (wb *workbench) handleStop(w http.ResponseWriter, r *http.Request) {
@@ -1089,30 +1188,220 @@ func (wb *workbench) handleStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-func (wb *workbench) handlePin(w http.ResponseWriter, r *http.Request) {
+/* ---------- projects, workspaces and tabs ---------- */
+
+// handleProjectList is what the orchestrator page polls: the whole tree, with
+// the state of the child serving each folder.
+func (wb *workbench) handleProjectList(w http.ResponseWriter, r *http.Request) {
+	if !trustedGet(w, r) {
+		return
+	}
+	views := wb.records.List()
+	for i := range views {
+		for j := range views[i].Workspaces {
+			wb.fillWorkspace(&views[i].Workspaces[j])
+		}
+	}
+	writeJSON(w, views)
+}
+
+// fillWorkspace adds what only the workbench knows: where the folder's editor
+// view is, and whether its child is running.
+func (wb *workbench) fillWorkspace(wv *workspaceView) {
+	id := wbItemID("dir", wv.Dir)
+	wv.Href, wv.Backend = wb.childHref(id), wb.childState(id)
+}
+
+func (wb *workbench) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
 	}
 	var body struct {
-		ID     string `json:"id"`
-		Pinned bool   `json:"pinned"`
+		Dir string `json:"dir"`
 	}
-	if readJSONBody(r, &body) != nil || body.ID == "" {
-		fail(w, http.StatusBadRequest, "id is required")
+	if readJSONBody(r, &body) != nil || strings.TrimSpace(body.Dir) == "" {
+		fail(w, http.StatusBadRequest, "dir is required")
 		return
 	}
-	err := wb.store.Update(func(f *wbFile) {
-		for i := range f.Items {
-			if f.Items[i].ID == body.ID {
-				f.Items[i].Pinned = body.Pinned
-			}
-		}
-	})
+	dir, err := expandPath(body.Dir, wb.cwd)
 	if err != nil {
+		fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	wb.openFolder(w, dir)
+}
+
+// openFolder registers a folder and answers with the workspace that opens it:
+// the page's add box, `punk0 <dir>` in a terminal and a second punk0 handing
+// its folder over all come through here, and all of them may name a folder
+// that is already registered.
+func (wb *workbench) openFolder(w http.ResponseWriter, dir string) {
+	p, ws, err := wb.records.Open(dir)
+	if err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"project": p.ID, "workspace": ws.ID, "href": wb.childHref(wbItemID("dir", ws.Dir))})
+}
+
+func (wb *workbench) handleProjectRemove(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	if err := wb.records.RemoveProject(r.PathValue("id")); err != nil {
+		failRecord(w, err)
+		return
+	}
+	wb.stopOrphans()
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Name     string `json:"name"`
+		Worktree bool   `json:"worktree"`
+		Base     string `json:"base"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	ws, err := wb.records.AddWorkspace(r.PathValue("id"), body.Name, body.Worktree, strings.TrimSpace(body.Base))
+	if err != nil {
+		failRecord(w, err)
+		return
+	}
+	view := wb.records.View(ws)
+	wb.fillWorkspace(&view)
+	writeJSON(w, view)
+}
+
+// handleWorkspaceRemove answers 409 while a worktree has uncommitted changes;
+// ?force=1 deletes them.
+func (wb *workbench) handleWorkspaceRemove(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	if err := wb.records.RemoveWorkspace(r.PathValue("id"), r.URL.Query().Get("force") == "1"); err != nil {
+		failRecord(w, err)
+		return
+	}
+	wb.stopOrphans()
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleLSP turns language servers on or off for a workspace's folder. The
+// child is stopped rather than reconfigured: whether it has language servers
+// is decided when it starts, and the next request starts one that matches.
+func (wb *workbench) handleLSP(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		On bool `json:"on"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	ws := wb.records.Workspace(r.PathValue("id"))
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	if err := wb.records.SetLSP(ws.Dir, body.On); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	wb.stop(wbItemID("dir", ws.Dir))
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	t, err := wb.records.AddTab(r.PathValue("id"), body.Kind)
+	if err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, t.view())
+}
+
+func (wb *workbench) handleTabRename(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if err := wb.records.RenameTab(r.PathValue("id"), body.Name); err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleTabRemove(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	if err := wb.records.RemoveTab(r.PathValue("id")); err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// failRecord answers a records error: 404 for an unknown id, 409 for a
+// worktree with uncommitted changes, which the page may repeat with force,
+// 400 for the rest.
+func failRecord(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errNotFound):
+		fail(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, errDirty):
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "dirty": true})
+	default:
+		fail(w, http.StatusBadRequest, err.Error())
+	}
+}
+
+// stopOrphans stops the children of folders records no longer holds, after a
+// project or workspace was removed.
+func (wb *workbench) stopOrphans() {
+	wb.mu.Lock()
+	ids := make([]string, 0, len(wb.children))
+	for id := range wb.children {
+		ids = append(ids, id)
+	}
+	wb.mu.Unlock()
+	for _, id := range ids {
+		if _, ok := wb.item(id); ok {
+			continue
+		}
+		wb.stop(id)
+		wb.mu.Lock()
+		delete(wb.children, id)
+		wb.mu.Unlock()
+	}
 }
 
 func (wb *workbench) handleRemove(w http.ResponseWriter, r *http.Request) {
@@ -1138,9 +1427,10 @@ func (wb *workbench) handleRemove(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// handleWorkspace serves /w/<id>/...: proxied to the running child, or, for
-// the page itself, a holding page that starts the child and refreshes until
-// it is ready. A bookmarked or reloaded review therefore just reopens.
+// handleWorkspace serves /w/<id>/...: proxied to the child, which any request
+// starts. The page gets a holding page that refreshes until the child is
+// ready, so a bookmarked or reloaded workspace just reopens; every other
+// request waits for it instead, since nothing behind it would retry.
 func (wb *workbench) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, wb.route("/w/"))
 	id, _, hasSlash := strings.Cut(rest, "/")
@@ -1152,7 +1442,73 @@ func (wb *workbench) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, wb.childBase(id), http.StatusFound)
 		return
 	}
+	if wb.serveProxy(w, r, id) {
+		return
+	}
 
+	wb.mu.Lock()
+	c := wb.children[id]
+	var snap wbChild
+	if c != nil {
+		snap = wbChild{state: c.state, err: c.err, title: c.title, gone: c.gone, noClone: c.noClone}
+	}
+	wb.mu.Unlock()
+	it, known := wb.item(id)
+
+	if r.URL.Path != wb.childBase(id) || r.Method != http.MethodGet {
+		if !known {
+			fail(w, http.StatusNotFound, "unknown workspace")
+			return
+		}
+		wb.start(it, false)
+		if wb.waitRunning(id) && wb.serveProxy(w, r, id) {
+			return
+		}
+		fail(w, http.StatusServiceUnavailable, "workspace is not responding")
+		return
+	}
+	if !trustedGet(w, r) {
+		return
+	}
+	if snap.state == "failed" && r.URL.Query().Get("retry") == "" {
+		p := holdingPage{Title: snap.title, Error: snap.err}
+		if known && snap.noClone {
+			p.Choose = wb.basePath + "?open=" + url.QueryEscape(it.URL)
+		} else if !snap.gone {
+			p.Retry = wb.childBase(id) + "?retry=1"
+		}
+		wb.renderHolding(w, p)
+		return
+	}
+	if !known {
+		w.WriteHeader(http.StatusNotFound)
+		wb.renderHolding(w, holdingPage{Title: "Not found", Error: "This workspace is not in punk0 any more."})
+		return
+	}
+	// The refresh drops ?retry, so a second failure stops on the error page,
+	// and keeps the rest of the query: the file and line `punk0 <file>:<n>`
+	// asked for must survive a cold start.
+	if snap.state != "starting" {
+		if it.Kind == "pr" {
+			_ = wb.store.Record(it)
+		}
+		c = wb.start(it, false)
+	}
+	wb.mu.Lock()
+	progress := c.progress
+	wb.mu.Unlock()
+	self := wb.childBase(id)
+	q := r.URL.Query()
+	q.Del("retry")
+	if len(q) > 0 {
+		self += "?" + q.Encode()
+	}
+	wb.renderHolding(w, holdingPage{Title: itemTitle(it), Self: self, Progress: progress, Starting: true})
+}
+
+// serveProxy hands the request to the child when one is running, counting it
+// so the idle reaper leaves a workspace in use alone.
+func (wb *workbench) serveProxy(w http.ResponseWriter, r *http.Request, id string) bool {
 	wb.mu.Lock()
 	c := wb.children[id]
 	var proxy *httputil.ReverseProxy
@@ -1161,56 +1517,38 @@ func (wb *workbench) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		c.active++
 	}
 	wb.mu.Unlock()
-	if proxy != nil {
-		defer func() {
-			wb.mu.Lock()
-			c.active--
-			c.lastActive = time.Now()
-			wb.mu.Unlock()
-		}()
-		proxy.ServeHTTP(w, r)
-		return
+	if proxy == nil {
+		return false
 	}
-
-	isPage := r.URL.Path == wb.childBase(id) && r.Method == http.MethodGet
-	if !isPage {
-		fail(w, http.StatusServiceUnavailable, "workspace is not running; reload the page to start it")
-		return
-	}
-	if !trustedGet(w, r) {
-		return
-	}
-	var snap wbChild
-	if c != nil {
+	defer func() {
 		wb.mu.Lock()
-		snap = wbChild{state: c.state, err: c.err, title: c.title, gone: c.gone, noClone: c.noClone}
+		c.active--
+		c.lastActive = time.Now()
 		wb.mu.Unlock()
-	}
-	if snap.state == "failed" && r.URL.Query().Get("retry") == "" {
-		p := holdingPage{Title: snap.title, Error: snap.err}
-		if it, ok := wb.store.Get(id); ok && snap.noClone {
-			p.Choose = wb.basePath + "?open=" + url.QueryEscape(it.URL)
-		} else if !snap.gone {
-			p.Retry = wb.childBase(id) + "?retry=1"
+	}()
+	proxy.ServeHTTP(w, r)
+	return true
+}
+
+// waitRunning waits out a starting child, up to wbAPIWait: a cold folder
+// takes a moment to index, a PR checkout longer than any request should wait.
+func (wb *workbench) waitRunning(id string) bool {
+	deadline := time.Now().Add(wbAPIWait)
+	for {
+		wb.mu.Lock()
+		state := ""
+		if c := wb.children[id]; c != nil {
+			state = c.state
 		}
-		wb.renderHolding(w, p)
-		return
+		wb.mu.Unlock()
+		if state == "running" {
+			return true
+		}
+		if state != "starting" || time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	it, ok := wb.store.Get(id)
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		wb.renderHolding(w, holdingPage{Title: "Not found", Error: "This workspace is not in the workbench any more."})
-		return
-	}
-	// The refresh drops ?retry, so a second failure stops on the error page.
-	if snap.state != "starting" {
-		_ = wb.store.Record(it)
-		c = wb.start(it, false)
-	}
-	wb.mu.Lock()
-	progress := c.progress
-	wb.mu.Unlock()
-	wb.renderHolding(w, holdingPage{Title: itemTitle(it), Self: wb.childBase(id), Progress: progress, Starting: true})
 }
 
 func withoutItem(items []wbItem, id string) []wbItem {
@@ -1266,7 +1604,7 @@ var holdingTmpl = template.Must(template.New("holding").Parse(`<!doctype html>
   <p class="wb-holding-msg">Could not open <b>{{.Title}}</b></p>
   <pre class="wb-error">{{.Error}}</pre>
   {{end}}
-  <p class="wb-holding-actions">{{if .Retry}}<a class="wb-btn wb-primary" href="{{.Retry}}">Retry</a>{{end}}{{if .Choose}}<a class="wb-btn wb-primary" href="{{.Choose}}">Choose a clone</a>{{end}}<a class="wb-btn" href="{{.Base}}">Back to workbench</a></p>
+  <p class="wb-holding-actions">{{if .Retry}}<a class="wb-btn wb-primary" href="{{.Retry}}">Retry</a>{{end}}{{if .Choose}}<a class="wb-btn wb-primary" href="{{.Choose}}">Choose a clone</a>{{end}}<a class="wb-btn" href="{{.Base}}" target="punk0-agents">Back to punk0 agents</a></p>
 </main>
 </body>
 </html>
