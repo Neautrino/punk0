@@ -103,12 +103,14 @@ initPRScope();
   $('#root-name').textContent = S.meta.name;
   $('#root-name').title = S.meta.root;
   if (S.meta.workbench) {
-    // Opened from the workbench (workbench.go): link back to it.
+    // Opened from the punk0 orchestrator (workbench.go): link back to it, in
+    // the window it names punk0-agents rather than this one.
     const back = document.createElement('a');
     back.className = 'mini wb-back';
     back.href = S.meta.workbench;
-    back.title = 'Back to the punk0 workbench';
-    back.setAttribute('aria-label', 'Back to the punk0 workbench');
+    back.target = 'punk0-agents';
+    back.title = 'punk0 agents';
+    back.setAttribute('aria-label', 'punk0 agents');
     back.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
     $('#root-name').before(back);
   }

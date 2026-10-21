@@ -1,43 +1,27 @@
-/* The workbench page and the holding page shown while a workspace starts
-   (workbench.go). Built from the app's own pieces in style.css (logo, panel
-   heads, the #status bar, metrics chip and menu, kbd, toast); this file only
-   lays them out. Colours come from theme tokens only. */
+/* The orchestrator page and the holding page shown while a folder's or PR's
+   editor starts (workbench.go). Built from the app's own pieces in style.css
+   (panel buttons, tree rows, tabs, code rows, palette rows, the #status bar,
+   metrics chip and menu, kbd, toast); this file only lays them out.
+   Colours come from theme tokens only. */
 #wb-app { display: flex; flex-direction: column; height: 100vh; }
-.wb-scroll { flex: 1; min-height: 0; overflow: auto; }
 .wb .grow { flex: 1; }
 .wb-faint { color: var(--faint); }
 
-.wb-main { max-width: 1100px; margin: 0 auto; padding: 40px 16px 32px; }
-.wb-hero { text-align: center; margin-bottom: 22px; }
-.wb-hero .empty-logo { margin-bottom: 10px; }
-.wb-tagline { margin: 0; color: var(--faint); }
-
 .wb-btn {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
   border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2);
   color: var(--fg); text-decoration: none; white-space: nowrap; font-size: 12px;
 }
 .wb-btn:hover { background: var(--bg3); }
 .wb-btn.wb-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .wb-btn.wb-primary:hover { filter: brightness(1.08); }
-.wb-btn:focus-visible, .wb-link:focus-visible, .wb-row:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.wb-link { color: var(--accent-fg); font: 11px var(--ui); text-transform: none; letter-spacing: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-link:hover { text-decoration: underline; }
+.wb-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.wb-msg { margin: 0; color: var(--err); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 
-.wb-open { display: flex; gap: 8px; }
-.wb-field { position: relative; flex: 1; min-width: 0; }
-.wb-field input {
-  width: 100%; padding: 8px 10px; font-family: var(--mono); font-size: 13px;
-  border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2);
-}
-.wb-field input:focus { border-color: var(--accent); }
-.wb-keys { margin: 8px 0 0; color: var(--faint); font-size: 11px; }
-.wb-keys kbd { padding: 1px 4px; }
-.wb-msg { margin: 8px 0 0; color: var(--err); font-size: 12px; }
-
-/* Folder completion under a path input. */
+/* Folder completion under a path input. It may be wider than the sidebar it
+   opens from, and lies over the panes beside it. */
 .wb-suggest {
-  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; right: 0;
+  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: min(640px, 80vw);
   list-style: none; margin: 0; padding: 4px 0; max-height: 320px; overflow: auto;
   background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
 }
@@ -47,49 +31,14 @@
 .wb-suggest .wb-sg-name { flex: none; color: var(--fg); }
 .wb-suggest .wb-sg-name b { color: var(--accent-fg); font-weight: 600; }
 .wb-suggest .wb-sg-path { flex: 1; min-width: 0; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.wb-git { flex: none; font-size: 10px; padding: 0 5px; border: 1px solid var(--line); border-radius: var(--r); color: var(--gi); }
 
-.wb-clone { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: var(--r-lg); background: var(--bg2); }
-.wb-clone p { margin: 0 0 10px; }
-.wb-clone .wb-clone-head { font-size: 13px; }
-.wb-clone-actions { display: flex; align-items: center; gap: 8px; margin: 10px 0 0 !important; }
-.wb-clone-dest { flex: 1; min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.wb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
-@media (max-width: 760px) { .wb-cols { grid-template-columns: 1fr; } }
-.wb-panel { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg2); min-width: 0; }
-.wb-panel .panel-head { border-bottom: 1px solid var(--line); }
-.wb-check { display: inline-flex; align-items: center; gap: 4px; font: 11px var(--ui); text-transform: none; letter-spacing: 0; color: var(--faint); cursor: pointer; }
-.wb-check input { accent-color: var(--accent); }
-.wb-empty { margin: 0; padding: 16px 12px; color: var(--faint); font-size: 12px; }
-
-.wb-list { list-style: none; margin: 0; padding: 4px 0; max-height: 56vh; overflow: auto; }
-.wb-row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; color: inherit; text-decoration: none; min-width: 0; }
-.wb-row:hover { background: var(--bg3); }
-.wb-row .wb-ico { flex: none; color: var(--faint); display: inline-flex; }
-.wb-row .wb-ico.pr { color: var(--gi); }
-.wb-row .wb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.wb-row .wb-title, .wb-row .wb-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-row .wb-sub { color: var(--faint); font: 11px var(--mono); }
-.wb-row .wb-when { flex: none; color: var(--faint); font-size: 11px; }
-.wb-row .wb-acts { flex: none; display: flex; gap: 2px; visibility: hidden; }
-.wb-row:hover .wb-acts, .wb-row:focus-within .wb-acts, .wb-row .wb-acts .on { visibility: visible; }
-.wb-acts button { padding: 2px 5px; border-radius: var(--r); color: var(--faint); font-size: 12px; }
-.wb-acts button:hover { color: var(--fg); background: var(--bg4); }
-.wb-acts button.on { color: var(--accent-fg); }
-.wb-sep { margin: 4px 12px; border-top: 1px solid var(--line); }
-
-.wb-state { flex: none; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; color: var(--faint); }
+/* An editor's state: a dot coloured by state. */
+.wb-state { flex: none; display: inline-flex; align-items: center; color: var(--faint); }
 .wb-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .wb-state.running { color: var(--gi); }
 .wb-state.starting { color: var(--mark-active); }
 .wb-state.failed { color: var(--err); }
-
-.wb-crumbs { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
-.wb-crumbs .mini { margin-left: 0; display: inline-flex; padding: 3px; }
-.wb-path { flex: 1; min-width: 0; font: 12px var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
-.wb-dirs .wb-row { cursor: pointer; }
-.wb-git { flex: none; font-size: 10px; padding: 0 5px; border: 1px solid var(--line); border-radius: var(--r); color: var(--gi); }
-.wb-clone-mode .wb-dirs .wb-git { border-color: var(--gi); }
 
 /* The app's status bar, standing alone at the bottom of the page. */
 .wb-status { gap: 10px; }
@@ -98,7 +47,6 @@
 /* Shed detail on narrow screens, as the app's status bar does (fit-N rules). */
 @media (max-width: 560px) {
   .wb-status .metric-label, .wb-status #st-running, .wb-status .status-sep, .wb-status #st-ver { display: none; }
-  .wb-keys { display: none; }
 }
 
 /* Theme picker, opened from the palette button; placed like #metrics-menu. */
@@ -111,7 +59,216 @@
 .wb-menu li[aria-selected="true"] { background: var(--bg4); }
 .wb-menu li .wb-faint { margin-left: auto; font-size: 11px; }
 
-/* Holding page. */
+/* ---------- orchestrator: three panes ---------- */
+#o-main { flex: 1; min-height: 0; display: flex; }
+#o-side, #o-files {
+  width: 260px; flex: none; display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg2);
+}
+#o-side { border-right: 1px solid var(--line); }
+#o-files { border-left: 1px solid var(--line); overflow: hidden; }
+#o-center { flex: 1; min-width: 320px; display: flex; flex-direction: column; position: relative; background: var(--bg); }
+.o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+
+.o-head {
+  height: 30px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 12px;
+  background: var(--bg2); border-bottom: 1px solid var(--line); user-select: none;
+}
+.o-title {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--dim);
+}
+.o-head-acts, .o-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: 2px; }
+.o-head .mini, .o-acts .mini {
+  margin-left: 0; width: 20px; height: 20px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mini:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.mini:disabled { opacity: .4; cursor: default; background: none; }
+.o-acts .mini.o-del:hover { color: var(--err); }
+.o-note { margin: 0; padding: 10px 12px; color: var(--faint); font-size: 12px; }
+.o-err { color: var(--err); white-space: pre-wrap; word-break: break-word; }
+.o-mono { font-family: var(--mono); word-break: break-all; }
+
+/* Something is under way: starting editors, working agents. */
+@keyframes o-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: no-preference) {
+  .o-backend.starting, .o-tab-dot.working, .o-badge.working::before { animation: o-pulse 1.2s ease-in-out infinite; }
+}
+.o-acts .mini:hover { background: var(--bg4); }
+
+/* ---------- left: projects, workspaces, scratch, reviews ---------- */
+#o-projects { padding: 4px 0 12px; }
+.o-form {
+  flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.o-field { position: relative; }
+.o-field input, .o-input {
+  width: 100%; height: 26px; padding: 0 8px; font: 12px var(--mono);
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--bg2);
+}
+.o-field input:focus, .o-input:focus { border-color: var(--accent); }
+.o-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); cursor: pointer; }
+.o-check input { accent-color: var(--accent); }
+.o-form-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.o-clone { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.o-clone p { margin: 0; }
+.o-clone p.wb-faint { font-size: 11px; }
+
+.o-side-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 12px; color: var(--dim); }
+.o-side-empty p { margin: 0; }
+
+.o-proj-row, .o-ws-row, .o-pr-row {
+  display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px 0 8px;
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+.o-proj-row:hover, .o-ws-row:hover, .o-pr-row:hover { background: var(--bg3); }
+.o-ws-row { padding-left: 24px; }
+.o-scratch .o-ws-row { padding-left: 12px; }
+.o-ws-row.active { background: var(--sel); }
+/* Row actions show on hover, so names keep the width otherwise. */
+.o-proj-row .o-acts, .o-ws-row .o-acts, .o-pr-row .o-acts { display: none; }
+.o-proj-row:hover .o-acts, .o-ws-row:hover .o-acts, .o-pr-row:hover .o-acts,
+.o-proj-row:focus-within .o-acts, .o-ws-row:focus-within .o-acts, .o-pr-row:focus-within .o-acts { display: flex; }
+
+/* Same drawn disclosure triangle as the tree's folders. */
+.o-arrow { width: 12px; height: 12px; flex: none; position: relative; transition: transform .12s ease; }
+.o-arrow::before {
+  content: ""; position: absolute; left: 3px; top: 2px;
+  border: 4px solid transparent; border-left-color: var(--faint); border-right-width: 0;
+}
+.o-arrow.open { transform: rotate(90deg); }
+.o-proj-name { flex: 0 1 auto; min-width: 48px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--fg); }
+.o-proj-branch { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 11px var(--mono); color: var(--faint); }
+
+.o-section {
+  display: flex; align-items: center; height: 24px; margin-top: 10px; padding: 0 6px 0 12px;
+  border-top: 1px solid var(--line);
+  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--dim);
+}
+.o-section .o-acts { display: flex; }
+
+/* The workspace's editor backend: hollow when stopped. */
+.o-backend { width: 7px; height: 7px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
+.o-backend.starting { background: var(--mark-active); border-color: var(--mark-active); }
+.o-backend.running { background: var(--gi); border-color: var(--gi); }
+.o-backend.failed { background: var(--err); border-color: var(--err); }
+/* The name keeps some width when the row's actions show; the chip gives way
+   first, and the status badge steps aside for the actions. */
+.o-ws-name { flex: 1 1 auto; min-width: 48px; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.o-ws-row:hover .o-badge, .o-ws-row:focus-within .o-badge { display: none; }
+.o-ws-row.active .o-ws-name, .o-ws-row:hover .o-ws-name { color: var(--fg); }
+.o-ws-row.missing .o-ws-name { color: var(--faint); text-decoration: line-through; }
+
+.o-chip {
+  flex: 0 1 auto; min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+  font: 10px/14px var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: var(--r);
+}
+.o-chip.o-wt { color: var(--accent-fg); }
+.o-chip.o-missing { color: var(--err); }
+/* Running tabs, or the most urgent agent status among them. */
+.o-badge {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 5px;
+  font: 10px/14px var(--mono); color: var(--dim); background: var(--bg3); border-radius: var(--r);
+}
+.o-badge.working, .o-badge.idle, .o-badge.waiting { background: none; padding: 0; }
+.o-badge.working::before, .o-badge.idle::before, .o-badge.waiting::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.o-badge.working { color: var(--accent-fg); }
+.o-badge.idle { color: var(--gi); }
+.o-badge.waiting { color: var(--mark-active); font-weight: 600; }
+.o-acts .mini.o-lsp { width: auto; padding: 0 4px; font: 600 9.5px/1 var(--mono); letter-spacing: .03em; }
+.o-acts .mini.o-lsp.on { color: var(--accent-fg); }
+
+.o-pr-ico { flex: none; display: inline-flex; color: var(--gi); }
+.o-pr-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
+.o-pr-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.o-pr-sub { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; font: 10.5px var(--mono); color: var(--faint); }
+
+/* ---------- middle: tabs, terminal, viewer ---------- */
+/* The bar's line is a shadow, as in the app, so the active tab covers it. */
+#o-tab-head { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); }
+#o-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#o-tabs::-webkit-scrollbar { display: none; }
+#o-tabs .tab { height: 100%; line-height: normal; }
+#o-new-tab { flex: none; margin-left: 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+
+/* A terminal tab's PTY: hollow when stopped, then by agent status. */
+.o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
+.o-tab-dot.on { background: var(--gi); border-color: var(--gi); }
+.o-tab-dot.on.working { background: var(--accent-fg); border-color: var(--accent-fg); }
+.o-tab-dot.on.waiting { background: var(--mark-active); border-color: var(--mark-active); }
+.o-tab-kind { font-family: var(--mono); color: var(--faint); }
+.tab.active .o-tab-kind { color: var(--accent); }
+/* File kind, drawn as in the app's tree (.tr .ic). */
+.o-tab-ic { width: 7px; height: 7px; flex: none; border-radius: 2px; background: var(--faint); opacity: .75; }
+.o-tab-ic[data-t="code"] { background: var(--nf); }
+.o-tab-ic[data-t="data"] { background: var(--kt); }
+.o-tab-ic[data-t="doc"]  { background: var(--dim); }
+.o-tab-ic[data-t="web"]  { background: var(--nt); }
+.o-tab-ic[data-t="img"]  { background: var(--nc); }
+
+.o-menu {
+  position: absolute; z-index: 20; min-width: 170px; padding: 4px 0; display: flex; flex-direction: column;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+.o-menu button { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 12px; font-size: 12px; color: var(--fg); text-align: left; }
+.o-menu button:hover, .o-menu button:focus-visible { background: var(--bg4); outline: none; }
+.o-menu-kind { width: 14px; text-align: center; font-family: var(--mono); color: var(--dim); }
+.o-menu-kind.claude { color: var(--accent); }
+/* A small page outline: the file entry. */
+.o-menu-kind.file::before {
+  content: ""; display: inline-block; width: 8px; height: 10px; vertical-align: -1px;
+  border: 1.5px solid currentColor; border-radius: var(--r);
+}
+
+#o-term { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
+
+#o-viewer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#o-view-head {
+  height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  border-bottom: 1px solid var(--line); font: 11px var(--mono);
+}
+#o-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+#o-file-meta { flex: none; color: var(--faint); }
+#o-code-vp { flex: 1; min-height: 0; overflow: auto; position: relative; }
+#o-code-sizer { position: relative; min-width: 100%; }
+#o-code-rows { position: absolute; top: 0; left: 0; min-width: 100%; width: max-content; }
+#o-code-rows .g { cursor: default; }
+#o-code-vp.o-image #o-code-rows { position: static; width: auto; padding: 16px; }
+#o-code-vp.o-image img { display: block; max-width: 100%; }
+
+#o-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--dim); text-align: center; padding: 0 16px; }
+#o-empty p { display: none; margin: 0; }
+#o-empty .wb-faint { font-size: 12px; }
+#o-empty b { color: var(--fg); }
+#o-empty[data-ws="none"] .o-empty-none,
+#o-empty[data-ws="yes"] .o-empty-yes,
+#o-empty[data-ws="missing"] .o-empty-missing { display: block; }
+
+/* Open file picker: the app's palette rows (.pi) in a box over the center. */
+#o-picker {
+  position: absolute; inset: 30px 0 0 0; z-index: 30;
+  display: flex; justify-content: center; align-items: flex-start; padding-top: 48px; background: var(--scrim);
+}
+#o-picker-box {
+  width: min(600px, 92%); max-height: 70%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+#o-picker-input { width: 100%; flex: none; padding: 10px 14px; font: 13.5px var(--mono); border-bottom: 1px solid var(--line); }
+#o-picker-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+#o-picker-list .pi { align-items: center; padding: 4px 14px; }
+#o-picker-list .pn { font-size: 12.5px; }
+
+/* ---------- right: files ---------- */
+#o-tree { padding: 4px 0 16px; }
+#o-files-foot {
+  height: 24px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+  border-top: 1px solid var(--line); color: var(--accent);
+}
+#o-files-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--mono); color: var(--fg); }
+
+/* ---------- holding page ---------- */
 .wb-holding { max-width: 640px; margin: 18vh auto 0; padding: 0 16px; }
 .wb-holding .empty-logo { justify-content: flex-start; margin-bottom: 20px; }
 .wb-holding-msg { font-size: 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
