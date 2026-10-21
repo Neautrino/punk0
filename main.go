@@ -48,7 +48,8 @@ func main() {
 		_            = flag.Bool("y", false, "answer yes to prompts (deprecated; PRs are always opened without prompt)")
 		_            = flag.Bool("yes", false, "answer yes to prompts (alias for -y)")
 		basePathFlag = flag.String("base-path", "", "base URL path prefix to serve endpoints and assets from (e.g. /rev-123/)")
-		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the px0 workbench")
+		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the punk0 workbench")
+		wbHost       = flag.String("workbench-host", "", "internal: the address the workbench that started this child listens on")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "punk0 %s - a code navigator\n\nusage:\n  punk0 [flags]                      open the workbench\n  punk0 [flags] <file or directory>\n  punk0 [flags] <pr-url>\n\nflags:\n", version)
@@ -186,6 +187,14 @@ func main() {
 
 	pxSrv := NewServer(ix, lsp, configuredBasePath)
 	pxSrv.tel = tel
+	// A workbench child always listens on 127.0.0.1 behind the workbench's
+	// proxy, which keeps the browser's Host: what counts is where the
+	// workbench itself listens.
+	publicHost := *host
+	if *wbChild && *wbHost != "" {
+		publicHost = *wbHost
+	}
+	pxSrv.localOnly = loopbackBind(publicHost)
 	if *wbChild {
 		pxSrv.workbenchURL = workbenchBaseOf(configuredBasePath)
 	} else if pr != nil {
@@ -389,7 +398,8 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 	if err != nil {
 		fatal(err)
 	}
-	wb := newWorkbench(basePath, cwd, exe, childArgs)
+	wb := newWorkbench(basePath, cwd, exe, append(childArgs, "-workbench-host", host))
+	wb.localOnly = loopbackBind(host)
 	srv := &http.Server{Handler: wb}
 
 	u := viewerURL(addr, "", 0, basePath)

@@ -333,6 +333,7 @@ type workbench struct {
 	cwd       string
 	exe       string
 	childArgs []string // flags handed on to every child (-no-lsp, -agent, ...)
+	localOnly bool     // listening on loopback only: refuse DNS-rebound requests (hostguard.go)
 
 	mu       sync.Mutex
 	children map[string]*wbChild
@@ -388,6 +389,9 @@ func (wb *workbench) routes() {
 }
 
 func (wb *workbench) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if refuseRebound(wb.localOnly, w, r) {
+		return
+	}
 	if !strings.HasPrefix(r.URL.Path, wb.route("/w/")) {
 		// Proxied responses carry the child's own headers.
 		w.Header().Set("Cache-Control", "no-store")

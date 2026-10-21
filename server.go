@@ -69,6 +69,7 @@ type Server struct {
 	session    *sessionManager
 
 	workbenchURL string // the workbench's base path, when this px0 is one of its workspaces
+	localOnly    bool   // punk0 listens on loopback only: refuse DNS-rebound requests (hostguard.go)
 
 	lastReq atomic.Int64 // unix nanos of the most recent request
 
@@ -260,6 +261,9 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 // ServeHTTP delegates incoming HTTP requests to the configured ServeMux,
 // recording request timing and updating access timestamps.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if refuseRebound(s.localOnly, w, r) {
+		return
+	}
 	streamPath := s.routePath("/api/stream")
 	gitStreamPath := s.routePath("/api/git/stream")
 	metricsPath := s.routePath("/api/metrics")
