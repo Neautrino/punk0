@@ -50,11 +50,22 @@ export function initTabs() {
   for (const el of [barEl, fileBarEl]) {
     el.addEventListener('click', onTabClick);
     el.addEventListener('dblclick', onRename);
+    el.addEventListener('wheel', onTabWheel, { passive: false });
   }
   $('#o-file-new').addEventListener('click', () => openPicker());
   subscribe(renderTabs);
   on('setting:changed', key => key.startsWith('agents.') && renderAgents());
   loadAgents();
+}
+
+// A mouse wheel scrolls a bar with more tabs than fit sideways. Horizontal
+// deltas (trackpads, Shift+wheel) already scroll it natively.
+function onTabWheel(e) {
+  const el = e.currentTarget;
+  if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+  e.preventDefault();
+  const step = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 40 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? el.clientWidth : 1;
+  el.scrollLeft += e.deltaY * step;
 }
 
 async function loadAgents() {
