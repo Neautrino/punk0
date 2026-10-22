@@ -1281,24 +1281,30 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	lines, exact := d.Lines(start, start+count)
 	_, coming := d.Exact()
-	diffAvail := false
+	diffAvail, add, del := false, 0, 0
 	if gitAvailable(s.ix.Root()) {
 		if ref := q.Get("ref"); ref != "" {
 			// Pinned to one commit: what matters is whether that commit touched
 			// the file, not whether the working tree has since diverged.
 			diffAvail = gitDiffCommit(s.ix.Root(), rel, ref) != ""
-		} else if s.pr != nil {
-			diffAvail = gitDiffAgainst(s.ix.Root(), rel, s.diffBase) != "" ||
-				gitDiffBetween(s.ix.Root(), rel, s.diffBase, s.prHeadSHA) != "" ||
-				gitDiffAgainst(s.ix.Root(), rel, s.prHeadSHA) != ""
 		} else {
-			diffAvail = gitDiffAgainst(s.ix.Root(), rel, s.diffBase) != ""
+			// The working tree against the base: its +/- lines are what the
+			// agents page's status bar shows for the file.
+			wt := gitDiffAgainst(s.ix.Root(), rel, s.diffBase)
+			add, del = diffLineCounts(wt)
+			diffAvail = wt != ""
+			if !diffAvail && s.pr != nil {
+				diffAvail = gitDiffBetween(s.ix.Root(), rel, s.diffBase, s.prHeadSHA) != "" ||
+					gitDiffAgainst(s.ix.Root(), rel, s.prHeadSHA) != ""
+			}
 		}
 	}
 	writeJSON(w, map[string]any{
 		"path": rel, "lang": d.Lang, "total": d.Total, "maxCols": d.MaxCols,
 		"start": start, "lines": lines, "size": st.Size(),
 		"exact": exact, "refine": !exact && coming,
+		"eol": d.EOL, "encoding": d.Encoding,
+		"added": add, "deleted": del,
 		"markdown":      isMarkdown(rel),
 		"table":         isTable(rel),
 		"diffAvailable": diffAvail,

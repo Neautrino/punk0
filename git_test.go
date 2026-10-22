@@ -343,9 +343,16 @@ func TestGitGutter(t *testing.T) {
 	if fileBody["diffAvailable"] != true {
 		t.Errorf("f.go diffAvailable = %v, want true", fileBody["diffAvailable"])
 	}
+	// bravo replaced, a line inserted, golf removed: +2 -2, as git --numstat.
+	if fileBody["added"] != 2.0 || fileBody["deleted"] != 2.0 {
+		t.Errorf("f.go added/deleted = %v/%v, want 2/2", fileBody["added"], fileBody["deleted"])
+	}
 	_, cleanBody := get(t, s, "/api/file?path=clean.go")
 	if cleanBody["diffAvailable"] != false {
 		t.Errorf("clean.go diffAvailable = %v, want false", cleanBody["diffAvailable"])
+	}
+	if cleanBody["added"] != 0.0 || cleanBody["deleted"] != 0.0 {
+		t.Errorf("clean.go added/deleted = %v/%v, want 0/0", cleanBody["added"], cleanBody["deleted"])
 	}
 }
 

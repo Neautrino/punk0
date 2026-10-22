@@ -226,6 +226,32 @@ func TestGiantLinesDoNotBlowUpTheWindow(t *testing.T) {
 	}
 }
 
+// The status bar shows what a file was on disk, though Open serves its lines
+// with CRLF already turned into LF.
+func TestOpenReportsLineEndingAndEncoding(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ name, body, eol, enc string }{
+		{"lf.txt", "a\nb\n", "LF", "UTF-8"},
+		{"none.txt", "no break", "LF", "UTF-8"},
+		{"crlf.txt", "a\r\nb\r\n", "CRLF", "UTF-8"},
+		{"mixed.txt", "a\r\nb\n", "Mixed", "UTF-8"},
+		{"bom.txt", "\uFEFFa\n", "LF", "UTF-8 with BOM"},
+		{"latin1.txt", "caf\xe9\n", "LF", "Not UTF-8"},
+	} {
+		p := filepath.Join(dir, c.name)
+		if err := os.WriteFile(p, []byte(c.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, err := Open(p, c.name)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if d.EOL != c.eol || d.Encoding != c.enc {
+			t.Errorf("%s: EOL/encoding = %q/%q, want %q/%q", c.name, d.EOL, d.Encoding, c.eol, c.enc)
+		}
+	}
+}
+
 func TestEvictRemovesDocument(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test.go")
 	if err := os.WriteFile(tmp, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {

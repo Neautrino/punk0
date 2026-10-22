@@ -790,6 +790,26 @@ func parseNewStart(hdr string) int {
 	return 1
 }
 
+// diffLineCounts counts the added and removed lines in a unified diff, as
+// git's --numstat does: '+'/'-' lines inside hunks, not the ---/+++ header.
+func diffLineCounts(diff string) (add, del int) {
+	inHunk := false
+	for diff != "" {
+		var line string
+		line, diff, _ = strings.Cut(diff, "\n")
+		switch {
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case !inHunk:
+		case strings.HasPrefix(line, "+"):
+			add++
+		case strings.HasPrefix(line, "-"):
+			del++
+		}
+	}
+	return add, del
+}
+
 // GitCommit represents a single commit in git log.
 type GitCommit struct {
 	Hash    string `json:"hash"`

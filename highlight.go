@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -128,6 +129,11 @@ type Doc struct {
 	Lang    string
 	MaxCols int
 	Total   int
+
+	// As read from disk, before CRLF became LF: "LF", "CRLF" or "Mixed", and
+	// "UTF-8", "UTF-8 with BOM" or "Not UTF-8". Empty for a deleted file.
+	EOL      string
+	Encoding string
 
 	src     string
 	lineOff []int // lineOff[i] is the byte offset of line i; lineOff[Total] == len(src)
@@ -564,10 +570,37 @@ func Open(abs, rel string) (*Doc, error) {
 	if isBinary(data) {
 		return nil, fmt.Errorf("binary file")
 	}
-	d := newDoc(strings.ReplaceAll(string(data), "\r\n", "\n"), rel)
+	src := string(data)
+	d := newDoc(strings.ReplaceAll(src, "\r\n", "\n"), rel)
+	d.EOL, d.Encoding = lineEnding(src), textEncoding(src)
 	d.key = key
 	cache.put(key, d)
 	return d, nil
+}
+
+// lineEnding names how src ends its lines. A file without a line break
+// reads as LF.
+func lineEnding(src string) string {
+	crlf := strings.Count(src, "\r\n")
+	switch {
+	case crlf == 0:
+		return "LF"
+	case crlf == strings.Count(src, "\n"):
+		return "CRLF"
+	}
+	return "Mixed"
+}
+
+// textEncoding names src's encoding as far as punk0 can tell: it decodes
+// everything as UTF-8, so anything else is only flagged.
+func textEncoding(src string) string {
+	switch {
+	case !utf8.ValidString(src):
+		return "Not UTF-8"
+	case strings.HasPrefix(src, "\uFEFF"):
+		return "UTF-8 with BOM"
+	}
+	return "UTF-8"
 }
 
 // ------------------------------------------------------------------ diff
