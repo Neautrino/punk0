@@ -43,6 +43,8 @@ Language server definitions reside in [`lspservers.go`](../../lspservers.go). Mu
 | Java              | `.java`                      | `jdtls`                      | -               | `$PATH`                    |
 | C#                | `.cs`                        | `omnisharp`                  | -               | `$PATH`                    |
 
+A server that refuses `initialize` is shut down by `spawn` (`shutdown`: stdin closed, killed after a second): some, such as `typescript-language-server` without a TypeScript it can use, report the error and keep running, and nothing would ever talk to them again.
+
 ## 3. Communication & Lifecycle Management
 
 Each active language server is managed by an `lspClient` struct:

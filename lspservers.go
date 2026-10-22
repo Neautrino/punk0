@@ -622,6 +622,12 @@ func (m *lspManager) spawn(def *lspServerDef, done chan struct{}) {
 
 	c := newLSPClient(*def, m.root)
 	err := c.start(ctx)
+	if err != nil {
+		// A server can refuse initialize and keep running (typescript-
+		// language-server without a TypeScript it can use): nothing would
+		// ever talk to it again, so it must not be left holding memory.
+		go c.shutdown()
+	}
 
 	m.mu.Lock()
 	if err != nil {
