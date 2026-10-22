@@ -11,8 +11,10 @@
 // its first prompt (scratch.go); renaming, grouping, pinning and archiving
 // change labels only. New groups and group names are edited in place.
 import { $, esc } from '../state.js';
+import { showToast } from '../ui.js';
 import { call, failed, openEditor } from './api.js';
 import { state, subscribe, reload, selectWorkspace, workspace, tildify, wsLabel } from './store.js';
+import { getSetting } from './settings.js';
 import { openNewChat, closeNewChat } from './newchat.js';
 import { openNewWorkspace, closeNewWorkspace } from './newworkspace.js';
 import { openAddProject, closeAddProject } from './addproject.js';
@@ -692,7 +694,7 @@ async function removeProject(p) {
 
 async function removeWorkspace(w) {
   const what = {
-    worktree: `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is kept.`,
+    worktree: `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is ${getSetting('workspace.deleteMergedBranch') ? 'deleted if merged, else kept' : 'kept'}.`,
     local: `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`,
     folder: ownFolder(w)
       ? `Delete chat "${wsLabel(w)}" for good? Its folder ${w.dir} and everything in it are deleted.`
@@ -706,6 +708,7 @@ async function removeWorkspace(w) {
     res = await call('DELETE', `${path}?force=1`);
   }
   if (!res.ok) failed(res);
+  else if (res.data?.note) showToast('!', res.data.note, 6000);
   reload();
 }
 

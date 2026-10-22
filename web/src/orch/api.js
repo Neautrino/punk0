@@ -44,8 +44,7 @@ export const failed = res => showToast('!', res.data?.error || 'Request failed',
 // windows are named after it, so opening a folder twice reuses its window.
 export const dirID = href => (href.match(/w\/([^/]+)\/?$/) || [])[1] || href;
 
-// query, like '?settings', reaches the editor page; the window is still the
-// folder's own.
-export function openEditor(href, query = '') {
-  window.open(pageURL(href + query), 'punk0-w-' + dirID(href));
+// The window is named after the folder, so opening it twice reuses it.
+export function openEditor(href) {
+  window.open(pageURL(href), 'punk0-w-' + dirID(href));
 }

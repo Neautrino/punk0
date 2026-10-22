@@ -12,6 +12,7 @@ import { $, esc } from '../state.js';
 import { showToast } from '../ui.js';
 import { call, openEditor } from './api.js';
 import { state, reload, selectWorkspace, tildify } from './store.js';
+import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 import { placeFlyout } from './flyout.js';
 
 const PREFS = 'punk0.newWorkspace';
@@ -123,8 +124,8 @@ async function loadProject() {
   const prefs = loadPrefs()[p.id] || {};
   where = p.git ? (prefs.where || 'worktree') : 'local';
   baseEl.value = prefs.base || '';
-  lspEl.checked = !!prefs.lsp;
-  if (prefs.agent && [...agentEl.options].some(o => o.value === prefs.agent && !o.disabled)) agentEl.value = prefs.agent;
+  lspEl.checked = 'lsp' in prefs ? !!prefs.lsp : !!getSetting('workspace.lspDefault');
+  chooseAgent(prefs);
   whereEls.find(b => b.dataset.where === 'worktree').disabled = !p.git;
   setWhere(where);
   refsEl.innerHTML = '';
@@ -154,18 +155,26 @@ function setWhere(w) {
 }
 
 // loadAgents fills the agent list: none (the welcome view), installed agents,
-// a plain shell, then those not installed, shown but disabled.
+// a plain shell, then those not installed, shown but disabled; agents in
+// agents.hidden are left out.
 async function loadAgents() {
   agentEl.innerHTML = '<option value="">None (welcome screen)</option>';
   const res = await call('GET', 'api/agents');
   if (!done) return;
   const agents = res.ok ? res.data : [];
+  const hidden = new Set(getSetting('agents.hidden') || []);
   agentEl.innerHTML = '<option value="">None (welcome screen)</option>' +
-    agents.filter(a => a.installed).map(a => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join('') +
-    '<option value="shell">Shell</option>' +
-    agents.filter(a => !a.installed).map(a => `<option value="${esc(a.id)}" disabled>${esc(a.label)} (not installed)</option>`).join('');
-  const want = (loadPrefs()[projectEl.value] || {}).agent;
-  agentEl.value = [...agentEl.options].some(o => o.value === want && !o.disabled) ? want : '';
+    visibleAgents(agents).map(a => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join('') +
+    agents.filter(a => !a.installed && !hidden.has(a.id)).map(a => `<option value="${esc(a.id)}" disabled>${esc(a.label)} (not installed)</option>`).join('');
+  chooseAgent(loadPrefs()[projectEl.value] || {});
+}
+
+// chooseAgent selects the project's last choice (None included), else
+// agents.default.
+function chooseAgent(prefs) {
+  const usable = id => [...agentEl.options].some(o => o.value === id && !o.disabled);
+  if ('agent' in prefs && usable(prefs.agent)) agentEl.value = prefs.agent;
+  else agentEl.value = defaultAgent([...agentEl.options].filter(o => o.value && !o.disabled).map(o => ({ id: o.value })));
 }
 
 /* ---------- the plan ---------- */

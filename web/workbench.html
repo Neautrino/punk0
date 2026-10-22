@@ -261,8 +261,7 @@
         </button>
       </header>
       <div id="o-new-menu" class="o-menu" role="menu" hidden>
-        <button type="button" role="menuitem" data-new-tab="claude"><span class="o-menu-kind claude">✳</span>Claude Code</button>
-        <button type="button" role="menuitem" data-new-tab="shell"><span class="o-menu-kind">$</span>Shell</button>
+        <div id="o-new-agents" class="o-agent-list"></div>
         <button type="button" role="menuitem" data-new-tab="file"><span class="o-menu-kind file"></span>Open file…</button>
       </div>
       <div id="o-term" hidden></div>
@@ -285,8 +284,7 @@
           <p class="o-welcome-tag">Code review and agent orchestration in your browser</p>
           <p class="o-empty-yes o-welcome-ws" id="o-empty-ws"></p>
           <div class="o-empty-yes o-welcome-acts">
-            <button type="button" data-new-tab="claude"><span class="o-menu-kind claude">✳</span><span>New Claude Code chat</span><span class="wb-faint">runs <code>claude</code> in this folder</span></button>
-            <button type="button" data-new-tab="shell"><span class="o-menu-kind">$</span><span>New shell</span><span class="wb-faint">your own shell, in a real terminal</span></button>
+            <div id="o-empty-agents" class="o-agent-list"></div>
             <button type="button" data-new-tab="file"><span class="o-menu-kind file"></span><span>Open file…</span><span class="wb-faint">or pick one in the tree on the right</span></button>
           </div>
           <p class="o-empty-none">Add a folder on the left to start.</p>

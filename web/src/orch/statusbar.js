@@ -1,16 +1,16 @@
 // web/src/orch/statusbar.js
 // The status bar under the three panes. Left: version, then help (the
-// keyboard shortcuts sheet), GitHub and settings. Right: one button with the
+// keyboard shortcuts sheet), GitHub and settings (settings.js). Right: one button with the
 // running terminals, running agents and total RAM, which opens the resource
 // panel (resources.js).
 import { $, esc, keyCaps } from '../state.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
-import { openEditor } from './api.js';
-import { state, subscribe, workspace } from './store.js';
+import { state, subscribe } from './store.js';
 import { initResources, refreshResources } from './resources.js';
 
 // The agents page's own keys; the editor's live in shortcuts.js.
 const SHORTCUTS = [
+  [['Mod+,'], 'Settings (outside a terminal)'],
   [['Mod+B'], 'Show / hide the projects pane (outside a terminal)'],
   [['Mod+Alt+B'], 'Show / hide the files pane (outside a terminal)'],
   [['Left', 'Right'], 'Move a focused pane border 16 px'],
@@ -38,20 +38,11 @@ function renderStatus() {
   $('#o-empty-ver').textContent = version ? 'v' + version : '';
   $('#st-ver').textContent = version ? 'v' + version : '';
   const running = state.projects.flatMap(p => p.workspaces).flatMap(w => w.tabs).filter(t => t.running);
-  const agents = running.filter(t => t.kind === 'claude').length;
+  const agents = running.filter(t => t.kind !== 'shell').length;
   const terms = running.length - agents;
   $('#st-terms-n').textContent = terms;
   $('#st-agents-n').textContent = agents;
   $('#st-res').title = `${terms} terminal${terms === 1 ? '' : 's'} and ${agents} agent${agents === 1 ? '' : 's'} running. Click for what each uses`;
-  $('#btn-settings').disabled = !settingsTarget();
-}
-
-// Settings live in the editor. The gear opens the selected workspace's
-// editor, or the first one whose folder still exists, with settings showing.
-function settingsTarget() {
-  const w = workspace();
-  if (w && !w.missing) return w;
-  return state.projects.flatMap(p => p.workspaces).find(x => !x.missing) || null;
 }
 
 export function initStatusBar() {
@@ -59,10 +50,6 @@ export function initStatusBar() {
   // wins the same way it does in the app (theme-preference.js).
   setTheme(chooseThemePreference(getStoredTheme(), currentTheme()), false);
 
-  $('#btn-settings').addEventListener('click', () => {
-    const w = settingsTarget();
-    if (w) openEditor(w.href, '?settings');
-  });
   $('#btn-help').addEventListener('click', showHelp);
   helpSheet.addEventListener('click', () => { helpSheet.hidden = true; });
   addEventListener('keydown', e => {

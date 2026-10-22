@@ -11,7 +11,7 @@
 import { $, S, esc, apiPostJson, keyLabel } from './state.js';
 import { showToast } from './ui.js';
 import { emit } from './bus.js';
-import { openSettings } from './settings.js';
+import { openSettings } from './settings-form.js';
 
 const connectModal = () => $('#forge-connect-modal');
 

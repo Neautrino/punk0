@@ -18,7 +18,7 @@ import { cycleTheme } from './theme.js';
 import { previewing, togglePreview, previewKey, selectPreview } from './markdown.js';
 import { exitMermaidFullscreen } from './mermaid.js';
 import { toggleDiff } from './diff.js';
-import { openSettings, closeSettings, isSettingsOpen } from './settings.js';
+import { openSettings, closeSettings, isSettingsOpen } from './settings-form.js';
 import { handleVimKeyDown, isVimEnabled, getVimMode, showVimHelp, closeVimHelp } from './vim.js';
 import { handleImageKey } from './imageview.js';
 import { submitBatch } from './agent.js';

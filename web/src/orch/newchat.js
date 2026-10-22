@@ -8,6 +8,7 @@
 import { $, esc } from '../state.js';
 import { call } from './api.js';
 import { state, tildify } from './store.js';
+import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 import { attachComplete } from './complete.js';
 import { placeFlyout } from './flyout.js';
 import { folderBrowser, parentOf, joinPath } from './browser.js';
@@ -166,20 +167,22 @@ const loadPrefs = () => {
 };
 
 // loadAgents fills the agent list: installed agents in their usual order,
-// then a plain shell, then those not installed, shown but disabled.
+// then a plain shell, then those not installed, shown but disabled; agents in
+// agents.hidden are left out. The agent last used is chosen, else
+// agents.default.
 async function loadAgents() {
   agentEl.innerHTML = '<option>Loading…</option>';
   agentEl.disabled = startEl.disabled = true;
   const res = await call('GET', 'api/agents');
   if (!done) return;
   agents = res.ok ? res.data : [];
-  const installed = agents.filter(a => a.installed);
-  agentEl.innerHTML = installed.map(a => `<option value="${esc(a.id)}">${esc(a.label)}</option>`).join('') +
-    '<option value="shell">Shell (no agent)</option>' +
-    agents.filter(a => !a.installed).map(a => `<option value="${esc(a.id)}" disabled>${esc(a.label)} (not installed)</option>`).join('');
-  agentEl.disabled = startEl.disabled = false;
-  const usable = id => id && [...agentEl.options].some(o => o.value === id && !o.disabled);
-  agentEl.value = [loadPrefs().agent, ...installed.map(a => a.id), 'shell'].find(usable);
+  const visible = visibleAgents(agents);
+  const hidden = new Set(getSetting('agents.hidden') || []);
+  agentEl.innerHTML = visible.map(a => `<option value="${esc(a.id)}">${esc(a.id === 'shell' ? 'Shell (no agent)' : a.label)}</option>`).join('') +
+    agents.filter(a => !a.installed && !hidden.has(a.id)).map(a => `<option value="${esc(a.id)}" disabled>${esc(a.label)} (not installed)</option>`).join('');
+  agentEl.disabled = startEl.disabled = !visible.length;
+  const last = loadPrefs().agent;
+  agentEl.value = visible.some(a => a.id === last) ? last : defaultAgent(visible);
   onAgent();
 }
 

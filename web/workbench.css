@@ -379,6 +379,8 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
   background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
 }
 .o-menu button { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 12px; font-size: 12px; color: var(--fg); text-align: left; }
+/* The agent buttons tabs.js renders sit in the menu's and welcome view's flex column. */
+.o-agent-list { display: contents; }
 .o-menu button:hover, .o-menu button:focus-visible { background: var(--bg4); outline: none; }
 .o-menu-kind { width: 14px; text-align: center; font-family: var(--mono); color: var(--dim); }
 .o-menu-kind.claude { color: var(--accent); }

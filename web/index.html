@@ -707,64 +707,6 @@
   </div>
 </div>
 
-<div id="settings-modal" class="modal-overlay" hidden>
-  <div class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <header class="settings-header">
-      <div class="settings-title-group">
-        <h2 id="settings-title">Settings</h2>
-        <span id="settings-path" class="settings-path-badge" title="Click to copy path">~/.punk0/settings.json</span>
-      </div>
-      <div class="settings-header-actions">
-        <div class="settings-mode-switch" role="group" aria-label="Settings View Mode">
-          <button type="button" id="settings-mode-ui" class="active" title="Settings UI">UI</button>
-          <button type="button" id="settings-mode-json" title="Open Settings (JSON)">JSON</button>
-        </div>
-        <button id="settings-close" class="mini settings-close-btn" title="Close (Esc)">&#10005;</button>
-      </div>
-    </header>
-
-    <!-- Search bar for filtering settings -->
-    <div id="settings-search-bar" class="settings-search-bar">
-      <svg class="settings-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input type="text" id="settings-search" placeholder="Search settings..." autocomplete="off" spellcheck="false">
-      <button id="settings-search-clear" class="mini" title="Clear search">&#10005;</button>
-    </div>
-
-    <!-- UI View Mode -->
-    <div id="settings-ui-container" class="settings-body">
-      <nav id="settings-nav" class="settings-nav" aria-label="Settings categories"></nav>
-      <section id="settings-list" class="settings-list" aria-label="Settings list"></section>
-    </div>
-
-    <!-- JSON View Mode -->
-    <div id="settings-json-container" class="settings-json-body" hidden>
-      <div class="settings-json-toolbar">
-        <span class="settings-json-hint">Edit settings.json directly. Changes apply immediately upon saving.</span>
-        <div class="settings-json-actions">
-          <button id="btn-settings-reset-raw" class="settings-btn-secondary" title="Discard unsaved changes">Discard</button>
-          <button id="btn-settings-save-raw" class="settings-btn-primary" title="Save changes to settings.json ({Mod+S})">Save</button>
-        </div>
-      </div>
-      <div id="settings-raw-error" class="settings-error-banner" hidden></div>
-      <textarea id="settings-raw-editor" spellcheck="false" autocomplete="off" wrap="off"></textarea>
-    </div>
-
-    <!-- Settings Footer with Explicit Save Button -->
-    <footer id="settings-footer" class="settings-footer">
-      <div id="settings-footer-status" class="settings-footer-status is-saved">
-        <svg id="settings-status-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span id="settings-status-text">All changes saved</span>
-      </div>
-      <div class="settings-footer-actions">
-        <button type="button" id="btn-settings-save" class="settings-btn-save" title="Save settings ({Mod+S})">
-          <svg class="settings-btn-save-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          <span id="settings-btn-save-label">Save</span>
-        </button>
-      </div>
-    </footer>
-  </div>
-</div>
-
 <!-- Markdown Image Lightbox Overlay -->
 <div id="img-lightbox" hidden>
   <div class="lightbox-backdrop"></div>

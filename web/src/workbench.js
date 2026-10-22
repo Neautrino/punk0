@@ -2,8 +2,8 @@
 // The orchestrator page (web/workbench.html), what a bare `punk0` opens.
 // Bundled on its own into web/workbench.js by scripts/build-web.js; the
 // modules it is built from live in web/src/orch/ and share only the theme,
-// toast and status-bar metrics modules with the editor app. The server side
-// is workbench.go.
+// toast, status-bar metrics and settings modal modules with the editor app.
+// The server side is workbench.go.
 //
 // Three panes: projects and workspaces on the left, the selected workspace's
 // tabs in the middle (terminals from the parent, files from the folder's
@@ -22,6 +22,8 @@ import { initPicker } from './orch/picker.js';
 import { initViewer, showFile, forgetClosed } from './orch/viewer.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
 import { initResize } from './orch/resize.js';
+import { initSettings } from './orch/settings.js';
+import { initNotify } from './orch/notify.js';
 
 // Editor windows link back here by this name (main.js), so going back
 // reuses this window instead of opening another orchestrator.
@@ -33,6 +35,7 @@ const emptyPane = $('#o-empty');
 
 initResize(); // first: the panes take their widths before anything measures them
 const pollResources = initStatusBar();
+initSettings();
 initAddProject(); // before the sidebar, which may open it for ?open=<url>
 initSidebar();
 initNewChat();
@@ -43,6 +46,7 @@ initTree();
 initPicker();
 initViewer();
 initTerm(termPane, reload);
+initNotify();
 
 // Reloads re-render everything; the center only switches when the active
 // tab actually changes, so a refresh never drops a terminal or an open file.

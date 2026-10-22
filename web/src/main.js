@@ -20,7 +20,7 @@ import { initDiff } from './diff.js';
 import { initAgent, applyAgentMeta, loadAgentAsync } from './agent.js';
 import { initThreads } from './thread.js';
 import { initMetrics, initLspMenu, refreshLspMenu, initStatusFit, updateMetricsDisplay, updateStatus } from './status.js';
-import { initSettings, openSettings } from './settings.js';
+import { initSettings } from './settings.js';
 import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
 import { initGitStream } from './gitstream.js';
@@ -168,15 +168,6 @@ initPRScope();
     } catch {}
   } else {
     if (hasGitChanges) await selectChangedFileTab();
-  }
-
-  // The workbench's gear opens this editor with ?settings: show them, then
-  // drop the parameter so a reload does not open them again.
-  if (params.has('settings')) {
-    openSettings('ui');
-    const u = new URL(window.location.href);
-    u.searchParams.delete('settings');
-    window.history.replaceState({}, '', u.pathname + u.search + u.hash);
   }
 
   if (inGitMode()) {

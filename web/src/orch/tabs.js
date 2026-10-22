@@ -1,19 +1,22 @@
 // web/src/orch/tabs.js
-// Tab bar of the selected workspace: shells, Claude Code chats and open
-// files. "+" offers a new Claude or shell tab, or the open file picker; the
-// empty center's welcome view offers the same. Double-click renames a
-// terminal tab after what it is for. At the right end, the workspace's folder
-// opens in the full editor.
+// Tab bar of the selected workspace: shells, agent chats and open files. "+"
+// offers a new tab of every installed agent not in agents.hidden, a shell,
+// or the open file picker, agents.default first; the empty center's welcome
+// view offers the same. Double-click renames a terminal tab after what it is
+// for. At the right end, the workspace's folder opens in the full editor.
 import { $, esc } from '../state.js';
+import { on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
 import { subscribe, reload, workspace, tabsOf, activeTab, selectTab, closeFile } from './store.js';
 import { fileKind } from './tree.js';
 import { openPicker } from './picker.js';
+import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 const TAB_STATUS = { working: 'working', waiting: 'waiting for you', idle: 'idle' };
 
 let barEl, addEl, menuEl, editorEl;
+let agents = []; // GET api/agents
 
 export function initTabs() {
   barEl = $('#o-tabs');
@@ -44,6 +47,28 @@ export function initTabs() {
   barEl.addEventListener('click', onTabClick);
   barEl.addEventListener('dblclick', onRename);
   subscribe(renderTabs);
+  on('setting:changed', key => key.startsWith('agents.') && renderAgents());
+  loadAgents();
+}
+
+async function loadAgents() {
+  const res = await call('GET', 'api/agents');
+  if (res.ok) agents = res.data || [];
+  renderAgents();
+}
+
+// renderAgents fills the "+" menu and the welcome view with the agents a new
+// tab can run, agents.default first.
+function renderAgents() {
+  const visible = visibleAgents(agents);
+  const first = defaultAgent(visible);
+  visible.sort((a, b) => (b.id === first) - (a.id === first));
+  const icon = a => `<span class="o-menu-kind${a.id === 'claude' ? ' claude' : ''}">${a.id === 'claude' ? '✳' : a.id === 'shell' ? '$' : '◆'}</span>`;
+  const what = a => a.id === 'shell' ? 'your own shell, in a real terminal' : `runs <code>${esc(a.id)}</code> in this folder`;
+  $('#o-new-agents').innerHTML = visible.map(a =>
+    `<button type="button" role="menuitem" data-new-tab="${esc(a.id)}">${icon(a)}${esc(a.label)}</button>`).join('');
+  $('#o-empty-agents').innerHTML = visible.map(a =>
+    `<button type="button" data-new-tab="${esc(a.id)}">${icon(a)}<span>New ${esc(a.label)}${a.id === 'shell' ? '' : ' chat'}</span><span class="wb-faint">${what(a)}</span></button>`).join('');
 }
 
 function renderTabs() {
@@ -102,7 +127,8 @@ async function onTabClick(e) {
   if (t.kind === 'file') {
     closeFile(t.path);
   } else {
-    if (t.running && !confirm(`Close "${t.name}"? Its shell and anything running in it stop.`)) return;
+    if (t.running && getSetting('terminal.confirmCloseRunning') !== false &&
+      !confirm(`Close "${t.name}"? Its shell and anything running in it stop.`)) return;
     const res = await call('DELETE', `api/tabs/${encodeURIComponent(t.id)}`);
     if (!res.ok) return failed(res);
     await reload();

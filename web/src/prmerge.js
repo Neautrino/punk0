@@ -13,7 +13,7 @@ import { $, S, esc, api, apiPostJson, keyLabel } from './state.js';
 import { showToast } from './ui.js';
 import { on, emit } from './bus.js';
 import { registerAgentPicker } from './agent.js';
-import { openSettings } from './settings.js';
+import { openSettings } from './settings-form.js';
 
 const METHODS = {
   merge: {

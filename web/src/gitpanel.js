@@ -8,7 +8,7 @@ import { showToast, copyToClipboard, flashActionSuccess } from './ui.js';
 import { reindexWorkspace } from './panels.js';
 import { refreshPRMeta, nudgeForgeToken, forgeInfo } from './pr.js';
 import { reloadOpenTabs } from './tabs.js';
-import { openSettings } from './settings.js';
+import { openSettings } from './settings-form.js';
 import { layout, render } from './renderer.js';
 import { refreshUnpushed } from './unpushed.js';
 import { openFile } from './tabs.js';
