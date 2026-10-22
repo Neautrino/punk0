@@ -1187,6 +1187,9 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
 .diff-ln-nav:hover { color: var(--fg); text-decoration: underline; }
 .diff-mk { flex: none; width: 14px; text-align: center; color: var(--faint); user-select: none; }
 .diff-code { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; padding-right: 12px; }
+/* A comment token is <i class="c">, which the code line's .c rule above would
+   keep from wrapping and pad. */
+.diff-code .c { white-space: inherit; padding-right: 0; }
 .diff-row, .diff-side { display: flex; }
 .diff-row.diff-add, .diff-side.diff-add { background: var(--gi-bg); }
 .diff-row.diff-add .diff-mk, .diff-side.diff-add .diff-mk { color: var(--gi); }
