@@ -2319,7 +2319,17 @@ func (s *Server) handleReindex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	serveSettings(w, r, s.localOnly, s.reselectHarness)
+	serveSettings(w, r, s.localOnly, func() {
+		s.reselectHarness()
+		// A save made in this editor reaches its language servers at once;
+		// stopping them can take seconds, so the response does not wait. A
+		// save on the agents page is written by the parent, which cannot
+		// reach its children; their reaper sees the file change within
+		// lspSettingsEvery.
+		if s.lsp != nil {
+			go s.lsp.applySettings(time.Now(), readSettings())
+		}
+	})
 }
 
 // reselectHarness follows a saved agent choice made in the settings modal.

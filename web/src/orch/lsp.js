@@ -17,6 +17,7 @@ import { on } from '../bus.js';
 import { call, failed } from './api.js';
 import { subscribe, reload, workspace, projectOf, wsLabel, tildify } from './store.js';
 import { fmtRAM, refreshResources } from './resources.js';
+import { getSetting } from './settings.js';
 
 let itemEl, menuEl;
 let shownFor = ''; // the workspace the open menu is about
@@ -25,6 +26,7 @@ let fileServer = null; // its server's { state, server, missing } from api/lsp/w
 let warmFor = ''; // "<workspace id>:<path>" being warmed
 let warmSeq = 0; // the running warm loop's number: a newer one supersedes it
 let usage = []; // [{ w, bytes }]: folders whose language servers hold memory
+let lastBytes = {}; // workspace id → its language servers' bytes at the last poll
 
 export function initLsp() {
   itemEl = $('#st-lsp');
@@ -59,9 +61,45 @@ export function initLsp() {
     const all = r.workspaces || [];
     usage = all.map(x => ({ w: workspace(x.id), bytes: x.lsp }))
       .filter(x => x.w?.lsp && x.bytes > 0);
+    // The file's server stopped after being idle: its memory went to nothing
+    // while the dot said running. Shown off without a warm, which would
+    // start it again and defeat the idle stop; re-showing the file warms.
+    const w = workspace();
+    const now = all.find(x => x.id === w?.id);
+    if (now && file?.ws === w.id && lastBytes[w.id] > 0 && !(now.lsp > 0) &&
+        (fileServer?.state === 'ready' || fileServer?.state === 'indexing')) {
+      warmSeq++;
+      fileServer = { state: 'idle', server: fileServer.server };
+    }
+    lastBytes = Object.fromEntries(all.map(x => [x.id, x.lsp || 0]));
     draw();
     drawFolders();
   });
+  on('setting:changed', key => {
+    if (key === 'lsp.enabled') {
+      // Off: the editors stop their servers on their own; on again, the file
+      // in front is warmed afresh rather than trusting the old reply.
+      fileServer = null;
+      warmFor = '';
+      warmSeq++;
+      draw();
+    }
+    if (key === 'lsp.memoryWarning') {
+      draw();
+      drawFolders();
+    }
+  });
+}
+
+// overWarning tells whether total bytes exceed the memory warning set in
+// Settings (lsp.memoryWarning, in MB; 0 never warns).
+function overWarning(total) {
+  const mb = Number(getSetting('lsp.memoryWarning')) || 0;
+  return mb > 0 && total > mb * 1024 * 1024;
+}
+
+function warningLine(total) {
+  return overWarning(total) ? `\nAbove the ${getSetting('lsp.memoryWarning')} MB warning set in Settings.` : '';
 }
 
 // stateOf is the item's dot: off, or on and as far along as the editor is.
@@ -83,6 +121,10 @@ const TITLES = {
 // warm reply, or null to fall back on the folder's.
 function fileState(s) {
   if (!s) return null;
+  // Allowed for the folder but turned off by lsp.enabled: warm keeps asking,
+  // so turning them back on recovers once the editor notices.
+  if (s.paused) return ['off', 'Language servers are turned off in Settings'];
+  if (s.state === 'idle') return ['off', `${s.server || 'The language server'} stopped after being idle; it starts again when you open a file of its language`];
   switch (s.state) {
     case 'ready': return ['ready', `${s.server} is running (click to manage)`];
     case 'indexing': return ['indexing', `${s.server} is indexing (click to manage)`];
@@ -98,8 +140,10 @@ function draw() {
   const w = workspace();
   const total = usage.reduce((n, x) => n + x.bytes, 0);
   // Shown for a file, while this folder's servers are on, or while any
-  // folder's servers hold memory: they are what costs gigabytes.
-  itemEl.hidden = !w || w.missing || (!file && !w.lsp && !total);
+  // folder's servers hold memory: they are what costs gigabytes. With
+  // language servers off in Settings none runs, so there is nothing to show
+  // and nothing to warm.
+  itemEl.hidden = getSetting('lsp.enabled') === false || !w || w.missing || (!file && !w.lsp && !total);
   if (itemEl.hidden) return close();
   const folder = stateOf(w);
   const own = file && w.lsp ? fileState(fileServer) : null;
@@ -107,8 +151,9 @@ function draw() {
   const st = own ? own[0] : file?.missing && w.lsp ? 'missing' : folder;
   itemEl.dataset.state = st;
   const name = file ? langName(file.lang) : 'LSP';
-  itemEl.innerHTML = esc(name) + (total ? `<span class="wb-lsp-ram">${fmtRAM(total)}</span>` : '');
-  const ram = total ? `\nLanguage servers use ${fmtRAM(total)} in ${usage.length} folder${usage.length === 1 ? '' : 's'}.` : '';
+  const warn = overWarning(total);
+  itemEl.innerHTML = esc(name) + (total ? `<span class="wb-lsp-ram${warn ? ' warn' : ''}">${fmtRAM(total)}</span>` : '');
+  const ram = total ? `\nLanguage servers use ${fmtRAM(total)} in ${usage.length} folder${usage.length === 1 ? '' : 's'}.${warningLine(total)}` : '';
   itemEl.title = (file ? `${name}. ` : '') + (own ? own[1] : TITLES[st]) + ram;
   // Only the selected folder's own file: on a workspace switch this runs
   // before the viewer announces the new folder's file (or none), and the old
@@ -135,7 +180,10 @@ async function warm(w) {
     if (my !== warmSeq || !res.ok) return;
     fileServer = res.data;
     draw();
-    if (res.data.state !== 'starting' && res.data.state !== 'indexing') return;
+    // Paused asks on without counting: the editor takes up to 2 s to notice
+    // the setting turned back on.
+    if (res.data.paused) i--;
+    else if (res.data.state !== 'starting' && res.data.state !== 'indexing') return;
     await new Promise(r => setTimeout(r, 900));
     if (my !== warmSeq) return;
   }
@@ -223,7 +271,8 @@ function drawFolders() {
       <button class="lsp-btn lsp-btn-stop" data-act="stop-folder" data-ws="${esc(w.id)}" title="Stop this folder's language servers">Stop</button>
     </div>`;
   }).join('');
-  el.innerHTML = `<div class="wb-lsp-folders-head"><span>All folders</span><span>${fmtRAM(total)}</span></div>${rows}`;
+  const warn = overWarning(total);
+  el.innerHTML = `<div class="wb-lsp-folders-head"><span>All folders</span><span${warn ? ` class="warn" title="${esc(warningLine(total).trim())}"` : ''}>${fmtRAM(total)}</span></div>${rows}`;
 }
 
 // One server list (lspmenu.js, the editor's own) per folder editor, so an

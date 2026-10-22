@@ -119,6 +119,8 @@
 /* The LSP item's memory: every folder's language servers together. */
 #st-lsp .wb-lsp-ram { font: 11px var(--mono); color: var(--faint); margin-left: 2px; }
 #st-lsp:hover .wb-lsp-ram { color: var(--dim); }
+/* Above the lsp.memoryWarning total set in Settings. */
+#st-lsp .wb-lsp-ram.warn, .wb-lsp-folders-head span.warn { color: var(--err); }
 /* Every folder whose language servers hold memory, under this folder's own. */
 .wb-lsp-folders:empty { display: none; }
 .wb-lsp-folders { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }

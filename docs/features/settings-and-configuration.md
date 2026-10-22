@@ -51,8 +51,12 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `files.exclude` | Files | Default globs | Array of glob patterns | Exclude patterns from trees and searches |
 | `search.smartCase` | Search | `true` | `true`, `false` | Case-insensitive unless query has uppercase |
 | `search.maxResults` | Search | `1000` | `50` – `10,000` | Maximum search results returned |
-| `lsp.enabled` | LSP | `true` | `true`, `false` | Master toggle for Language Servers |
-| `lsp.hover.enabled` | LSP | `true` | `true`, `false` | Hover documentation cards |
+| `lsp.enabled` | Language Servers | `true` | `true`, `false` | Master switch: off stops every running language server in every folder (within a few seconds) and starts none; each folder's own choice is kept |
+| `lsp.idleStop` | Language Servers | `15` | minutes, `0`–`1440` | Stop a language server unused for this long, even while its editor is open; the next use starts it again. `0` never |
+| `lsp.disabled` | Language Servers | `[]` | server names (`gopls`, `rust-analyzer`, `pyright`, `pylsp`, `ruff`, `tsc`, `typescript`, `clangd`, `zls`, `lua`, `solargraph`, `jdtls`, `omnisharp`, `texlab`) | Servers punk0 never starts; another installed server for the same language is used instead |
+| `lsp.memoryWarning` | Language Servers | `2048` | MB, `0` or more | Agents page: the language server memory total turns red above this. `0` never |
+| `lsp.hover.enabled` | Language Servers | `true` | `true`, `false` | Hover documentation cards |
+| `workspace.lspDefault` | Language Servers | `false` | `true`, `false` | Default of the New workspace form's Language Servers checkbox for worktrees |
 | `agent.harness` | Coding Agent | `""` | `claude`, `gemini`, `agy`, etc. | Preferred CLI coding harness |
 | `agent.timeoutSeconds` | Coding Agent | `120` | `10` – `600` (seconds) | Max runtime for agent edits |
 | `github.token` | GitHub | `""` | any string | Personal access token for GitHub pull request review; takes precedence over `GITHUB_TOKEN` and `gh auth token`. Masked in the Settings UI. |
@@ -93,7 +97,6 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent only when idle |
 | `workspace.branchPrefix` | Workspaces | `""` | branch prefix | Prefix for branches New workspace creates (the folder stays unprefixed) |
 | `workspace.fetchBase` | Workspaces | `true` | `true`, `false` | Fetch the base branch before creating a workspace |
-| `workspace.lspDefault` | Workspaces | `false` | `true`, `false` | Default of the language-server toggle for new workspaces |
 | `workspace.deleteMergedBranch` | Workspaces | `false` | `true`, `false` | Delete a workspace's branch with it when it is merged; the delete response notes why it was kept otherwise |
 | `workspace.idleStop` | Workspaces | `5` | minutes, `0` never | Stop a folder's editor process after this long without requests; the next request starts it again |
 | `notifications.desktop` | Notifications | `"off"` | `"off"`, `"unfocused"`, `"always"` | Desktop notifications; asks for browser permission when turned on |

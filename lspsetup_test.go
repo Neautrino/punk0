@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Only a POST from px0's own page, addressed by IP or localhost, may install.
@@ -112,7 +114,9 @@ func TestTailBufferKeepsTheEnd(t *testing.T) {
 
 func TestLSPServersEndpoint(t *testing.T) {
 	s, root := newTestServer(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // the user's lsp settings stay out of it
 	s.lsp = newLSPManager(root, true)
+	t.Cleanup(s.lsp.Close)
 
 	// Ensure we have Go and Python files
 	_ = os.WriteFile(filepath.Join(root, "app.py"), []byte("print('hello')\n"), 0o644)
@@ -208,7 +212,9 @@ func TestLSPStopAndStart(t *testing.T) {
 		t.Skip("skipping real LSP stop/start in short mode")
 	}
 	s, root := newTestServer(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	s.lsp = newLSPManager(root, true)
+	t.Cleanup(s.lsp.Close)
 	_ = os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o644)
 
 	// Stop gopls
@@ -240,5 +246,118 @@ func TestLSPStopAndStart(t *testing.T) {
 
 	if s.lsp.AnyRunning() {
 		t.Errorf("expected no servers running after stop all")
+	}
+}
+
+// A server lsp.disabled lists is never chosen: TypeScript files get the next
+// installed server from discovery and in the menu, a running one is stopped,
+// and starting it by name is refused.
+func TestLSPDisabledServerFallsToNext(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	t.Setenv("HOME", t.TempDir())
+	t.Cleanup(invalidateBinaryCache) // forget the fake binaries for later tests
+	for name, out := range map[string]string{"tsc": "Version 7.0.2", "typescript-language-server": ""} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\necho '"+out+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, root := newTestServer(t)
+	if err := os.WriteFile(filepath.Join(root, "app.ts"), []byte("export {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.ix.Build()
+	m := &lspManager{
+		root: root, enabled: true,
+		clients:  map[string]*lspClient{},
+		starting: map[string]chan struct{}{},
+		failed:   map[string]string{},
+		stopped:  map[string]bool{},
+	}
+	t.Cleanup(m.Close)
+	s.lsp = m
+	m.discover()
+	if def := m.defFor("app.ts"); def == nil || def.Name != "tsc" {
+		t.Fatalf("precondition: TypeScript 7 installed, .ts gets %v, want tsc", def)
+	}
+	var tsc lspServerDef
+	for _, def := range lspRegistry {
+		if def.Name == "tsc" {
+			tsc = def
+		}
+	}
+	running := newLSPClient(tsc, root)
+	running.fail(errors.New("not a real process"))
+	m.clients["tsc"] = running
+
+	m.applySettings(time.Now(), settings{LSPDisabled: []string{"tsc"}})
+	if def := m.defFor("app.ts"); def == nil || def.Name != "typescript" {
+		t.Errorf("tsc disabled: .ts gets %v, want typescript", def)
+	}
+	if _, ok := m.clients["tsc"]; ok {
+		t.Error("a running tsc was left running after being disabled")
+	}
+	offered := ""
+	for _, srv := range s.relevantLSPServers() {
+		if srv["fullLang"] == "TypeScript and JavaScript" {
+			offered += srv["name"].(string) + " "
+		}
+	}
+	if offered != "typescript " {
+		t.Errorf("tsc disabled: the menu offers %q for TypeScript, want typescript only", offered)
+	}
+	if err := m.StartServer("tsc"); err == nil || err.Error() != "tsc is disabled in settings" {
+		t.Errorf("StartServer(tsc) = %v, want tsc is disabled in settings", err)
+	}
+}
+
+// A language is only reported as lacking a server when one could be installed
+// and used: not while lsp.enabled pauses the servers, and not when lsp.disabled
+// is why none was picked.
+func TestLSPMissingLangSkipsDisabledAndPaused(t *testing.T) {
+	def, _ := answeringServer(t)
+	m := testLSPManager(t, def)
+	m.discovered = true // and found no Go server
+	s, _ := newTestServer(t)
+	s.lsp = m
+	if got := m.MissingLang("a.go"); got != "Go" {
+		t.Fatalf("precondition: MissingLang with no Go server = %q, want Go", got)
+	}
+	if b := s.lspBrief("a.go"); b["missing"] != "Go" || b["paused"] != nil {
+		t.Errorf("lspBrief with no Go server = %v, want missing Go and not paused", b)
+	}
+
+	m.mu.Lock()
+	m.disabled = map[string]bool{"gopls": true}
+	m.mu.Unlock()
+	if got := m.MissingLang("a.go"); got != "" {
+		t.Errorf("MissingLang with gopls disabled = %q, want none", got)
+	}
+
+	m.mu.Lock()
+	m.disabled, m.paused = nil, true
+	m.mu.Unlock()
+	if got := m.MissingLang("a.go"); got != "" {
+		t.Errorf("MissingLang with lsp.enabled off = %q, want none", got)
+	}
+	b := s.lspBrief("a.go")
+	if b["paused"] != true || b["missing"] != nil {
+		t.Errorf("lspBrief with lsp.enabled off = %v, want paused and nothing missing", b)
+	}
+	raw, _ := json.Marshal(s.relevantLSPServers())
+	if string(raw) != "[]" {
+		t.Errorf("relevantLSPServers with lsp.enabled off = %s, want []", raw)
+	}
+
+	// Only a stop by the user is reported as one.
+	if m.ServerStatus(def, nil)["userStopped"] != false {
+		t.Error("a never-started server is reported as stopped by the user")
+	}
+	m.stopped[def.Name] = true
+	if m.ServerStatus(def, nil)["userStopped"] != true {
+		t.Error("a server stopped by the user is not reported as such")
 	}
 }

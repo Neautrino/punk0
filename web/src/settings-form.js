@@ -232,14 +232,6 @@ const BUILTIN_SCHEMA = [
     default: true
   },
   {
-    key: "workspace.lspDefault",
-    title: "Language Servers for New Workspaces",
-    description: "Whether New workspace starts with language servers ticked. Each project then remembers your last choice.",
-    category: "Workspaces",
-    type: "boolean",
-    default: false
-  },
-  {
     key: "workspace.deleteMergedBranch",
     title: "Delete Merged Branch with Worktree",
     description: "When a worktree workspace is deleted, also delete its branch if it is merged. An unmerged branch is kept.",
@@ -517,19 +509,57 @@ const BUILTIN_SCHEMA = [
   },
   {
     key: "lsp.enabled",
-    title: "Language Server Protocol (LSP)",
-    description: "Master switch for language server integrations (definitions, references, diagnostics).",
-    category: "LSP & Intelligence",
+    title: "Language Servers",
+    description: "Master switch. Off stops every running language server in every folder and starts none; each folder's own choice is kept for when you turn this back on.",
+    category: "Language Servers",
     type: "boolean",
     default: true
+  },
+  {
+    key: "lsp.idleStop",
+    title: "Idle Stop (minutes)",
+    description: "Stop a language server nobody has used for this many minutes, even while its editor is open. The next use starts it again. 0 never stops it.",
+    category: "Language Servers",
+    type: "number",
+    default: 15,
+    min: 0,
+    max: 1440,
+    step: 1
+  },
+  {
+    key: "lsp.disabled",
+    title: "Disabled Servers",
+    description: "Language servers punk0 never starts. Another installed server for the same language is used instead.",
+    category: "Language Servers",
+    type: "multiselect",
+    default: [],
+    options: ["gopls", "rust-analyzer", "pyright", "pylsp", "ruff", "tsc", "typescript", "clangd", "zls", "lua", "solargraph", "jdtls", "omnisharp", "texlab"]
+  },
+  {
+    key: "lsp.memoryWarning",
+    title: "Memory Warning (MB)",
+    description: "On the agents page, show the language server memory total in red when all folders together use more than this. 0 never warns.",
+    category: "Language Servers",
+    type: "number",
+    default: 2048,
+    min: 0,
+    step: 256
   },
   {
     key: "lsp.hover.enabled",
     title: "Hover Documentation",
     description: "Controls whether hovercards with documentation and type signatures appear on hover.",
-    category: "LSP & Intelligence",
+    category: "Language Servers",
     type: "boolean",
     default: true
+  },
+  {
+    key: "workspace.lspDefault",
+    title: "Language Servers for New Worktrees",
+    description: "The default of the New workspace form's Language Servers checkbox for worktrees. Each project then remembers your last choice.",
+    category: "Language Servers",
+    type: "boolean",
+    default: false
   },
   {
     key: "agent.harness",
@@ -728,7 +758,35 @@ function applyAll() {
 export function initSettingsModal(opts) {
   page = { ...page, ...opts };
   ensureModal();
+  // Another page or tool may have saved meanwhile: catch up when this one
+  // is looked at again.
+  addEventListener('focus', refreshSettings);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refreshSettings());
   return loadSettings().then(applyAll);
+}
+
+const REFRESH_GAP = 3000; // ms: a focus storm makes at most one request
+let refreshedAt = 0;
+
+// refreshSettings re-reads api/settings and applies every key whose value
+// changed, the path a save takes (commit), without posting anything, so it
+// cannot loop. An open modal shows the new values unless the user is editing.
+async function refreshSettings() {
+  if (Date.now() - refreshedAt < REFRESH_GAP) return;
+  refreshedAt = Date.now();
+  let data;
+  try { data = await request(); } catch { return; }
+  const oldRaw = settingsData.raw;
+  const changed = !sameValue(settingsData.settings || {}, data.settings || {}) || (data.raw && data.raw !== oldRaw);
+  if (!changed) return;
+  commit({ settings: data.settings || {}, raw: data.raw });
+  if (!isSettingsOpen()) return;
+  if (viewMode === 'json') {
+    const rawEditor = $('#settings-raw-editor');
+    if (rawEditor.value === oldRaw) rawEditor.value = settingsData.raw || '{\n}\n';
+  } else if (!Object.keys(pendingChanges).length && !document.activeElement?.closest?.('#settings-list')) {
+    renderSettingsList();
+  }
 }
 
 function ensureModal() {

@@ -138,8 +138,9 @@ function showLspData(data) {
   if (!data) return;
   S.lsp.anyRunning = data.anyRunning;
   const own = (data.servers || []).find(s => s.name === S.lsp.server);
-  // A server stopped from the menu turns the chip off.
-  if (own && !own.running && (S.lsp.state === 'ready' || S.lsp.state === 'indexing')) S.lsp.state = 'off';
+  // Only a server the user stopped turns the chip off: one stopped after
+  // being idle stays requestable, so the next hover or definition restarts it.
+  if (own && !own.running && own.userStopped && (S.lsp.state === 'ready' || S.lsp.state === 'indexing')) S.lsp.state = 'off';
   drawLspStatus();
   if (lspMenuEl && !lspMenuEl.hidden) {
     renderLspMenu(data);

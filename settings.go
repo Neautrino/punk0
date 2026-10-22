@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // punk0 keeps no state inside a workspace. The user's preferences and choices
@@ -52,6 +53,44 @@ type settings struct {
 	TerminalIdleStop            *float64 `json:"terminal.idleStop,omitempty"`
 	ExplorerAutoReveal          *bool    `json:"explorer.autoReveal,omitempty"`
 	TipsEnabled                 *bool    `json:"tips.enabled,omitempty"`
+	LSPEnabled                  *bool    `json:"lsp.enabled,omitempty"`
+	LSPIdleStop                 *float64 `json:"lsp.idleStop,omitempty"`
+	LSPDisabled                 []string `json:"lsp.disabled,omitempty"`
+}
+
+// lspIdleStopDefault is lsp.idleStop's default, in minutes.
+const lspIdleStopDefault = 15.0
+
+// lspEnabled is the lsp.enabled master switch, on unless turned off.
+func (s settings) lspEnabled() bool { return s.LSPEnabled == nil || *s.LSPEnabled }
+
+// lspIdleStop is how long a language server may go unused before it is
+// stopped; 0 never stops one.
+func (s settings) lspIdleStop() time.Duration {
+	minutes := lspIdleStopDefault
+	if s.LSPIdleStop != nil && *s.LSPIdleStop >= 0 {
+		minutes = *s.LSPIdleStop
+	}
+	return time.Duration(minutes * float64(time.Minute))
+}
+
+// lspDisabled is the set of servers lsp.disabled keeps from ever starting.
+func (s settings) lspDisabled() map[string]bool {
+	set := make(map[string]bool, len(s.LSPDisabled))
+	for _, name := range s.LSPDisabled {
+		set[name] = true
+	}
+	return set
+}
+
+// lspServerNames lists every registry server, in registry order, for the
+// lsp.disabled choices.
+func lspServerNames() []string {
+	names := make([]string, len(lspRegistry))
+	for i := range lspRegistry {
+		names[i] = lspRegistry[i].Name
+	}
+	return names
 }
 
 var settingsMu sync.Mutex
@@ -322,14 +361,6 @@ var settingsSchema = []settingSchemaItem{
 		Category:    "Workspaces",
 		Type:        "boolean",
 		Default:     true,
-	},
-	{
-		Key:         "workspace.lspDefault",
-		Title:       "Language Servers for New Workspaces",
-		Description: "Whether New workspace starts with language servers ticked. Each project then remembers your last choice.",
-		Category:    "Workspaces",
-		Type:        "boolean",
-		Default:     false,
 	},
 	{
 		Key:         "workspace.deleteMergedBranch",
@@ -609,19 +640,57 @@ var settingsSchema = []settingSchemaItem{
 	},
 	{
 		Key:         "lsp.enabled",
-		Title:       "Language Server Protocol (LSP)",
-		Description: "Master switch for language server integrations (definitions, references, diagnostics).",
-		Category:    "LSP & Intelligence",
+		Title:       "Language Servers",
+		Description: "Master switch. Off stops every running language server in every folder and starts none; each folder's own choice is kept for when you turn this back on.",
+		Category:    "Language Servers",
 		Type:        "boolean",
 		Default:     true,
+	},
+	{
+		Key:         "lsp.idleStop",
+		Title:       "Idle Stop (minutes)",
+		Description: "Stop a language server nobody has used for this many minutes, even while its editor is open. The next use starts it again. 0 never stops it.",
+		Category:    "Language Servers",
+		Type:        "number",
+		Default:     lspIdleStopDefault,
+		Min:         numPtr(0),
+		Max:         numPtr(1440.0),
+		Step:        numPtr(1.0),
+	},
+	{
+		Key:         "lsp.disabled",
+		Title:       "Disabled Servers",
+		Description: "Language servers punk0 never starts. Another installed server for the same language is used instead.",
+		Category:    "Language Servers",
+		Type:        "multiselect",
+		Default:     []string{},
+		Options:     lspServerNames(),
+	},
+	{
+		Key:         "lsp.memoryWarning",
+		Title:       "Memory Warning (MB)",
+		Description: "On the agents page, show the language server memory total in red when all folders together use more than this. 0 never warns.",
+		Category:    "Language Servers",
+		Type:        "number",
+		Default:     2048.0,
+		Min:         numPtr(0),
+		Step:        numPtr(256.0),
 	},
 	{
 		Key:         "lsp.hover.enabled",
 		Title:       "Hover Documentation",
 		Description: "Controls whether hovercards with documentation and type signatures appear on hover.",
-		Category:    "LSP & Intelligence",
+		Category:    "Language Servers",
 		Type:        "boolean",
 		Default:     true,
+	},
+	{
+		Key:         "workspace.lspDefault",
+		Title:       "Language Servers for New Worktrees",
+		Description: "The default of the New workspace form's Language Servers checkbox for worktrees. Each project then remembers your last choice.",
+		Category:    "Language Servers",
+		Type:        "boolean",
+		Default:     false,
 	},
 	{
 		Key:         "agent.harness",

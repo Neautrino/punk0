@@ -92,6 +92,7 @@ export function lspAllButton(data) {
 // a link to the server's install guide.
 export function lspRows(data) {
   const list = data?.servers || [];
+  if (data?.enabled === false) return '<div class="lsp-empty-note">Language servers are turned off in Settings.</div>';
   if (!list.length) return '<div class="lsp-empty-note">No language servers for the files in this folder.</div>';
   return list.map(s => {
     let dot, meta, btn = '', hint = '', manual = false;

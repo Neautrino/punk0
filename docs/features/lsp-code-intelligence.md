@@ -78,8 +78,12 @@ Instead of navigating away from your current code to check parameter types or st
 
 LSP features can be toggled in Settings (`Cmd/Ctrl+,`):
 
-- **LSP: Enabled** (`lsp.enabled`): Master toggle for language server discovery and background communication (defaults to `true`).
-- **LSP: Hover Enabled** (`lsp.hover.enabled`): Enable or disable hover documentation cards (defaults to `true`).
+- **Language Servers** (`lsp.enabled`): Master switch (defaults to `true`). Off stops every running language server in every folder within a few seconds and starts none, whatever each folder's own choice; those choices are kept, and servers start again on the next use once it is back on. Each folder's editor checks the settings file every 2 seconds, so a change made on either page, or in the file itself, reaches all of them.
+- **Idle Stop (minutes)** (`lsp.idleStop`): A server nobody has used (hover, definition, references, symbols, call trails, opening a file) for this long is stopped, even while its editor stays open; the next use starts it again. Defaults to `15`; `0` never stops it.
+- **Disabled Servers** (`lsp.disabled`): Servers punk0 never starts. Discovery skips them, so the next installed server for that language is used; Start refuses them, and a running one is stopped within a few seconds.
+- **Memory Warning (MB)** (`lsp.memoryWarning`): On the agents page, the language server memory total turns red above this (defaults to `2048`; `0` never).
+- **Hover Documentation** (`lsp.hover.enabled`): Enable or disable hover documentation cards (defaults to `true`).
+- **Language Servers for New Worktrees** (`workspace.lspDefault`): The default of the New workspace form's Language Servers checkbox for worktrees (defaults to `false`).
 - **Off by default per folder in punk0**: On the agents page, language servers are off for every folder, since each costs hundreds of megabytes to gigabytes (gopls about 260–316 MB per folder, rust-analyzer 852 MB steady and 1.5 GB peak on a small Anchor project). Turn them on with **Turn on** in the menu of the status bar's language server item; this applies to the selected folder, is saved, and restarts that folder's editor. See [Agents Page](workbench.md#language-servers).
 - **CLI Flag `-no-lsp`**: `punk0 -no-lsp` keeps language servers off in every folder, whatever the LSP buttons say, relying exclusively on fast regex extraction.
 

@@ -55,13 +55,18 @@ func registryFor(rel string) []*lspServerDef {
 }
 
 // MissingLang names the language of rel when px0 knows servers for it but none
-// is installed, and is empty otherwise.
+// is installed, and is empty otherwise: also while the servers are paused, or
+// when every installed one for it is turned off in lsp.disabled.
 func (m *lspManager) MissingLang(rel string) string {
-	if !m.enabled || !m.isDiscovered() || m.defFor(rel) != nil {
+	if !m.Enabled() || !m.isDiscovered() || m.defFor(rel) != nil {
 		return ""
 	}
-	if defs := registryFor(rel); len(defs) > 0 {
-		return defs[0].Lang
+	// discover() passes disabled servers over, so defFor being nil says
+	// nothing about them: only one left to choose can be the missing one.
+	for _, def := range registryFor(rel) {
+		if !m.isDisabled(def.Name) {
+			return def.Lang
+		}
 	}
 	return ""
 }
@@ -92,7 +97,7 @@ type lspSetup struct {
 // known server with the install options that apply to this system.
 func (m *lspManager) Setup(rel string) lspSetup {
 	st, srv := m.State(rel)
-	s := lspSetup{Enabled: m.enabled, State: string(st), Server: srv, Servers: []lspSetupServer{}}
+	s := lspSetup{Enabled: m.Enabled(), State: string(st), Server: srv, Servers: []lspSetupServer{}}
 	if st == lspFailed {
 		// State reports a failure's reason in place of the server name.
 		s.Reason = srv
@@ -341,7 +346,7 @@ func (s *Server) relevantLSPServers() []map[string]any {
 	}
 
 	seen := map[string]bool{}
-	var result []map[string]any
+	result := []map[string]any{}
 	// One process table for every server's memory, taken only when one runs.
 	var procs metrics.Table
 	if s.lsp.HasClients() {
@@ -349,11 +354,15 @@ func (s *Server) relevantLSPServers() []map[string]any {
 	}
 
 	// 1. One server per language among the folder's file types: the one that
-	// runs for it (see lspPick).
+	// runs for it (see lspPick). A server lsp.disabled lists is left out, so
+	// its language offers the next one, as opening a file would start it.
 	var groups [][]*lspServerDef // registry order, grouped by Lang
 	at := map[string]int{}
 	for i := range lspRegistry {
 		def := &lspRegistry[i]
+		if s.lsp.isDisabled(def.Name) {
+			continue
+		}
 		matchesExt := false
 		for _, ext := range def.Exts {
 			if extMap[ext] {
@@ -537,6 +546,8 @@ func (s *Server) handleLSPStart(w http.ResponseWriter, r *http.Request) {
 
 // lspBrief is the language server summary sent with a file: its state, and the
 // language that lacks a server when none is installed, so the UI can offer one.
+// paused says lsp.enabled has turned the folder's servers off, so the UI can
+// tell that from a folder opened with -no-lsp.
 func (s *Server) lspBrief(rel string) map[string]any {
 	state, srv := s.lsp.State(rel)
 	b := map[string]any{
@@ -544,7 +555,9 @@ func (s *Server) lspBrief(rel string) map[string]any {
 		"server":     srv,
 		"anyRunning": s.lsp.AnyRunning(),
 	}
-	if lang := s.lsp.MissingLang(rel); lang != "" {
+	if s.lsp.Paused() {
+		b["paused"] = true
+	} else if lang := s.lsp.MissingLang(rel); lang != "" {
 		b["missing"] = lang
 	}
 	return b

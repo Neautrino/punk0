@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"px0/internal/metrics"
@@ -192,7 +194,30 @@ type lspManager struct {
 	restarts  map[string]int // crashes recovered from, per server name
 	stopped   map[string]bool
 
+	// The Language Servers settings, as applySettings last saw them. paused
+	// is lsp.enabled off: nothing runs or starts here, while the folder's own
+	// choice (enabled) is kept for when it is turned back on. disabled is
+	// lsp.disabled; the map is replaced, never changed in place.
+	paused   bool
+	disabled map[string]bool
+	// used is when client() last handed out each running server, in Unix
+	// nanoseconds, for lsp.idleStop. The values are atomic so client()'s
+	// read-locked fast path can record a use.
+	used map[string]*atomic.Int64
+
 	discovered bool // the first discover() has finished
+	// discoverMu runs one discover() at a time, so a rescan started before a
+	// change to lsp.disabled cannot land after the one started for it.
+	discoverMu sync.Mutex
+
+	quit      chan struct{} // closed by Close to end the settings reaper
+	closeOnce sync.Once
+
+	// The settings file as the reaper last applied it, and when the reaper
+	// last swept for idle servers. Only the reaper (or a test standing in
+	// for it) touches these.
+	settingsSeen settingsStamp
+	swept        time.Time
 
 	jobMu sync.Mutex
 	jobs  map[string]*lspJob // install runs, by server name
@@ -223,7 +248,8 @@ func (m *lspManager) Allowed(abs string) bool {
 }
 
 // newLSPManager creates a new language server manager for root.
-// If enabled is true, server discovery begins in the background without blocking startup.
+// If enabled is true, server discovery begins in the background without
+// blocking startup, and a reaper applies the Language Servers settings.
 func newLSPManager(root string, enabled bool) *lspManager {
 	m := &lspManager{
 		root: root, enabled: enabled,
@@ -236,15 +262,171 @@ func newLSPManager(root string, enabled bool) *lspManager {
 	if !enabled {
 		return m
 	}
+	// Set before the first discover() and the first request, so a folder
+	// opened while lsp.enabled is off, or with servers disabled, never starts
+	// one even briefly. The file is stamped before it is read, so a write in
+	// between is applied on the reaper's first check.
+	m.settingsSeen, m.swept = statSettings(), time.Now()
+	cfg := readSettings()
+	m.paused, m.disabled = !cfg.lspEnabled(), cfg.lspDisabled()
+	m.quit = make(chan struct{})
 	// Discover available language servers in background so server startup is instantaneous.
 	go m.discover()
+	go m.reap()
 	return m
+}
+
+// lspSettingsEvery is how often the reaper looks at the settings file. A
+// save on the agents page is written by the parent, which cannot reach its
+// children, so this is how a folder's editor process learns of it. A look is
+// one stat; the file is read and applied only when it has changed.
+const lspSettingsEvery = 2 * time.Second
+
+// lspReapEvery is how often the reaper applies the settings whether or not
+// the file changed, which is what stops idle servers.
+const lspReapEvery = 30 * time.Second
+
+// settingsStamp tells whether the settings file changed since it was last
+// applied. The zero stamp is a missing file.
+type settingsStamp struct {
+	mod  time.Time
+	size int64
+}
+
+func statSettings() settingsStamp {
+	p := settingsPath()
+	if p == "" {
+		return settingsStamp{}
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		return settingsStamp{}
+	}
+	return settingsStamp{fi.ModTime(), fi.Size()}
+}
+
+// reap runs checkSettings every lspSettingsEvery until Close. Reading the
+// shared file, rather than being told, keeps the parent from having to wake
+// every child to pass a change on.
+func (m *lspManager) reap() {
+	t := time.NewTicker(lspSettingsEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-m.quit:
+			return
+		case now := <-t.C:
+			m.checkSettings(now)
+		}
+	}
+}
+
+// checkSettings applies the settings file at time now when it changed since
+// it was last applied, or when lspReapEvery has passed since the last sweep.
+// It reports whether it applied them.
+func (m *lspManager) checkSettings(now time.Time) bool {
+	st := statSettings()
+	if st == m.settingsSeen && now.Sub(m.swept) < lspReapEvery {
+		return false
+	}
+	m.settingsSeen, m.swept = st, now
+	m.applySettings(now, readSettings())
+	return true
+}
+
+// applySettings brings the running servers in line with cfg at time now:
+// with lsp.enabled off every server stops and none starts; a server listed
+// in lsp.disabled stops and discovery passes it over for the next one of its
+// language; a server client() has not handed out for lsp.idleStop stops.
+// None of these marks a server stopped by the user, so the next use after
+// the setting allows it starts it again.
+func (m *lspManager) applySettings(now time.Time, cfg settings) {
+	if !m.enabled {
+		return
+	}
+	paused, disabled, idle := !cfg.lspEnabled(), cfg.lspDisabled(), cfg.lspIdleStop()
+	m.mu.Lock()
+	rediscover := !maps.Equal(disabled, m.disabled)
+	m.paused, m.disabled = paused, disabled
+	var drop []*lspClient
+	for name, c := range m.clients {
+		u := m.used[name]
+		if u == nil {
+			// Not handed out since it started (a crash replacement in a
+			// test, say): its idle time counts from now.
+			m.setUsedLocked(name, now)
+			u = m.used[name]
+		}
+		idleFor := now.Sub(time.Unix(0, u.Load()))
+		if paused || disabled[name] || idle > 0 && idleFor > idle {
+			drop = append(drop, c)
+			delete(m.clients, name)
+			delete(m.used, name)
+		}
+	}
+	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for _, c := range drop {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.shutdown()
+		}()
+	}
+	wg.Wait()
+	if rediscover {
+		m.discover()
+	}
+}
+
+// setUsedLocked records a use of name at t. m.mu must be held for writing.
+func (m *lspManager) setUsedLocked(name string, t time.Time) {
+	if m.used == nil {
+		m.used = map[string]*atomic.Int64{}
+	}
+	u := &atomic.Int64{}
+	u.Store(t.UnixNano())
+	m.used[name] = u
+}
+
+// touchLocked records that client() handed out name. m.mu must be held,
+// for reading is enough.
+func (m *lspManager) touchLocked(name string) {
+	if u := m.used[name]; u != nil {
+		u.Store(time.Now().UnixNano())
+	}
+}
+
+// refusedLocked is why the settings keep name from running, or nil. m.mu
+// must be held, for reading is enough.
+func (m *lspManager) refusedLocked(name string) error {
+	if m.paused {
+		return errPaused
+	}
+	if m.disabled[name] {
+		return errFailed{name + " is disabled in settings"}
+	}
+	return nil
+}
+
+// isDisabled reports whether lsp.disabled lists name.
+func (m *lspManager) isDisabled(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.disabled[name]
 }
 
 // discover resolves which registry servers are installed. It can run again
 // (Rescan) after something is installed; the result replaces the previous one
-// in a single swap, so readers never see a half-built table.
+// in a single swap, so readers never see a half-built table. Servers listed
+// in lsp.disabled are passed over, so the next one for their language wins.
 func (m *lspManager) discover() {
+	m.discoverMu.Lock()
+	defer m.discoverMu.Unlock()
+	m.mu.RLock()
+	disabled := m.disabled
+	m.mu.RUnlock()
 	// Fresh eyes: an install or rescan may have changed what's on disk, so
 	// drop memoized binary resolutions before re-resolving.
 	invalidateBinaryCache()
@@ -252,6 +434,9 @@ func (m *lspManager) discover() {
 	var available []string
 	for i := range lspRegistry {
 		def := lspRegistry[i] // a copy: Cmd[0] becomes the resolved path
+		if disabled[def.Name] {
+			continue
+		}
 		bin, ok := findServer(&def)
 		if !ok {
 			continue
@@ -460,9 +645,21 @@ func (m *lspManager) Available() []string {
 	return cp
 }
 
-// Enabled reports whether language server support is on for this session
-// (-no-lsp turns it off process-wide).
-func (m *lspManager) Enabled() bool { return m.enabled }
+// Enabled reports whether language servers may run here now: -no-lsp turns
+// them off process-wide, and lsp.enabled off pauses them.
+func (m *lspManager) Enabled() bool {
+	if !m.enabled {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return !m.paused
+}
+
+// Paused reports whether lsp.enabled has turned off servers -no-lsp allows.
+func (m *lspManager) Paused() bool {
+	return m.enabled && !m.Enabled()
+}
 
 // memBytes returns the combined resident memory of every currently running
 // language server, best-effort: a server whose RSS can't be read (exited,
@@ -512,6 +709,9 @@ func (m *lspManager) defFor(rel string) *lspServerDef {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.paused {
+		return nil
+	}
 	return m.byExt[strings.ToLower(filepath.Ext(rel))]
 }
 
@@ -534,7 +734,7 @@ func (m *lspManager) State(rel string) (lspState, string) {
 			}
 		}
 	}
-	enabled := m.enabled
+	enabled := m.enabled && !m.paused
 	var def *lspServerDef
 	if enabled {
 		def = m.byExt[ext] // defFor without the extra lock round-trip
@@ -588,6 +788,12 @@ func (m *lspManager) State(rel string) (lspState, string) {
 // returned without serializing against other readers. Mutation (restart
 // accounting, claiming the spawn slot) re-checks under the write lock.
 func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error) {
+	m.mu.RLock()
+	paused := m.paused
+	m.mu.RUnlock()
+	if paused {
+		return nil, errPaused
+	}
 	def := m.defFor(rel)
 	if def == nil {
 		return nil, errNoServer
@@ -599,7 +805,10 @@ func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error)
 		return nil, errStopped
 	}
 	for {
+		// The settings can change while this waits on a spawn: def was
+		// resolved before lsp.disabled named it, or lsp.enabled went off.
 		m.mu.RLock()
+		refused := m.refusedLocked(def.Name)
 		why, bad := m.failed[def.Name]
 		c, ok := m.clients[def.Name]
 		wait, starting := m.starting[def.Name]
@@ -607,8 +816,14 @@ func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error)
 		if ok {
 			aliveErr = c.alive()
 		}
+		if refused == nil && ok && aliveErr == nil {
+			m.touchLocked(def.Name)
+		}
 		m.mu.RUnlock()
 
+		if refused != nil {
+			return nil, refused
+		}
 		if bad {
 			return nil, errFailed{why}
 		}
@@ -627,6 +842,10 @@ func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error)
 		m.mu.Lock()
 		// Re-check under the write lock: another goroutine may have finished
 		// starting, recorded a failure, or replaced the client meanwhile.
+		if err := m.refusedLocked(def.Name); err != nil {
+			m.mu.Unlock()
+			return nil, err
+		}
 		if why, bad := m.failed[def.Name]; bad {
 			m.mu.Unlock()
 			return nil, errFailed{why}
@@ -634,6 +853,7 @@ func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error)
 		if c, ok := m.clients[def.Name]; ok {
 			err := c.alive()
 			if err == nil {
+				m.touchLocked(def.Name)
 				m.mu.Unlock()
 				return c, nil
 			}
@@ -650,6 +870,7 @@ func (m *lspManager) client(ctx context.Context, rel string) (*lspClient, error)
 			}
 			m.restarts[def.Name]++
 			delete(m.clients, def.Name)
+			delete(m.used, def.Name)
 			m.mu.Unlock()
 			go c.shutdown()
 			continue
@@ -694,13 +915,20 @@ func (m *lspManager) spawn(def *lspServerDef, done chan struct{}) {
 	}
 
 	m.mu.Lock()
-	if err != nil {
+	// The settings may have turned this server off while it started.
+	refused := err == nil && m.refusedLocked(def.Name) != nil
+	switch {
+	case err != nil:
 		m.failed[def.Name] = err.Error()
-	} else {
+	case !refused:
 		m.clients[def.Name] = c
+		m.setUsedLocked(def.Name, time.Now())
 	}
 	delete(m.starting, def.Name)
 	m.mu.Unlock()
+	if refused {
+		go c.shutdown()
+	}
 	close(done)
 }
 
@@ -775,12 +1003,18 @@ func (m *lspManager) RefreshOpenDocs() {
 }
 
 func (m *lspManager) Close() {
+	m.closeOnce.Do(func() {
+		if m.quit != nil {
+			close(m.quit)
+		}
+	})
 	m.mu.Lock()
 	clients := make([]*lspClient, 0, len(m.clients))
 	for _, c := range m.clients {
 		clients = append(clients, c)
 	}
 	m.clients = map[string]*lspClient{}
+	m.used = nil
 	m.mu.Unlock()
 	// Shut down in parallel: each shutdown is bounded (2s call timeout, 200ms
 	// exit flush, 1s kill), but a stuck server must not delay the others.
@@ -802,6 +1036,7 @@ func (e errFailed) Error() string { return e.why }
 var (
 	errNoServer = errFailed{"no language server for this file type"}
 	errStopped  = errFailed{"language server stopped"}
+	errPaused   = errFailed{"language servers are turned off in settings"}
 )
 
 // Stop stops the named server process, or all running servers if name is empty or "all".
@@ -820,6 +1055,7 @@ func (m *lspManager) Stop(name string) {
 			clients = append(clients, c)
 		}
 		m.clients = map[string]*lspClient{}
+		m.used = nil
 		m.mu.Unlock()
 		for _, c := range clients {
 			c.shutdown()
@@ -830,18 +1066,25 @@ func (m *lspManager) Stop(name string) {
 	m.stopped[name] = true
 	c := m.clients[name]
 	delete(m.clients, name)
+	delete(m.used, name)
 	m.mu.Unlock()
 	if c != nil {
 		c.shutdown()
 	}
 }
 
-// StartServer unmarks the server as stopped and spawns the background language server process.
+// StartServer unmarks the server as stopped and spawns the background language
+// server process. The settings win over the user's start: nothing starts while
+// lsp.enabled is off, nor a server lsp.disabled lists.
 func (m *lspManager) StartServer(name string) error {
 	if !m.enabled {
 		return fmt.Errorf("lsp disabled")
 	}
 	m.mu.Lock()
+	if err := m.refusedLocked(name); err != nil {
+		m.mu.Unlock()
+		return err
+	}
 	if m.stopped != nil {
 		delete(m.stopped, name)
 	}
@@ -963,16 +1206,17 @@ func (m *lspManager) ServerStatus(def *lspServerDef, procs metrics.Table) map[st
 	}
 
 	res := map[string]any{
-		"name":      def.Name,
-		"lang":      shortLangName(def.Lang),
-		"fullLang":  def.Lang,
-		"exts":      def.Exts,
-		"installed": installed,
-		"running":   false,
-		"state":     "stopped",
-		"options":   opts,
-		"docs":      def.Docs,
-		"autoOpt":   autoIndex,
+		"name":        def.Name,
+		"userStopped": isStopped,
+		"lang":        shortLangName(def.Lang),
+		"fullLang":    def.Lang,
+		"exts":        def.Exts,
+		"installed":   installed,
+		"running":     false,
+		"state":       "stopped",
+		"options":     opts,
+		"docs":        def.Docs,
+		"autoOpt":     autoIndex,
 	}
 
 	if j := m.job(def.Name); j != nil {
