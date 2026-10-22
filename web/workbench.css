@@ -322,7 +322,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 /* Pane headers: each pane's hide button sits at its inner edge, 4px in;
    in the projects pane after the Projects | Scratch switch. */
 .o-side-head { gap: 6px; padding: 0 4px 0 8px; }
-.o-files-head { height: 28px; gap: 6px; padding: 0 8px 0 4px; }
+.o-files-head { height: 28px; gap: 6px; padding: 0 4px; }
 #o-hide-left { margin-left: auto; }
 .o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
 .o-side-tabs button {
@@ -475,10 +475,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 /* New tab, and Open file in the file group, start the bars' right ends. */
 #o-file-new, #o-file-max { flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 #o-file-new { margin-left: auto; }
-/* In the path row, for the split layout's file group only. */
-#o-file-hide { display: none; flex: none; width: 20px; height: 20px; margin: 0 -6px 0 0; padding: 0; align-items: center; justify-content: center; }
-#o-center.files-open #o-file-hide { display: inline-flex; }
-
 /* A terminal tab's PTY: hollow when stopped, then by agent status. */
 .o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
 .o-tab-dot.on { background: var(--gi); border-color: var(--gi); }

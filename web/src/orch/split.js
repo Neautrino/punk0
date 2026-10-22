@@ -80,7 +80,7 @@ function syncToggle(v) {
 
 // toggleRight closes the right side as a whole, the open files and the
 // files pane, or opens whatever of it is closed: the ◫ button and
-// Ctrl+Alt+B. It is also how open files hidden with » come back.
+// Ctrl+Alt+B. It is also how open files collapsed by a drag come back.
 function toggleRight() {
   const open = !rightOpen(view());
   setHidden('right', !open);
@@ -190,7 +190,6 @@ export function initSplit() {
     save();
   });
   $('#o-file-max').addEventListener('click', () => setCollapsed(state.collapsed === 'term' ? '' : 'term'));
-  $('#o-file-hide').addEventListener('click', () => setCollapsed('file'));
   for (const b of $$('.o-side-toggle')) b.addEventListener('click', toggleRight);
   addEventListener('keydown', shortcut);
   on('pane:toggled', () => syncToggle(view()));
