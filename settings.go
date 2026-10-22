@@ -3,8 +3,15 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -75,11 +82,315 @@ type settingSchemaItem struct {
 	Max         *float64 `json:"max,omitempty"`
 	Step        *float64 `json:"step,omitempty"`
 	Secret      bool     `json:"secret,omitempty"` // render as a masked input; still returned in plaintext by /api/settings, same trust model as every other local setting
+	// Exec marks a value that ends up in a command line or a process
+	// environment. It can only be changed while punk0 listens on loopback:
+	// in remote mode anyone reaching the port could otherwise plant a command
+	// that runs the next time a local tab or agent edit starts.
+	Exec bool `json:"exec,omitempty"`
 }
 
 func numPtr(v float64) *float64 { return &v }
 
+// The modal lists categories in the order they first appear here, after
+// Commonly Used: punk0's own sections first, then px0's.
 var settingsSchema = []settingSchemaItem{
+	{
+		Key:         "general.openBrowser",
+		Title:       "Open Browser on Start",
+		Description: "Open the agents page in the browser when punk0 starts. The -no-open flag turns it off regardless. Opening a folder (punk0 <dir>) still opens its editor.",
+		Category:    "General",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "update.auto",
+		Title:       "Update Automatically",
+		Description: "Check for a newer punk0 release in the background on start and install it. The -no-update flag turns it off regardless.",
+		Category:    "General",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "tips.enabled",
+		Title:       "Show Tips in Interface",
+		Description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",
+		Category:    "General",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "workbench.colorTheme",
+		Title:       "Color Theme",
+		Description: "The color theme of the agents page and the editor.",
+		Category:    "Appearance",
+		Type:        "select",
+		Default:     "catppuccin-mocha",
+		Options: []string{
+			"catppuccin-mocha", "catppuccin-latte",
+			"github-dark", "dark", "light",
+			"dracula", "gruvbox-dark", "gruvbox-light",
+			"monokai", "nord", "one-dark", "rose-pine",
+			"solarized-dark", "solarized-light",
+		},
+	},
+	{
+		Key:         "workbench.uiFontFamily",
+		Title:       "Interface Font Family",
+		Description: "The font of menus, lists and labels on both pages. Empty uses the theme's font.",
+		Category:    "Appearance",
+		Type:        "string",
+		Default:     "",
+	},
+	{
+		Key:         "agents.default",
+		Title:       "Default Agent",
+		Description: "The agent New chat and New workspace start with until you pick another, listed first in the + menu and on the welcome screen. An agent that is not installed or is hidden falls back to the first installed one.",
+		Category:    "Agents",
+		Type:        "select",
+		Default:     "claude",
+		Options:     []string{"claude", "codex", "opencode", "agy", "cursor-agent", "shell"},
+	},
+	{
+		Key:         "agents.hidden",
+		Title:       "Hidden Agents",
+		Description: "Agents left out of the + menu, the welcome screen, New chat and New workspace. Tabs already running them keep working.",
+		Category:    "Agents",
+		Type:        "multiselect",
+		Default:     []string{},
+		Options:     []string{"claude", "codex", "opencode", "agy", "cursor-agent", "shell"},
+	},
+	{
+		Key:         "agents.claude.args",
+		Title:       "Claude Code Arguments",
+		Description: "Extra arguments for every Claude Code tab, placed right after the program name (e.g. --model opus). Shell syntax applies.",
+		Category:    "Agents",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "agents.codex.args",
+		Title:       "Codex Arguments",
+		Description: "Extra arguments for every Codex tab, placed right after the program name. Shell syntax applies.",
+		Category:    "Agents",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "agents.opencode.args",
+		Title:       "OpenCode Arguments",
+		Description: "Extra arguments for every OpenCode tab, placed right after the program name. Shell syntax applies.",
+		Category:    "Agents",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "agents.agy.args",
+		Title:       "Antigravity Arguments",
+		Description: "Extra arguments for every Antigravity tab, placed right after the program name. Shell syntax applies.",
+		Category:    "Agents",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "agents.cursor-agent.args",
+		Title:       "Cursor Agent Arguments",
+		Description: "Extra arguments for every Cursor Agent tab, placed right after the program name. Shell syntax applies.",
+		Category:    "Agents",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "terminal.fontSize",
+		Title:       "Font Size",
+		Description: "The font size of terminal tabs, in pixels.",
+		Category:    "Terminal",
+		Type:        "number",
+		Default:     13.0,
+		Min:         numPtr(8.0),
+		Max:         numPtr(32.0),
+		Step:        numPtr(0.5),
+	},
+	{
+		Key:         "terminal.fontFamily",
+		Title:       "Font Family",
+		Description: "The font of terminal tabs. Empty uses the code font.",
+		Category:    "Terminal",
+		Type:        "string",
+		Default:     "",
+	},
+	{
+		Key:         "terminal.lineHeight",
+		Title:       "Line Height",
+		Description: "The line height of terminal tabs, as a multiple of the font size.",
+		Category:    "Terminal",
+		Type:        "number",
+		Default:     1.0,
+		Min:         numPtr(1.0),
+		Max:         numPtr(2.0),
+		Step:        numPtr(0.05),
+	},
+	{
+		Key:         "terminal.scrollback",
+		Title:       "Scrollback",
+		Description: "Lines a terminal tab keeps for scrolling back in the page.",
+		Category:    "Terminal",
+		Type:        "number",
+		Default:     10000.0,
+		Min:         numPtr(1000.0),
+		Max:         numPtr(100000.0),
+		Step:        numPtr(1000.0),
+	},
+	{
+		Key:         "terminal.cursorStyle",
+		Title:       "Cursor Style",
+		Description: "The shape of the terminal cursor.",
+		Category:    "Terminal",
+		Type:        "select",
+		Default:     "block",
+		Options:     []string{"block", "bar", "underline"},
+	},
+	{
+		Key:         "terminal.cursorBlink",
+		Title:       "Cursor Blinking",
+		Description: "Whether the terminal cursor blinks.",
+		Category:    "Terminal",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "terminal.copyOnSelect",
+		Title:       "Copy on Select",
+		Description: "Copy text to the clipboard as soon as it is selected with the mouse. Needs the page on localhost or https.",
+		Category:    "Terminal",
+		Type:        "boolean",
+		Default:     false,
+	},
+	{
+		Key:         "terminal.confirmCloseRunning",
+		Title:       "Confirm Closing a Running Tab",
+		Description: "Ask before closing a tab whose shell or agent is still running.",
+		Category:    "Terminal",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "terminal.shell",
+		Title:       "Shell",
+		Description: "The program new tabs run. Empty uses $SHELL, else /bin/sh. Applies to tabs started afterwards.",
+		Category:    "Terminal",
+		Type:        "string",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "terminal.env",
+		Title:       "Environment",
+		Description: "KEY=VALUE per line, added to every tab's environment (shells and agents). A value starting with ~/ starts in your home folder. Blank lines and lines starting with # are ignored.",
+		Category:    "Terminal",
+		Type:        "textarea",
+		Default:     "",
+		Exec:        true,
+	},
+	{
+		Key:         "terminal.idleStop",
+		Title:       "Stop Idle Terminal After (Minutes)",
+		Description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt and an agent only when it is done; 0 never stops them.",
+		Category:    "Terminal",
+		Type:        "number",
+		Default:     30.0,
+		Min:         numPtr(0),
+		Max:         numPtr(1440.0),
+		Step:        numPtr(1.0),
+	},
+	{
+		Key:         "workspace.branchPrefix",
+		Title:       "Branch Prefix",
+		Description: "Put in front of the branch a new worktree workspace makes from its name (e.g. you/ turns login into you/login). The folder keeps the plain name. Existing branches and pull requests are left as they are.",
+		Category:    "Workspaces",
+		Type:        "string",
+		Default:     "",
+	},
+	{
+		Key:         "workspace.fetchBase",
+		Title:       "Fetch Base Before Creating",
+		Description: "Fetch the base branch from its remote before creating a worktree. Off uses the branches you already have.",
+		Category:    "Workspaces",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "workspace.lspDefault",
+		Title:       "Language Servers for New Workspaces",
+		Description: "Whether New workspace starts with language servers ticked. Each project then remembers your last choice.",
+		Category:    "Workspaces",
+		Type:        "boolean",
+		Default:     false,
+	},
+	{
+		Key:         "workspace.deleteMergedBranch",
+		Title:       "Delete Merged Branch with Worktree",
+		Description: "When a worktree workspace is deleted, also delete its branch if it is merged. An unmerged branch is kept.",
+		Category:    "Workspaces",
+		Type:        "boolean",
+		Default:     false,
+	},
+	{
+		Key:         "workspace.idleStop",
+		Title:       "Stop Idle Workspace After (Minutes)",
+		Description: "Controls how long a workspace's files keep being served after the last request before punk0 stops it to free memory; the next request starts it again. 0 never stops it.",
+		Category:    "Workspaces",
+		Type:        "number",
+		Default:     5.0,
+		Min:         numPtr(0),
+		Max:         numPtr(1440.0),
+		Step:        numPtr(1.0),
+	},
+	{
+		Key:         "notifications.desktop",
+		Title:       "Desktop Notifications",
+		Description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code) notify, and only while the agents page is open.",
+		Category:    "Notifications",
+		Type:        "select",
+		Default:     "off",
+		Options:     []string{"off", "unfocused", "always"},
+	},
+	{
+		Key:         "notifications.onWaiting",
+		Title:       "When an Agent Needs You",
+		Description: "Notify when an agent waits for your input or permission.",
+		Category:    "Notifications",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "notifications.onDone",
+		Title:       "When an Agent Finishes",
+		Description: "Notify when an agent stops working and is back at its prompt.",
+		Category:    "Notifications",
+		Type:        "boolean",
+		Default:     true,
+	},
+	{
+		Key:         "notifications.sound",
+		Title:       "Sound",
+		Description: "Play a short tone with each notification.",
+		Category:    "Notifications",
+		Type:        "boolean",
+		Default:     false,
+	},
+	{
+		Key:         "notifications.titleBadge",
+		Title:       "Count in Page Title",
+		Description: "Show how many agents need you in the agents page's title, e.g. (2) punk0.",
+		Category:    "Notifications",
+		Type:        "boolean",
+		Default:     true,
+	},
 	{
 		Key:         "editor.fontSize",
 		Title:       "Font Size",
@@ -161,21 +472,6 @@ var settingsSchema = []settingSchemaItem{
 		Category:    "Text Editor",
 		Type:        "boolean",
 		Default:     true,
-	},
-	{
-		Key:         "workbench.colorTheme",
-		Title:       "Color Theme",
-		Description: "Specifies the color theme used in the workbench.",
-		Category:    "Workbench",
-		Type:        "select",
-		Default:     "catppuccin-mocha",
-		Options: []string{
-			"catppuccin-mocha", "catppuccin-latte",
-			"github-dark", "dark", "light",
-			"dracula", "gruvbox-dark", "gruvbox-light",
-			"monokai", "nord", "one-dark", "rose-pine",
-			"solarized-dark", "solarized-light",
-		},
 	},
 	{
 		Key:         "diffEditor.renderSideBySide",
@@ -334,6 +630,7 @@ var settingsSchema = []settingSchemaItem{
 		Category:    "Agent / AI",
 		Type:        "string",
 		Default:     "",
+		Exec:        true,
 	},
 	{
 		Key:         "agent.timeoutSeconds",
@@ -430,36 +727,6 @@ var settingsSchema = []settingSchemaItem{
 		Type:        "string",
 		Default:     "/",
 	},
-	{
-		Key:         "workspace.idleStop",
-		Title:       "Stop Idle Workspace After (Minutes)",
-		Description: "Controls how long a workspace's files keep being served after the last request before punk0 stops it to free memory; the next request starts it again. 0 never stops it.",
-		Category:    "Server",
-		Type:        "number",
-		Default:     5.0,
-		Min:         numPtr(0),
-		Max:         numPtr(1440.0),
-		Step:        numPtr(1.0),
-	},
-	{
-		Key:         "terminal.idleStop",
-		Title:       "Stop Idle Terminal After (Minutes)",
-		Description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt and an agent only when it is done; 0 never stops them.",
-		Category:    "Server",
-		Type:        "number",
-		Default:     30.0,
-		Min:         numPtr(0),
-		Max:         numPtr(1440.0),
-		Step:        numPtr(1.0),
-	},
-	{
-		Key:         "tips.enabled",
-		Title:       "Show Tips in Interface",
-		Description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",
-		Category:    "General",
-		Type:        "boolean",
-		Default:     true,
-	},
 }
 
 func defaultSettingsMap() map[string]any {
@@ -471,6 +738,52 @@ func defaultSettingsMap() map[string]any {
 	res["agent"] = ""
 	res["models"] = map[string]string{}
 	return res
+}
+
+// settingOr returns key's stored value, or its schema default when the file
+// has none or holds a value of another type. JSON numbers are float64,
+// arrays []any.
+func settingOr[T any](key string) T {
+	settingsMu.Lock()
+	raw := readSettingsRawMap()
+	settingsMu.Unlock()
+	if v, ok := raw[key].(T); ok {
+		return v
+	}
+	var zero T
+	for _, it := range settingsSchema {
+		if it.Key == key {
+			if d, ok := it.Default.(T); ok {
+				return d
+			}
+			break
+		}
+	}
+	return zero
+}
+
+// parseEnvLines reads terminal.env: KEY=VALUE per line, blank lines and
+// lines starting with # skipped. A value starting with ~/ is expanded to the
+// home folder, since nothing else expands an environment value.
+func parseEnvLines(text string) ([]string, error) {
+	var out []string
+	home, _ := os.UserHomeDir()
+	for i, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" {
+			return nil, fmt.Errorf("line %d: want KEY=VALUE, got %q", i+1, line)
+		}
+		if strings.HasPrefix(v, "~/") && home != "" {
+			v = filepath.Join(home, v[2:])
+		}
+		out = append(out, k+"="+v)
+	}
+	return out, nil
 }
 
 // readSettingsRawMap returns the raw JSON contents unmarshaled into a map.
@@ -773,4 +1086,223 @@ func writeRawMapLocked(p string, raw map[string]any) error {
 		return err
 	}
 	return os.WriteFile(p, append(data, '\n'), 0o644)
+}
+
+// serveSettings is GET/POST api/settings for both pages. localOnly is the
+// server's loopback flag: off loopback a request may not change an Exec key.
+// afterSave runs after a successful write (nil when nothing reacts).
+func serveSettings(w http.ResponseWriter, r *http.Request, localOnly bool, afterSave func()) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{
+			"settings": readMergedSettingsMap(),
+			"defaults": defaultSettingsMap(),
+			"schema":   settingsSchema,
+			"raw":      readRawSettingsJSON(),
+			"path":     settingsPath(),
+		})
+	case http.MethodPost:
+		if !localPost(w, r) {
+			return
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			fail(w, 400, "failed to read body")
+			return
+		}
+		var payload map[string]any
+		if len(body) > 0 {
+			if err := json.Unmarshal(body, &payload); err != nil {
+				fail(w, 400, "invalid JSON: "+err.Error())
+				return
+			}
+		} else {
+			payload = make(map[string]any)
+			for k, vs := range r.URL.Query() {
+				if len(vs) > 0 {
+					payload[k] = coerceQuerySetting(k, vs[0])
+				}
+			}
+		}
+
+		rawStr, isRaw := payload["raw"].(string)
+		updates := payload
+		if isRaw {
+			if err := json.Unmarshal([]byte(rawStr), &updates); err != nil {
+				fail(w, 400, "invalid JSON in settings: "+err.Error())
+				return
+			}
+		}
+		if err := validateSettings(updates); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		if !localOnly {
+			if key := changedExecKey(updates, readSettingsRawMap()); key != "" {
+				fail(w, http.StatusForbidden, key+" can only be changed when punk0 listens on 127.0.0.1")
+				return
+			}
+		}
+
+		if isRaw {
+			if err := saveRawSettingsJSON([]byte(rawStr)); err != nil {
+				fail(w, 400, "invalid JSON in settings: "+err.Error())
+				return
+			}
+		} else if err := updateSettingsMap(payload); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		if afterSave != nil {
+			afterSave()
+		}
+		writeJSON(w, map[string]any{
+			"settings": readMergedSettingsMap(),
+			"raw":      readRawSettingsJSON(),
+			"path":     settingsPath(),
+			"ok":       true,
+		})
+	default:
+		fail(w, 405, "method not allowed")
+	}
+}
+
+func schemaItem(key string) (settingSchemaItem, bool) {
+	for _, it := range settingsSchema {
+		if it.Key == key {
+			return it, true
+		}
+	}
+	return settingSchemaItem{}, false
+}
+
+// coerceQuerySetting types a query-string value by the key's schema, so
+// ?key=value posts validate like JSON ones. Unparseable values stay strings
+// and fail validation.
+func coerceQuerySetting(key, v string) any {
+	it, ok := schemaItem(key)
+	if !ok {
+		return v
+	}
+	switch it.Type {
+	case "boolean":
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
+	case "number":
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	case "multiselect":
+		out := []any{}
+		for _, s := range strings.Split(v, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return v
+}
+
+// validateSettings checks every schema key in m against its type, options and
+// range. nil means removal and unknown keys are stored as given.
+func validateSettings(m map[string]any) error {
+	for k, v := range m {
+		it, ok := schemaItem(k)
+		if !ok || v == nil {
+			continue
+		}
+		if err := validateSetting(it, v); err != nil {
+			return fmt.Errorf("%s: %s", k, err)
+		}
+	}
+	return nil
+}
+
+func validateSetting(it settingSchemaItem, v any) error {
+	switch it.Type {
+	case "boolean":
+		if _, ok := v.(bool); !ok {
+			return errors.New("want true or false")
+		}
+	case "number":
+		f, ok := v.(float64)
+		if !ok {
+			return errors.New("want a number")
+		}
+		if it.Min != nil && f < *it.Min || it.Max != nil && f > *it.Max {
+			return fmt.Errorf("%v is out of range %v..%v", f, deref(it.Min), deref(it.Max))
+		}
+	case "select":
+		// Options are strings; a numeric select (editor.tabSize) stores numbers.
+		var s string
+		switch x := v.(type) {
+		case string:
+			s = x
+		case float64:
+			s = strconv.FormatFloat(x, 'f', -1, 64)
+		}
+		if !slices.Contains(it.Options, s) {
+			return fmt.Errorf("want one of %s", strings.Join(it.Options, ", "))
+		}
+	case "multiselect":
+		list, ok := v.([]any)
+		if !ok {
+			return errors.New("want a list")
+		}
+		for _, e := range list {
+			if s, ok := e.(string); !ok || !slices.Contains(it.Options, s) {
+				return fmt.Errorf("%v is not one of %s", e, strings.Join(it.Options, ", "))
+			}
+		}
+	default: // string, textarea
+		s, ok := v.(string)
+		if !ok {
+			return errors.New("want a string")
+		}
+		if it.Key == "terminal.env" {
+			if _, err := parseEnvLines(s); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func deref(p *float64) any {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// changedExecKey returns the first Exec key whose value in updates differs
+// from the stored one (absent counts as the default). Removal and reset to
+// the default are allowed: they only take a command away. "agent" is the
+// older spelling of agent.harness.
+func changedExecKey(updates, stored map[string]any) string {
+	for k, v := range updates {
+		key := k
+		if k == "agent" {
+			key = "agent.harness"
+		}
+		it, ok := schemaItem(key)
+		if !ok || !it.Exec || v == nil || reflect.DeepEqual(v, it.Default) {
+			continue
+		}
+		cur, has := stored[key]
+		if key == "agent.harness" {
+			if ag, ok := stored["agent"].(string); ok && ag != "" {
+				cur, has = ag, true
+			}
+		}
+		if !has {
+			cur = it.Default
+		}
+		if !reflect.DeepEqual(v, cur) {
+			return k
+		}
+	}
+	return ""
 }

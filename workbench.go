@@ -448,6 +448,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/agents"), wb.handleAgents)
+	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/tabs/{id}"), wb.handleTabRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
@@ -833,6 +834,15 @@ func stopIdleTab(kind, status string, foregroundIsShell bool, idleFor, limit tim
 }
 
 /* ---------- HTTP ---------- */
+
+// handleSettings serves the same settings API as the editor, so the agents
+// page can open the one settings modal.
+func (wb *workbench) handleSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && !trustedGet(w, r) {
+		return
+	}
+	serveSettings(w, r, wb.localOnly, nil)
+}
 
 // trustedGet refuses reads whose Host is a name other than localhost: the
 // folder browser lists the whole disk, and a DNS-rebound page must not read it.
@@ -1313,17 +1323,22 @@ func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleWorkspaceRemove answers 409 while a worktree has uncommitted changes;
-// ?force=1 deletes them.
+// ?force=1 deletes them. note says why a merged-branch delete did not happen.
 func (wb *workbench) handleWorkspaceRemove(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
 	}
-	if err := wb.records.RemoveWorkspace(r.PathValue("id"), r.URL.Query().Get("force") == "1"); err != nil {
+	note, err := wb.records.RemoveWorkspace(r.PathValue("id"), r.URL.Query().Get("force") == "1")
+	if err != nil {
 		failRecord(w, err)
 		return
 	}
 	wb.stopOrphans()
-	writeJSON(w, map[string]any{"ok": true})
+	res := map[string]any{"ok": true}
+	if note != "" {
+		res["note"] = note
+	}
+	writeJSON(w, res)
 }
 
 // handleLSP turns language servers on or off for a workspace's folder. The

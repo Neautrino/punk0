@@ -258,6 +258,7 @@ func TestAgentEditRefusedUntilHarnessChosen(t *testing.T) {
 	ix := NewIndex(root)
 	ix.Build()
 	s := NewServer(ix, nil)
+	s.localOnly = true // a command template is only accepted on loopback
 	s.SetAgent(m)
 
 	code, body := agentPost(t, s, "/api/agent/edit?path=a.go&l1=1&l2=1&instruction=hi")

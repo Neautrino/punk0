@@ -39,23 +39,28 @@ var tabAgents = map[string]tabAgent{
 // nothing to resume (the tab never got a message), so || then starts that
 // session. Other agents resume their latest session when they can, else start
 // a new one. A new tab never resumes: in a folder of the user's, the latest
-// session may belong to something else.
+// session may belong to something else. agents.<kind>.args goes right after
+// the program name, verbatim: it is shell text the user wrote.
 func agentCommand(kind, session string, first bool) string {
 	a, ok := tabAgents[kind]
 	if !ok {
 		return ""
 	}
+	bin := a.bin
+	if args := strings.TrimSpace(settingOr[string]("agents." + kind + ".args")); args != "" {
+		bin += " " + args
+	}
 	if kind == tabClaude {
-		start := claudeCommand() + " --session-id " + session
+		start := claudeCommand(bin) + " --session-id " + session
 		if first {
 			return start
 		}
-		return claudeCommand() + " --resume " + session + " || " + start
+		return claudeCommand(bin) + " --resume " + session + " || " + start
 	}
 	if first || a.resume == nil {
-		return a.bin
+		return bin
 	}
-	return a.bin + " " + strings.Join(a.resume, " ") + " || " + a.bin
+	return bin + " " + strings.Join(a.resume, " ") + " || " + bin
 }
 
 // agentView is one choice in the New chat dialog.

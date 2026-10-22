@@ -137,7 +137,7 @@ func main() {
 		if flag.NArg() > 0 {
 			initial = target
 		}
-		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate, childArgs, initial)
+		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate && settingOr[bool]("update.auto"), childArgs, initial)
 		return
 	}
 
@@ -327,7 +327,7 @@ func main() {
 
 	// Check for updates in the background once the server is already up, so
 	// px0 never makes a network call before serving the first request.
-	if !*noUpdate {
+	if !*noUpdate && settingOr[bool]("update.auto") {
 		go autoUpdate(version)
 	}
 
@@ -459,7 +459,11 @@ func runWorkbench(host string, port int, basePathFlag string, open, update bool,
 	}
 	uiHint("ctrl-c to stop", os.Stdout)
 	if open {
-		go openBrowser(u)
+		// general.openBrowser skips only the agents page: the editor
+		// `punk0 <dir>` asked for still opens, as a hand-off's does.
+		if settingOr[bool]("general.openBrowser") {
+			go openBrowser(u)
+		}
 		if editor != "" {
 			go openBrowser(editor)
 		}

@@ -147,6 +147,7 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 	}
 	pl.Name = name
 	track := "" // the remote branch the new branch tracks
+	folder := ""
 	if branch == "" {
 		switch {
 		case refExists(pl.repo, "refs/heads/"+name):
@@ -158,7 +159,10 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 			branch = remoteBranch(pl.repo, name)
 			pl.Name = branch
 		default:
-			branch = branchSlug(name)
+			// workspace.branchPrefix marks only branches punk0 names itself;
+			// the folder keeps the bare name.
+			folder = folderName(branchSlug(name))
+			branch = strings.TrimSpace(settingOr[string]("workspace.branchPrefix")) + branchSlug(name)
 		}
 	}
 	if strings.HasPrefix(branch, "-") || branch == "" {
@@ -197,13 +201,15 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 			return pl, fmt.Errorf("unknown start point %q", pl.Base)
 		}
 	}
-	if pl.Base != "" && !o.fetched {
+	if pl.Base != "" && !o.fetched && settingOr[bool]("workspace.fetchBase") {
 		if remote := remoteOf(pl.repo, pl.Base); remote != "" {
 			pl.Fetch, pl.fetchRef = remote, strings.TrimPrefix(strings.TrimPrefix(pl.Base, "refs/remotes/"), remote+"/")
 		}
 	}
 
-	folder := folderName(branch)
+	if folder == "" {
+		folder = folderName(branch)
+	}
 	pl.Dir = filepath.Join(r.worktrees, pid, folder)
 	for n := 2; taken[pl.Dir] || exists(pl.Dir); n++ {
 		pl.Dir = filepath.Join(r.worktrees, pid, folder+"-"+strconv.Itoa(n))

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -113,7 +114,7 @@ func TestProjectAddAndReload(t *testing.T) {
 		t.Fatalf("reloaded tab would start in %q", tabs[0].tab.dir)
 	}
 
-	if err := rec.RemoveWorkspace(local.ID, false); err != nil {
+	if _, err := rec.RemoveWorkspace(local.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "README.md")); err != nil {
@@ -256,13 +257,13 @@ func TestWorktreeWorkspace(t *testing.T) {
 	}
 
 	os.WriteFile(filepath.Join(w.Dir, "wip.txt"), []byte("agent output"), 0o644)
-	if err := rec.RemoveWorkspace(w.ID, false); !errors.Is(err, errDirty) {
+	if _, err := rec.RemoveWorkspace(w.ID, false); !errors.Is(err, errDirty) {
 		t.Fatalf("removing a dirty worktree: %v, want errDirty", err)
 	}
 	if _, err := os.Stat(filepath.Join(w.Dir, "wip.txt")); err != nil || rec.Workspace(w.ID) == nil {
 		t.Fatal("refused removal still deleted the worktree or its record")
 	}
-	if err := rec.RemoveWorkspace(w.ID, true); err != nil {
+	if _, err := rec.RemoveWorkspace(w.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(w.Dir); !os.IsNotExist(err) {
@@ -306,7 +307,7 @@ func TestWorktreeDeletedOutsidePunk0(t *testing.T) {
 	if !wv.Missing || wv.Branch != "feat-c" {
 		t.Fatalf("deleted worktree listed as %+v, want missing on feat-c", wv)
 	}
-	if err := rec.RemoveWorkspace(w.ID, false); err != nil {
+	if _, err := rec.RemoveWorkspace(w.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if list := runGit(t, repo, "worktree", "list"); strings.Contains(list, "feat-c") {
@@ -460,7 +461,7 @@ func TestScratchChats(t *testing.T) {
 	// and never a folder of yours.
 	os.WriteFile(filepath.Join(w.Dir, "notes.md"), []byte("findings"), 0o644)
 	for _, id := range []string{w.ID, ext.ID, named.ID} {
-		if err := rec.RemoveWorkspace(id, false); err != nil {
+		if _, err := rec.RemoveWorkspace(id, false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -502,7 +503,7 @@ func TestChatTitle(t *testing.T) {
 }
 
 func TestAgentCommand(t *testing.T) {
-	claude := claudeCommand()
+	claude := claudeCommand("claude")
 	cases := []struct {
 		kind  string
 		first bool
@@ -530,4 +531,107 @@ func listed(rec *Records, id string) projectView {
 		}
 	}
 	return projectView{}
+}
+
+// useSettings points the settings file at a temp folder holding m.
+func useSettings(t *testing.T, m map[string]any) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(dir, "punk0"), 0o755)
+	if err := os.WriteFile(filepath.Join(dir, "punk0", "settings.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentCommandArgs(t *testing.T) {
+	useSettings(t, map[string]any{"agents.claude.args": "--model opus", "agents.codex.args": " -m o3 "})
+	claude := claudeCommand("claude --model opus")
+	if !strings.HasPrefix(claude, "claude --model opus --settings ") {
+		t.Fatalf("claude command %q", claude)
+	}
+	for _, c := range []struct {
+		kind  string
+		first bool
+		want  string
+	}{
+		{tabClaude, true, claude + " --session-id S"},
+		{tabClaude, false, claude + " --resume S || " + claude + " --session-id S"},
+		{"codex", true, "codex -m o3"},
+		{"codex", false, "codex -m o3 resume --last || codex -m o3"},
+		{"opencode", false, "opencode --continue || opencode"}, // no args set
+	} {
+		if got := agentCommand(c.kind, "S", c.first); got != c.want {
+			t.Errorf("agentCommand(%s, %v)\n got %s\nwant %s", c.kind, c.first, got, c.want)
+		}
+	}
+}
+
+func TestTabProcessShellAndEnv(t *testing.T) {
+	t.Setenv("SHELL", "/bin/fromenv")
+	useSettings(t, map[string]any{})
+	if sh, args, _ := tabProcess("", nil); sh != "/bin/fromenv" || args != nil {
+		t.Fatalf("default shell %q %v, want $SHELL and no args", sh, args)
+	}
+	home, _ := os.UserHomeDir()
+	useSettings(t, map[string]any{
+		"terminal.shell": "/bin/zsh",
+		"terminal.env":   "# work account\nCLAUDE_CONFIG_DIR=~/.claude-work\nPUNK0_HOOK_URL=mine\n",
+	})
+	sh, args, env := tabProcess("claude", []string{"PUNK0_HOOK_URL=punk0"})
+	if sh != "/bin/zsh" || len(args) != 3 || args[2] != `claude; exec "$SHELL"` {
+		t.Fatalf("shell %q args %v", sh, args)
+	}
+	last := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		last[k] = v
+	}
+	if last["SHELL"] != "/bin/zsh" || last["CLAUDE_CONFIG_DIR"] != filepath.Join(home, ".claude-work") {
+		t.Fatalf("env SHELL=%q CLAUDE_CONFIG_DIR=%q", last["SHELL"], last["CLAUDE_CONFIG_DIR"])
+	}
+	if last["PUNK0_HOOK_URL"] != "punk0" {
+		t.Fatalf("PUNK0_HOOK_URL=%q: the user's terminal.env beat punk0's own", last["PUNK0_HOOK_URL"])
+	}
+	useSettings(t, map[string]any{"terminal.env": "not a pair"})
+	if _, _, env := tabProcess("", nil); len(env) != len(os.Environ())+3 {
+		t.Fatal("a terminal.env that does not parse still changed the environment")
+	}
+}
+
+// deleteMergedBranch drops a merged branch with its worktree, and keeps an
+// unmerged one with a note instead of failing the delete.
+func TestRemoveWorkspaceDeletesMergedBranch(t *testing.T) {
+	useSettings(t, map[string]any{"workspace.deleteMergedBranch": true})
+	repo := cleanRepo(t)
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+	merged, err := addWorkspace(rec, p.ID, "merged", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note, err := rec.RemoveWorkspace(merged.ID, false); err != nil || note != "" {
+		t.Fatalf("remove merged: note %q, err %v", note, err)
+	}
+	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/merged").Run() == nil {
+		t.Fatal("merged branch kept")
+	}
+	open, err := addWorkspace(rec, p.ID, "open", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit(t, open.Dir, "work.txt")
+	os.WriteFile(filepath.Join(open.Dir, "dirty.txt"), []byte("x"), 0o644)
+	note, err := rec.RemoveWorkspace(open.ID, true)
+	if err != nil || !strings.Contains(note, "open") {
+		t.Fatalf("remove unmerged: note %q, err %v", note, err)
+	}
+	if rec.Workspace(open.ID) != nil {
+		t.Fatal("workspace kept after its branch could not be deleted")
+	}
+	runGit(t, repo, "rev-parse", "--verify", "refs/heads/open")
 }

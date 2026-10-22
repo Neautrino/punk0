@@ -529,30 +529,39 @@ func (r *Records) Removed() []removedView {
 // folder alone. A scratch chat's folder is deleted with it: the page offers
 // that only for an archived chat. A worktree workspace also removes its
 // worktree, but answers errDirty while it has uncommitted changes unless
-// force is set; its branch is always kept.
-func (r *Records) RemoveWorkspace(id string, force bool) error {
+// force is set. Its branch is kept unless workspace.deleteMergedBranch is on;
+// then git deletes it if merged, and note says why when it did not.
+func (r *Records) RemoveWorkspace(id string, force bool) (note string, err error) {
+	var repo, branch string
+	// Registered before the unlock, so it runs after it: git branch -d needs
+	// no lock, and a failure only ever becomes the note.
+	defer func() {
+		if err == nil && branch != "" {
+			note = deleteMergedBranch(repo, branch)
+		}
+	}()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, i := r.workspaceLocked(id)
 	if p == nil {
-		return fmt.Errorf("workspace %q: %w", id, errNotFound)
+		return "", fmt.Errorf("workspace %q: %w", id, errNotFound)
 	}
 	w := p.Workspaces[i]
 	exists := isDir(w.Dir)
 	if w.Kind == kindWorktree {
 		// Only folders punk0 created are ever removed.
 		if !strings.HasPrefix(w.Dir, r.worktrees+string(filepath.Separator)) {
-			return fmt.Errorf("%s is not a punk0 worktree", w.Dir)
+			return "", fmt.Errorf("%s is not a punk0 worktree", w.Dir)
 		}
 		// Checked before stopping anything, so a refused delete leaves the
 		// agents running.
 		if exists && !force {
 			out, err := exec.Command("git", "-C", w.Dir, "status", "--porcelain").Output()
 			if err != nil {
-				return fmt.Errorf("git status: %w", err)
+				return "", fmt.Errorf("git status: %w", err)
 			}
 			if len(out) > 0 {
-				return errDirty
+				return "", errDirty
 			}
 		}
 	}
@@ -566,24 +575,36 @@ func (r *Records) RemoveWorkspace(id string, force bool) error {
 			}
 		}
 		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-			return gitError(out, err)
+			return "", gitError(out, err)
+		}
+		if settingOr[bool]("workspace.deleteMergedBranch") {
+			repo, branch = p.Dir, w.Branch
 		}
 	}
 	// A chat's folder goes with it only when punk0 made it; a chat started
 	// in a folder of yours leaves that folder alone.
 	if w.Kind == kindFolder && strings.HasPrefix(w.Dir, p.Dir+string(filepath.Separator)) {
 		if err := os.RemoveAll(w.Dir); err != nil {
-			return err
+			return "", err
 		}
 	}
 	p.Workspaces = slices.Delete(p.Workspaces, i, i+1)
-	return r.saveLocked()
+	return "", r.saveLocked()
+}
+
+// deleteMergedBranch runs git branch -d, which refuses an unmerged branch;
+// any failure comes back as a note for the user, never an error.
+func deleteMergedBranch(repo, branch string) string {
+	if out, err := exec.Command("git", "-C", repo, "branch", "-d", branch).CombinedOutput(); err != nil {
+		return fmt.Sprintf("Kept branch %s: %v", branch, gitError(out, err))
+	}
+	return ""
 }
 
 // AddTab opens a new tab in a workspace. A claude tab gets the session id its
 // conversation will be saved under.
 func (r *Records) AddTab(workspaceID, kind string) (*Satellite, error) {
-	if kind != tabShell && kind != tabClaude {
+	if _, agent := tabAgents[kind]; kind != tabShell && !agent {
 		return nil, fmt.Errorf("invalid tab kind %q", kind)
 	}
 	r.mu.Lock()

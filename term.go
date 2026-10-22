@@ -33,9 +33,9 @@ const viewerQueue = 256
 
 // claudeCommand starts Claude Code in a claude tab's new shell, with the
 // hook settings punk0 writes (hook.go) so the tab can show what the agent is
-// doing.
-func claudeCommand() string {
-	return "claude --settings " + shellQuote(filepath.Join(workbenchStateDir(), "claude-hooks.json"))
+// doing. bin is the program with any user arguments.
+func claudeCommand(bin string) string {
+	return bin + " --settings " + shellQuote(filepath.Join(workbenchStateDir(), "claude-hooks.json"))
 }
 
 // Shell is a tab's shell in a PTY. It outlives websockets: viewers attach
@@ -56,6 +56,29 @@ type Shell struct {
 	exited  bool
 }
 
+// tabProcess is the program, arguments and environment startShell runs:
+// terminal.shell, else $SHELL, else /bin/sh. terminal.env comes after the
+// inherited environment so it wins there, and before env so punk0's own
+// variables (hook URL, tab id) still win over the user's. A terminal.env that
+// does not parse is ignored rather than failing the tab; saving one is refused.
+func tabProcess(command string, env []string) (shell string, args []string, cmdEnv []string) {
+	shell = settingOr[string]("terminal.shell")
+	if shell == "" {
+		shell = os.Getenv("SHELL")
+	}
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	if command != "" {
+		args = []string{"-i", "-c", command + `; exec "$SHELL"`}
+	}
+	cmdEnv = append(os.Environ(), "SHELL="+shell, "TERM=xterm-256color", "COLORTERM=truecolor")
+	if user, err := parseEnvLines(settingOr[string]("terminal.env")); err == nil {
+		cmdEnv = append(cmdEnv, user...)
+	}
+	return shell, args, append(cmdEnv, env...)
+}
+
 // startShell runs the user's interactive shell in dir, with env added to its
 // environment. A non-empty command runs first, inside an interactive shell so
 // the rc files set PATH, and the shell then replaces itself with a plain one:
@@ -67,17 +90,10 @@ func startShell(dir, command string, env []string) (*Shell, error) {
 		return nil, err
 	}
 	ctx, stop := context.WithCancel(context.Background())
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	cmd := exec.CommandContext(ctx, shell)
-	if command != "" {
-		cmd = exec.CommandContext(ctx, shell, "-i", "-c", command+`; exec "$SHELL"`)
-	}
+	shell, args, cmdEnv := tabProcess(command, env)
+	cmd := exec.CommandContext(ctx, shell, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "SHELL="+shell, "TERM=xterm-256color", "COLORTERM=truecolor")
-	cmd.Env = append(cmd.Env, env...)
+	cmd.Env = cmdEnv
 	hangupOnCancel(cmd)
 	cmd.WaitDelay = 2 * time.Second // then Wait SIGKILLs a shell that ignored the hangup
 	ptmx, err := startPTY(cmd)

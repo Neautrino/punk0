@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1057,6 +1058,11 @@ func (s *Server) handleAgentSelect(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.URL.Query().Get("name")
 	model := r.URL.Query().Get("model")
+	// A custom harness is a command template: same Exec gate as agent.harness.
+	if !s.localOnly && name != "" && !slices.Contains(agentPresetNames(), name) {
+		fail(w, http.StatusForbidden, "agent.harness can only be changed when punk0 listens on 127.0.0.1")
+		return
+	}
 	if err := s.agent.Select(name, model); err != nil {
 		code := 400
 		if errors.Is(err, errAgentBusy) {

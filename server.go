@@ -2313,66 +2313,16 @@ func (s *Server) handleReindex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		writeJSON(w, map[string]any{
-			"settings": readMergedSettingsMap(),
-			"defaults": defaultSettingsMap(),
-			"schema":   settingsSchema,
-			"raw":      readRawSettingsJSON(),
-			"path":     settingsPath(),
-		})
-	case http.MethodPost:
-		if !localPost(w, r) {
-			return
-		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB limit
-		if err != nil {
-			fail(w, 400, "failed to read body")
-			return
-		}
-		var payload map[string]any
-		if len(body) > 0 {
-			if err := json.Unmarshal(body, &payload); err != nil {
-				fail(w, 400, "invalid JSON: "+err.Error())
-				return
-			}
-		} else {
-			payload = make(map[string]any)
-			for k, vs := range r.URL.Query() {
-				if len(vs) > 0 {
-					payload[k] = vs[0]
-				}
-			}
-		}
+	serveSettings(w, r, s.localOnly, s.reselectHarness)
+}
 
-		if rawStr, ok := payload["raw"].(string); ok {
-			if err := saveRawSettingsJSON([]byte(rawStr)); err != nil {
-				fail(w, 400, "invalid JSON in settings: "+err.Error())
-				return
-			}
-		} else {
-			if err := updateSettingsMap(payload); err != nil {
-				fail(w, 500, err.Error())
-				return
-			}
-		}
-
-		if s.agent != nil {
-			currentSettings := readSettings()
-			if currentSettings.Agent != "" && currentSettings.Agent != s.agent.Name() {
-				_ = s.agent.Select(currentSettings.Agent, s.agent.Model())
-			}
-		}
-
-		writeJSON(w, map[string]any{
-			"settings": readMergedSettingsMap(),
-			"raw":      readRawSettingsJSON(),
-			"path":     settingsPath(),
-			"ok":       true,
-		})
-	default:
-		fail(w, 405, "method not allowed")
+// reselectHarness follows a saved agent choice made in the settings modal.
+func (s *Server) reselectHarness() {
+	if s.agent == nil {
+		return
+	}
+	if name := readSettings().Agent; name != "" && name != s.agent.Name() {
+		_ = s.agent.Select(name, s.agent.Model())
 	}
 }
 

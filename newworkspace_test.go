@@ -226,3 +226,41 @@ func TestPRWebURLParsesBack(t *testing.T) {
 		}
 	}
 }
+
+// workspace.branchPrefix names only branches punk0 derives from the name;
+// the folder keeps the bare name, and an existing prefixed branch is reused.
+func TestPlanBranchPrefix(t *testing.T) {
+	useSettings(t, map[string]any{"workspace.branchPrefix": "me/"})
+	repo := cleanRepo(t)
+	runGit(t, repo, "branch", "local-one")
+	runGit(t, repo, "branch", "me/again")
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+	for _, tc := range []struct {
+		o              WorkspaceOptions
+		action, branch string
+		folder         string
+	}{
+		{WorkspaceOptions{Name: "Fix login"}, planNew, "me/fix-login", "fix-login"},
+		{WorkspaceOptions{Name: "Fix", Branch: "pr-branch"}, planNew, "pr-branch", "pr-branch"},
+		{WorkspaceOptions{Name: "local-one"}, planExisting, "local-one", "local-one"},
+		{WorkspaceOptions{Name: "again"}, planExisting, "me/again", "again"},
+	} {
+		tc.o.Worktree = true
+		pl := rec.Plan(p.ID, tc.o)
+		if pl.Error != "" || pl.Action != tc.action || pl.Branch != tc.branch || filepath.Base(pl.Dir) != tc.folder {
+			t.Errorf("%+v: plan %+v, want %s %s in %s", tc.o, pl, tc.action, tc.branch, tc.folder)
+		}
+	}
+}
+
+func TestPlanFetchBaseOff(t *testing.T) {
+	useSettings(t, map[string]any{"workspace.fetchBase": false})
+	repo, _ := repoWithOrigin(t)
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "x", Worktree: true})
+	if pl.Error != "" || pl.Base != "origin/main" || pl.Fetch != "" {
+		t.Fatalf("plan %+v, want origin/main with no fetch", pl)
+	}
+}
