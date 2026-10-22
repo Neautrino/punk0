@@ -154,6 +154,55 @@ func TestLSPServersEndpoint(t *testing.T) {
 	}
 }
 
+// The menu offers one server per language: the one that runs, else the best
+// one px0 can install. An older tsc does not count as TypeScript's server.
+func TestLSPPickOnePerLanguage(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	t.Setenv("HOME", t.TempDir())
+	t.Cleanup(invalidateBinaryCache) // forget the fake binaries for later tests
+	put := func(name, out string) {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\necho '"+out+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		invalidateBinaryCache()
+	}
+	group := func(lang string) []*lspServerDef {
+		var g []*lspServerDef
+		for i := range lspRegistry {
+			if lspRegistry[i].Lang == lang {
+				g = append(g, &lspRegistry[i])
+			}
+		}
+		return g
+	}
+	pick := func(lang string) string { return lspPick(group(lang)).Name }
+
+	invalidateBinaryCache()
+	if got := pick("Python"); got != "pyright" {
+		t.Errorf("nothing installed: Python offers %s, want pyright", got)
+	}
+	if got := pick("TypeScript and JavaScript"); got != "tsc" {
+		t.Errorf("nothing installed: TypeScript offers %s, want tsc", got)
+	}
+	put("pylsp", "")
+	if got := pick("Python"); got != "pylsp" {
+		t.Errorf("pylsp installed: Python offers %s, want pylsp", got)
+	}
+	put("tsc", "Version 5.9.3")
+	put("typescript-language-server", "")
+	if got := pick("TypeScript and JavaScript"); got != "typescript" {
+		t.Errorf("TypeScript 5: offers %s, want typescript", got)
+	}
+	put("tsc", "Version 7.0.2 ")
+	if got := pick("TypeScript and JavaScript"); got != "tsc" {
+		t.Errorf("TypeScript 7: offers %s, want tsc", got)
+	}
+}
+
 func TestLSPStopAndStart(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping real LSP stop/start in short mode")

@@ -348,7 +348,10 @@ func (s *Server) relevantLSPServers() []map[string]any {
 		procs = metrics.Processes()
 	}
 
-	// 1. Add servers matching extensions present in the workspace
+	// 1. One server per language among the folder's file types: the one that
+	// runs for it (see lspPick).
+	var groups [][]*lspServerDef // registry order, grouped by Lang
+	at := map[string]int{}
 	for i := range lspRegistry {
 		def := &lspRegistry[i]
 		matchesExt := false
@@ -358,10 +361,20 @@ func (s *Server) relevantLSPServers() []map[string]any {
 				break
 			}
 		}
-		if matchesExt && !seen[def.Name] {
-			seen[def.Name] = true
-			result = append(result, s.lsp.ServerStatus(def, procs))
+		if !matchesExt {
+			continue
 		}
+		if g, ok := at[def.Lang]; ok {
+			groups[g] = append(groups[g], def)
+		} else {
+			at[def.Lang] = len(groups)
+			groups = append(groups, []*lspServerDef{def})
+		}
+	}
+	for _, g := range groups {
+		def := lspPick(g)
+		seen[def.Name] = true
+		result = append(result, s.lsp.ServerStatus(def, procs))
 	}
 
 	// 2. Also include any server that is currently running or starting.
@@ -392,6 +405,26 @@ func (s *Server) relevantLSPServers() []map[string]any {
 	}
 
 	return result
+}
+
+// lspPick is the one server the menu offers for a language, given its
+// servers in registry order (best first): the first that can run here, which
+// is the one opening a file starts; else, with none installed, the best one
+// px0 has an install command for on this system; else the best one, with
+// only its install guide. Alternatives stay out of the list: a choice
+// between servers of one language is more confusing than useful.
+func lspPick(defs []*lspServerDef) *lspServerDef {
+	for _, def := range defs {
+		if _, ok := findServer(def); ok {
+			return def
+		}
+	}
+	for _, def := range defs {
+		if len(def.installsFor(runtime.GOOS)) > 0 {
+			return def
+		}
+	}
+	return defs[0]
 }
 
 // handleLSPServers returns the list of all language servers relevant to the workspace
