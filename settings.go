@@ -181,6 +181,15 @@ var settingsSchema = []settingSchemaItem{
 		Default:     "",
 	},
 	{
+		Key:         "layout.fileView",
+		Title:       "File View",
+		Description: "Where files open on the agents page. beside shows them in a panel of their own right of the terminals; tabs puts them among the terminal tabs. beside uses tabs while terminals and open files have less than 640 px between them (the files pane not counted).",
+		Category:    "Appearance",
+		Type:        "select",
+		Default:     "beside",
+		Options:     []string{"beside", "tabs"},
+	},
+	{
 		Key:         "agents.default",
 		Title:       "Default Agent",
 		Description: "The agent New chat and New workspace start with until you pick another, listed first in the + menu and on the welcome screen. An agent that is not installed or is hidden falls back to the first installed one.",

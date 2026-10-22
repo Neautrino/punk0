@@ -5,7 +5,8 @@
 // classes (style.css), so both views look alike.
 import { $, esc } from '../state.js';
 import { call } from './api.js';
-import { subscribe, workspace, projectOf, activeTab, openFile } from './store.js';
+import { subscribe, workspace, projectOf, openFile } from './store.js';
+import { view } from './split.js';
 
 /* git status letter -> CSS class + label, as in the app's tree. */
 const GIT_STATUS = {
@@ -63,8 +64,7 @@ function renderTree() {
   footEl.hidden = !branch;
   branchEl.textContent = branch || '';
 
-  const t = activeTab();
-  activePath = t?.kind === 'file' ? t.path : null;
+  activePath = view().file?.path ?? null;
   markActive();
 }
 

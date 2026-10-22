@@ -6,8 +6,9 @@
 // refetch. Rows use the app's .row/.g/.c classes and token colours
 // (style.css). While a text file is in front, the status bar's #st-file
 // shows its cursor (a click places it; clicking Ln / Col or Mod+G opens Go
-// to line), +/- lines against HEAD, tab size, encoding and line endings,
-// and the LSP item (lsp.js) takes the file's language as its name.
+// to line), its line count, +/- lines against HEAD, tab size, encoding and
+// line endings, and the LSP item (lsp.js) takes the file's language as its
+// name.
 import { $, esc, MOD, withKeys } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, pageURL } from './api.js';
@@ -17,7 +18,7 @@ const VIEW_CHUNK = 1000;
 const VIEW_OVERSCAN = 30;
 
 let codeVp, codeSizer, codeRows, fileTitle, fileMeta;
-let stFile, stPos, stDiff, stTabSize, stEnc, stEol, gotoEl, gotoIn;
+let stFile, stPos, stLines, stDiff, stTabSize, stEnc, stEol, gotoEl, gotoIn;
 let lineH = 21; // --lh, measured at init
 let tabSize = 4; // editor.tabSize: how wide a tab renders and counts in Col
 let viewWs = ''; // workspace id of the open files below
@@ -33,6 +34,7 @@ export function initViewer() {
   fileMeta = $('#o-file-meta');
   stFile = $('#st-file');
   stPos = $('#st-pos');
+  stLines = $('#st-lines');
   stDiff = $('#st-diff');
   stTabSize = $('#st-tabsize');
   stEnc = $('#st-enc');
@@ -172,7 +174,7 @@ function paint() {
     fileMeta.textContent = 'Loading…';
     return;
   }
-  fileMeta.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
+  fileMeta.textContent = '';
   codeRows.style.setProperty('--gw', String(String(d.total).length));
   codeSizer.style.height = `${d.total * lineH + 100}px`;
   codeVp.scrollTop = f.top;
@@ -187,6 +189,7 @@ function drawStatus() {
   if (!d) return closeGoto();
   const { line, col } = current.cur || { line: 1, col: 1 };
   stPos.textContent = `Ln ${line}, Col ${col}`;
+  stLines.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
   stDiff.innerHTML = d.added || d.deleted ? `<span class="add">+${d.added}</span><span class="del">−${d.deleted}</span>` : '';
   stTabSize.textContent = `Tab Size: ${tabSize}`;
   stEnc.textContent = d.encoding;

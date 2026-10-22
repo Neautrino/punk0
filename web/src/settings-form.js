@@ -50,6 +50,15 @@ const BUILTIN_SCHEMA = [
     default: ""
   },
   {
+    key: "layout.fileView",
+    title: "File View",
+    description: "Where files open on the agents page. beside shows them in a panel of their own right of the terminals; tabs puts them among the terminal tabs. beside uses tabs while terminals and open files have less than 640 px between them (the files pane not counted).",
+    category: "Appearance",
+    type: "select",
+    default: "beside",
+    options: ["beside", "tabs"]
+  },
+  {
     key: "agents.default",
     title: "Default Agent",
     description: "The agent New chat and New workspace start with until you pick another, listed first in the + menu and on the welcome screen. An agent that is not installed or is hidden falls back to the first installed one.",

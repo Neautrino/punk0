@@ -89,7 +89,7 @@
 #st-diff .add { color: var(--gi); }
 #st-diff .del { color: var(--gd); margin-left: 6px; }
 /* Shed the least useful first as the middle narrows. */
-@container (max-width: 520px) { #st-tabsize, #st-eol { display: none; } }
+@container (max-width: 520px) { #st-tabsize, #st-eol, #st-lines { display: none; } }
 @container (max-width: 420px) { #st-enc, #st-diff { display: none; } }
 @container (max-width: 300px) { .wb-agent-state.working { display: none; } }
 
@@ -196,7 +196,12 @@
   background: var(--bg2);
 }
 #o-side { width: var(--wb-left); border-right: 1px solid var(--line); }
-#o-files { width: var(--wb-right); border-left: 1px solid var(--line); overflow: hidden; }
+/* No border of its own: the second row runs on from the open file's path
+   into the pane's head, so only the tree and its foot draw the line, and
+   the head too while no file is shown beside it. */
+#o-files { overflow: hidden; }
+#o-tree, #o-files-foot, #o-files .o-files-head { box-shadow: inset 1px 0 0 var(--line); }
+#o-center.file-shown #o-files .o-files-head { box-shadow: none; }
 
 /* A pane border's drag handle: no width of its own, an 8px hit area over
    the border, and an accent line once hovered a moment or dragged. */
@@ -214,18 +219,74 @@
 /* While dragging: the col-resize cursor everywhere, no text selection, and
    nothing under the pointer (a terminal, the viewer) takes the events. */
 body.wb-resizing { cursor: col-resize; user-select: none; }
-body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
+body.wb-resizing #o-main > :not(.o-resizer), body.wb-resizing #o-center > :not(.o-resizer) { pointer-events: none; }
+body.wb-resizing .o-resizer { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .o-resizer::after { transition: none; } }
-/* A hidden side pane (resize.js): gone with its border, and the tab bar
-   offers it back at that edge. The status bar's left section then only
-   wraps its contents. */
+/* A hidden side pane (resize.js): gone with its border. The status bar's
+   left section then only wraps its contents. */
 #wb-app.hide-left #o-side, #wb-app.hide-left .o-resizer[data-side="left"],
 #wb-app.hide-right #o-files, #wb-app.hide-right .o-resizer[data-side="right"] { display: none; }
-#o-tab-head .o-show { display: none; }
-#wb-app.hide-left #o-show-left, #wb-app.hide-right #o-show-right { display: inline-flex; }
-#o-show-left { margin: 0 4px 0 6px; }
+/* The projects pane's show button sits in the center's head at its edge:
+   the file group's when the terminals are collapsed (split.js), else the
+   terminals'. */
+#o-center .o-show { display: none; }
+#wb-app.hide-left #o-center:not(.term-off) #o-tab-head .o-show[data-show="left"],
+#wb-app.hide-left #o-center.term-off #o-file-head .o-show[data-show="left"] { display: inline-flex; }
+/* Open in editor and the right side's toggle: always there, in the head at
+   the center's right edge; aria-pressed says whether anything shows right
+   of the terminals. */
+#o-center :is(.o-side-toggle, .o-open-editor) { display: none; flex: none; width: 22px; height: 22px; margin-left: 2px; padding: 0; align-items: center; justify-content: center; border-radius: var(--r); }
+#o-center:not(.files-open) #o-tab-head :is(.o-side-toggle, .o-open-editor),
+#o-center.file-off #o-tab-head :is(.o-side-toggle, .o-open-editor),
+#o-center.files-open:not(.file-off) #o-file-head :is(.o-side-toggle, .o-open-editor) { display: inline-flex; }
+/* The pane's own hide button, in its head: shown filled, as the pane is. */
+#o-hide-right { width: 22px; height: 22px; border-radius: var(--r); background: var(--bg4); color: var(--fg); }
+.o-show[data-show="left"] { margin: 0 4px 0 6px; }
 #wb-app.hide-left .wb-status-side { width: auto; border-right: 0; }
-#o-center { flex: 1; min-width: 320px; display: flex; flex-direction: column; position: relative; background: var(--bg); }
+/* The center is a grid of three rows and five columns. Rows: tab bars; the
+   second row (the open file's path, the files pane's head); bodies.
+   Columns: terminal group, split border, file group, files pane border,
+   files pane. The rightmost tab bar runs over the files pane, whose head is
+   part of the second row. In the tabs layout, and in split while no file is
+   open, only the terminal group has width and the viewer takes the
+   terminal's place. --o-split (split.js) is the terminal group's share of
+   the two groups; each keeps 320px (GROUP_MIN in split.js). */
+#o-center {
+  flex: 1; min-width: 320px; position: relative; background: var(--bg);
+  --o-files-w: var(--wb-right);
+  display: grid; grid-template-rows: 30px 28px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w);
+}
+#wb-app.hide-right #o-center { --o-files-w: 0px; }
+#o-center.files-open {
+  grid-template-columns:
+    minmax(0, clamp(320px, calc((100% - var(--o-files-w)) * var(--o-split, .5)), calc(100% - var(--o-files-w) - 320px)))
+    0 minmax(0, 1fr) 0 var(--o-files-w);
+}
+#o-center.files-open.term-off { grid-template-columns: 0 0 minmax(0, 1fr) 0 var(--o-files-w); }
+#o-center.files-open.file-off { grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w); }
+#o-tab-head { grid-area: 1 / 1 / 2 / -1; }
+#o-center.files-open:not(.file-off) #o-tab-head { grid-column: 1 / 2; }
+#o-term, #o-empty { grid-area: 2 / 1 / 4 / 2; }
+/* The viewer's path row and code sit in the grid themselves. */
+#o-viewer { display: contents; }
+#o-view-head { grid-area: 2 / 1; }
+#o-code-vp { grid-area: 3 / 1; }
+#o-split-resizer { grid-area: 1 / 2 / 4 / 3; display: none; }
+#o-file-head { grid-area: 1 / 3 / 2 / -1; display: none; }
+#o-center.files-open #o-view-head { grid-area: 2 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open #o-code-vp { grid-area: 3 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open #o-file-head { display: flex; border-left: 1px solid var(--line); }
+#o-center.files-open #o-split-resizer { display: block; }
+.o-resizer[data-side="right"] { grid-area: 3 / 4 / 4 / 5; }
+#o-files { grid-area: 2 / 5 / 4 / 6; }
+/* A collapsed group goes; the border stays only while being dragged back. */
+#o-center.term-off > :is(#o-tab-head, #o-term, #o-empty),
+#o-center.file-off > :is(#o-file-head, #o-viewer),
+#o-center:is(.term-off, .file-off):not(.dragging) > #o-split-resizer { display: none; }
+#o-center.term-off :is(#o-file-head, #o-view-head, #o-code-vp) { border-left: 0; }
+#o-file-max .o-ic-restore, #o-center.term-off #o-file-max .o-ic-max { display: none; }
+#o-center.term-off #o-file-max .o-ic-restore { display: inline; }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 
 .o-head {
@@ -261,7 +322,7 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 /* Pane headers: each pane's hide button sits at its inner edge, 4px in;
    in the projects pane after the Projects | Scratch switch. */
 .o-side-head { gap: 6px; padding: 0 4px 0 8px; }
-.o-files-head { gap: 6px; padding: 0 8px 0 4px; }
+.o-files-head { height: 28px; gap: 6px; padding: 0 8px 0 4px; }
 #o-hide-left { margin-left: auto; }
 .o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
 .o-side-tabs button {
@@ -405,14 +466,18 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 .o-pr-sub { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; font: 10.5px var(--mono); color: var(--faint); }
 
 /* ---------- middle: tabs, terminal, viewer ---------- */
-/* The bar's line is a shadow, as in the app, so the active tab covers it. */
-#o-tab-head { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); }
-#o-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-#o-tabs::-webkit-scrollbar { display: none; }
-#o-tabs .tab { height: 100%; line-height: normal; }
-#o-new-tab { flex: none; margin-left: 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-/* Open in editor, at the bar's right end, before the show-files button. */
-#o-open-editor { flex: none; margin-left: auto; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* The bars' line is a shadow, as in the app, so the active tab covers it. */
+#o-tab-head, #o-file-head { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); min-width: 0; }
+#o-tabs, #o-file-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#o-tabs::-webkit-scrollbar, #o-file-tabs::-webkit-scrollbar { display: none; }
+#o-tabs .tab, #o-file-tabs .tab { height: 100%; line-height: normal; }
+#o-new-tab { flex: none; margin: 0 auto 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* New tab, and Open file in the file group, start the bars' right ends. */
+#o-file-new, #o-file-max { flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+#o-file-new { margin-left: auto; }
+/* In the path row, for the split layout's file group only. */
+#o-file-hide { display: none; flex: none; width: 20px; height: 20px; margin: 0 -6px 0 0; padding: 0; align-items: center; justify-content: center; }
+#o-center.files-open #o-file-hide { display: inline-flex; }
 
 /* A terminal tab's PTY: hollow when stopped, then by agent status. */
 .o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
@@ -450,16 +515,16 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 .o-menu-label { padding: 2px 12px; font-size: 11px; color: var(--faint); }
 .o-menu button[role="menuitemradio"][aria-checked="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; color: var(--accent-fg); }
 
-#o-term { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
+#o-term { min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
 
-#o-viewer { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* The path row: the second row's start, as high as the files pane's head. */
 #o-view-head {
-  height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px;
-  border-bottom: 1px solid var(--line); font: 11px var(--mono);
+  height: 28px; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  background: var(--bg2); border-bottom: 1px solid var(--line); font: 11px var(--mono);
 }
 #o-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
 #o-file-meta { flex: none; color: var(--faint); }
-#o-code-vp { flex: 1; min-height: 0; overflow: auto; position: relative; }
+#o-code-vp { min-width: 0; min-height: 0; overflow: auto; position: relative; }
 #o-code-sizer { position: relative; min-width: 100%; }
 #o-code-rows { position: absolute; top: 0; left: 0; min-width: 100%; width: max-content; }
 #o-code-rows .g { cursor: default; }
@@ -468,7 +533,7 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 
 /* The welcome view: a faint dot grid behind a centred card. */
 #o-empty {
-  flex: 1; min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  min-height: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
   color: var(--dim); text-align: center;
   background-image: radial-gradient(color-mix(in srgb, var(--faint) 35%, transparent) 1px, transparent 1.2px); background-size: 18px 18px; background-position: center;
 }

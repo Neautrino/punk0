@@ -24,15 +24,22 @@ export const state = {
   reviews: [], // pull request items from /api/wb/state
   wb: { cwd: '', home: '', sep: '/', version: '' },
   ws: localStorage.getItem('punk0.ws') || '', // selected workspace id
-  tabs: loadJSON('punk0.tabs', {}), // workspace id -> last tab id
+  // workspace id -> { term, file, front }: its last used terminal tab and
+  // file tab, and which of the two was used last.
+  tabs: loadJSON('punk0.tabs', {}),
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
+  // The split layout's collapsed group: '', 'term' (files maximized) or
+  // 'file' (file panel hidden). Selecting a tab of that group shows it again.
+  collapsed: localStorage.getItem('punk0.collapsed') || '',
 };
 
 export function subscribe(fn) {
   listeners.add(fn);
 }
 
-function notify() {
+// rerender runs every subscriber; for changes outside the store, such as
+// the center switching between the split and tabs layouts.
+export function rerender() {
   for (const fn of listeners) fn();
 }
 
@@ -63,7 +70,7 @@ export function reload() {
     const sig = JSON.stringify([state.projects, state.reviews, state.wb.version]);
     if (sig !== lastSig) {
       lastSig = sig;
-      notify();
+      rerender();
     }
   })().finally(() => { reloading = null; });
   return reloading;
@@ -97,36 +104,73 @@ export function projectOf(wsId) {
 export const wsLabel = w => w.title || w.name;
 
 export const fileTabId = path => `file:${path}`;
+const kindOf = id => (id.startsWith('file:') ? 'file' : 'term');
 
 // tabsOf lists a workspace's tabs: its shells and Claude chats from the
 // server, then the files open in it, which only this browser remembers.
 export function tabsOf(w) {
   if (!w) return [];
-  const files = (state.files[w.id] || []).map(path => ({
+  return [...w.tabs, ...fileTabsOf(w)];
+}
+
+export function fileTabsOf(w) {
+  return (state.files[w?.id] || []).map(path => ({
     id: fileTabId(path),
     kind: 'file',
     path,
     name: path.slice(path.lastIndexOf('/') + 1),
   }));
-  return [...w.tabs, ...files];
 }
 
-// activeTab is the selected workspace's last used tab, else its first.
+// used is the remembered tabs of workspace id; an entry stored in another
+// shape counts as none.
+function used(id) {
+  const e = state.tabs[id];
+  return e && typeof e === 'object' ? e : (state.tabs[id] = {});
+}
+
+// termTab is the selected workspace's last used terminal tab, else its first.
+export function termTab(w = workspace()) {
+  if (!w) return null;
+  const id = used(w.id).term;
+  return w.tabs.find(t => t.id === id) || w.tabs[0] || null;
+}
+
+// fileTab is the selected workspace's last used file tab, else its first.
+export function fileTab(w = workspace()) {
+  const files = fileTabsOf(w);
+  const id = w && used(w.id).file;
+  return files.find(t => t.id === id) || files[0] || null;
+}
+
+// activeTab is the tab in front: of the selected workspace's last used
+// terminal and file tabs, the one used last.
 export function activeTab() {
-  const tabs = tabsOf(workspace());
-  return tabs.find(t => t.id === state.tabs[state.ws]) || tabs[0] || null;
+  const w = workspace();
+  const t = termTab(w), f = fileTab(w);
+  return (w && used(w.id).front === 'file' ? f || t : t || f) || null;
 }
 
 export function selectWorkspace(id) {
   state.ws = id;
   saveJSON('punk0.ws', id);
-  notify();
+  rerender();
 }
 
 export function selectTab(id) {
-  state.tabs[state.ws] = id;
+  const kind = kindOf(id);
+  Object.assign(used(state.ws), { [kind]: id, front: kind });
   saveJSON('punk0.tabs', state.tabs);
-  notify();
+  if (state.collapsed === kind) return setCollapsed('');
+  rerender();
+}
+
+// setCollapsed collapses one group of the split layout ('term' or 'file'),
+// or none ('').
+export function setCollapsed(kind) {
+  state.collapsed = kind;
+  saveJSON('punk0.collapsed', kind);
+  rerender();
 }
 
 // openFile shows path in a tab of the selected workspace, reusing its tab
@@ -140,10 +184,14 @@ export function openFile(path) {
   selectTab(fileTabId(path));
 }
 
+// closeFile closes path's tab; closing the last one also ends a collapsed
+// split, so the next file opens beside the terminals again.
 export function closeFile(path) {
-  state.files[state.ws] = (state.files[state.ws] || []).filter(p => p !== path);
+  const open = (state.files[state.ws] || []).filter(p => p !== path);
+  state.files[state.ws] = open;
   saveJSON('punk0.files', state.files);
-  notify();
+  if (!open.length && state.collapsed) return setCollapsed('');
+  rerender();
 }
 
 // tildify shortens a path under the home folder the parent reports.

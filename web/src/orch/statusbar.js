@@ -7,14 +7,14 @@
 // (resources.js).
 import { $, esc, keyCaps } from '../state.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
-import { state, subscribe, activeTab, selectWorkspace, selectTab } from './store.js';
+import { state, subscribe, termTab, selectWorkspace, selectTab } from './store.js';
 import { initResources, refreshResources } from './resources.js';
 
 // The agents page's own keys; the editor's live in shortcuts.js.
 const SHORTCUTS = [
   [['Mod+,'], 'Settings (outside a terminal)'],
   [['Mod+B'], 'Show / hide the projects pane (outside a terminal)'],
-  [['Mod+Alt+B'], 'Show / hide the files pane (outside a terminal)'],
+  [['Mod+Alt+B'], 'Close / open the open files and the files pane (outside a terminal)'],
   [['Mod+G'], 'Go to line in the open file (outside a terminal)'],
   [['Left', 'Right'], 'Move a focused pane border 16 px'],
   [['Shift+Left', 'Shift+Right'], 'Move a focused pane border 64 px'],
@@ -43,12 +43,12 @@ function agentTabs(status) {
     .flatMap(w => w.tabs.filter(t => t.running && t.status === status).map(t => ({ w, t })));
 }
 
-// nextAgent shows the tab after the one in front with that status, so
-// clicking again walks through all of them.
+// nextAgent shows the tab after the selected workspace's terminal tab with
+// that status, so clicking again walks through all of them.
 function nextAgent(status) {
   const list = agentTabs(status);
   if (!list.length) return;
-  const at = list.findIndex(({ w, t }) => w.id === state.ws && t.id === activeTab()?.id);
+  const at = list.findIndex(({ w, t }) => w.id === state.ws && t.id === termTab()?.id);
   const { w, t } = list[(at + 1) % list.length];
   if (w.id !== state.ws) selectWorkspace(w.id);
   selectTab(t.id);

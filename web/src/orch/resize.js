@@ -3,14 +3,18 @@
 // whether each is shown. Widths live in two CSS variables on #wb-app
 // (--wb-left, --wb-right); the left one also sizes the status bar's left
 // section, so the bar follows the sidebar. A hidden pane is a class on
-// #wb-app (hide-left, hide-right), which also shows the tab bar's button
-// to bring it back. All of it is remembered in this browser.
+// #wb-app (hide-left, hide-right). The center's head at the left edge
+// brings a hidden projects pane back (.o-show); the right side's toggle,
+// which closes the files pane with the open files, is split.js's
+// (isHidden, setHidden, 'pane:toggled'). All of it is remembered in this
+// browser.
 //
 // Smoothness: a drag only records the pointer; one requestAnimationFrame per
 // frame writes the variables, and body.wb-resizing turns off text selection
 // and lets the terminal postpone refitting its PTY until the drag rests
 // (term.js).
 import { $, $$ } from '../state.js';
+import { emit } from '../bus.js';
 
 // Sizes, in CSS pixels. The left pane holds names, so it stays narrow; the
 // right one may grow until the center reaches CENTER_MIN, for long paths.
@@ -59,7 +63,7 @@ function apply() {
   app.style.setProperty('--wb-right', layout.right + 'px');
   app.classList.toggle('hide-left', layout.hidden.left);
   app.classList.toggle('hide-right', layout.hidden.right);
-  for (const h of $$('.o-resizer')) {
+  for (const h of $$('.o-resizer[data-side]')) {
     const side = h.dataset.side;
     h.setAttribute('aria-valuenow', layout[side]);
     h.setAttribute('aria-valuemin', LIMITS[side].min);
@@ -88,8 +92,20 @@ function toggleSide(side) {
   fit();
   apply();
   save();
-  const btn = $(layout.hidden[side] ? `#o-show-${side}` : `#o-hide-${side}`);
-  if (document.activeElement?.closest?.(`#o-hide-${side}, #o-show-${side}`)) btn?.focus();
+  emit('pane:toggled', side);
+  // Keep focus on the pane's buttons when one of them was used; a toggle
+  // stays in place, so it keeps focus by itself.
+  if (!document.activeElement?.closest?.(`#o-hide-${side}, .o-show[data-show="${side}"]`)) return;
+  const btn = layout.hidden[side]
+    ? [...$$(`.o-show[data-show="${side}"], .o-side-toggle[data-side="${side}"]`)].find(b => b.offsetParent)
+    : $(`#o-hide-${side}`);
+  btn?.focus();
+}
+
+export const isHidden = side => layout.hidden[side];
+
+export function setHidden(side, hidden) {
+  if (layout.hidden[side] !== hidden) toggleSide(side);
 }
 
 function drag(handle, e) {
@@ -133,18 +149,19 @@ function key(handle, e) {
   save();
 }
 
-// Ctrl+B (Cmd+B on macOS) toggles the projects pane, with Alt the files
-// pane, as in VS Code. Not inside a terminal: there Ctrl+B is the shell's
-// (readline's back a character, tmux's prefix).
+// Ctrl+B (Cmd+B on macOS) toggles the projects pane, as in VS Code. Not
+// inside a terminal: there Ctrl+B is the shell's (readline's back a
+// character, tmux's prefix). With Alt it is split.js's, for the whole right
+// side.
 function shortcut(e) {
   if (e.key.toLowerCase() !== 'b' && e.code !== 'KeyB') return;
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.target.closest?.('#o-term')) return;
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.target.closest?.('#o-term')) return;
   e.preventDefault();
-  toggleSide(e.altKey ? 'right' : 'left');
+  toggleSide('left');
 }
 
 export function initResize() {
-  for (const h of $$('.o-resizer')) {
+  for (const h of $$('.o-resizer[data-side]')) {
     h.addEventListener('pointerdown', e => drag(h, e));
     h.addEventListener('keydown', e => key(h, e));
     h.addEventListener('dblclick', () => {
@@ -154,7 +171,7 @@ export function initResize() {
   }
   for (const side of ['left', 'right']) {
     $(`#o-hide-${side}`).addEventListener('click', () => toggleSide(side));
-    $(`#o-show-${side}`).addEventListener('click', () => toggleSide(side));
+    for (const b of $$(`.o-show[data-show="${side}"]`)) b.addEventListener('click', () => toggleSide(side));
   }
   addEventListener('keydown', shortcut);
   addEventListener('resize', () => {
