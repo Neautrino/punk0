@@ -297,16 +297,31 @@
         </button>
       </header>
       <main id="o-viewer" hidden>
-        <!-- The second row: the file's path. -->
+        <!-- The second row: the file's path; for the Changes tab
+             (changes.js) its summary, layout switch and refresh. -->
         <header id="o-view-head">
           <span id="o-file-title"></span>
           <span id="o-file-meta"></span>
+          <span id="o-changes-acts" class="o-acts" hidden>
+            <span id="o-diff-layout" class="sidebar-toggle" role="group" aria-label="Diff layout" hidden>
+              <button type="button" class="toggle-btn" data-layout="unified" title="One column" aria-label="One column">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10"/></svg>
+              </button>
+              <button type="button" class="toggle-btn" data-layout="split" title="Side by side" aria-label="Side by side">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>
+              </button>
+            </span>
+            <button id="o-changes-refresh" type="button" class="mini" title="Refresh changes" aria-label="Refresh changes">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
+          </span>
         </header>
         <div id="o-code-vp">
           <div id="o-code-sizer">
             <div id="o-code-rows"></div>
           </div>
         </div>
+        <div id="o-diff-vp" hidden></div>
       </main>
       <!-- The welcome view, behind the tabs: what the center shows when the
            selected workspace has no tab open (a new project starts so), and
@@ -341,7 +356,19 @@
           <button id="o-hide-right" type="button" class="mini" title="Hide files" aria-label="Hide files">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
           </button>
+          <!-- Changed files only (the default, in a git checkout) or all (tree.js). -->
+          <span id="o-tree-mode" class="sidebar-toggle" role="group" aria-label="Files to show">
+            <button type="button" class="toggle-btn" data-mode="all" title="All files" aria-label="All files">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <button type="button" class="toggle-btn" data-mode="changes" title="Changed files only" aria-label="Changed files only">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg>
+            </button>
+          </span>
           <span class="o-head-acts">
+            <button id="o-tree-diff" type="button" class="mini" title="Diff: every change in this workspace" aria-label="Diff">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7z"/><path d="M15 2v5h5"/><path d="M3 8v12a2 2 0 0 0 2 2h10"/><path d="M13.5 7.5v5M11 10h5M11 14.5h5"/></svg>
+            </button>
             <button id="o-tree-refresh" type="button" class="mini" title="Refresh" aria-label="Refresh">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>

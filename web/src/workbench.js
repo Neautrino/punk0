@@ -20,6 +20,7 @@ import { initTabs } from './orch/tabs.js';
 import { initTree } from './orch/tree.js';
 import { initPicker } from './orch/picker.js';
 import { initViewer, showFile, hideFile, forgetClosed } from './orch/viewer.js';
+import { initChanges, showChanges, hideChanges } from './orch/changes.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
 import { initResize } from './orch/resize.js';
 import { initSplit, layoutCenter } from './orch/split.js';
@@ -32,6 +33,8 @@ window.name = 'punk0-agents';
 
 const termPane = $('#o-term');
 const viewerPane = $('#o-viewer');
+const codeVp = $('#o-code-vp');
+const changesVp = $('#o-diff-vp');
 const emptyPane = $('#o-empty');
 
 initResize(); // first: the panes take their widths before anything measures them
@@ -47,6 +50,7 @@ initTabs();
 initTree();
 initPicker();
 initViewer();
+initChanges();
 initTerm(termPane, reload);
 initNotify();
 
@@ -54,7 +58,7 @@ initNotify();
 // that changes, so a refresh never drops a terminal or an open file. A
 // terminal stays attached while it is out of view (a file in front of it, or
 // its group collapsed); attaching one that is not in view would start it.
-let shownFile = null; // "<workspace id>\n<path>" in the viewer
+let shownFile = null; // "<workspace id>\n<tab id>" in the viewer
 let shownTerm = null; // id of the terminal tab xterm is attached to
 let shownWs = null;
 let front = null; // id of the tab in front
@@ -73,12 +77,17 @@ subscribe(() => {
   viewerPane.hidden = !v.file;
   emptyPane.hidden = !v.welcome;
 
-  const fileKey = v.file ? `${w.id}\n${v.file.path}` : null;
+  const fileKey = v.file ? `${w.id}\n${v.file.id}` : null;
   if (fileKey !== shownFile) {
     shownFile = fileKey;
-    if (v.file) showFile(w, v.file.path);
+    const changes = !!v.file?.changes;
+    codeVp.hidden = changes;
+    changesVp.hidden = !changes;
+    if (v.file && !changes) showFile(w, v.file.path);
     else hideFile();
+    if (!changes) hideChanges();
   }
+  if (v.file?.changes) showChanges(w, v.collapsed === 'term');
 
   const was = front;
   front = activeTab()?.id || null;

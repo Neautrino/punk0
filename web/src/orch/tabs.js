@@ -10,13 +10,14 @@
 import { $, $$, esc } from '../state.js';
 import { on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
-import { subscribe, reload, workspace, tabsOf, fileTabsOf, activeTab, termTab, fileTab, selectTab, closeFile } from './store.js';
+import { subscribe, reload, workspace, tabsOf, fileTabsOf, activeTab, termTab, fileTab, selectTab, closeFile, closeChanges } from './store.js';
 import { fileKind } from './tree.js';
 import { openPicker } from './picker.js';
 import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 import { isSplit } from './split.js';
 
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
+const ICON_CHANGES = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v8M8 9h8M8 18h8"/></svg>';
 const TAB_STATUS = { working: 'working', waiting: 'waiting for you', idle: 'idle' };
 
 let barEl, fileBarEl, addEl, menuEl;
@@ -106,7 +107,7 @@ function renderTabs() {
 function tabsHTML(tabs, active) {
   return tabs.map(t => `
     <div class="tab${t.id === active?.id ? ' active' : ''}" data-tab="${esc(t.id)}" title="${esc(tabTitle(t))}" role="tab" aria-selected="${t.id === active?.id}">
-      ${t.kind === 'file' ? `<span class="o-tab-ic" data-t="${fileKind(t.name)}"></span>` : `<span class="o-tab-dot${t.running ? ' on' : ''}${t.status ? ' ' + esc(t.status) : ''}"></span>
+      ${t.changes ? ICON_CHANGES : t.kind === 'file' ? `<span class="o-tab-ic" data-t="${fileKind(t.name)}"></span>` : `<span class="o-tab-dot${t.running ? ' on' : ''}${t.status ? ' ' + esc(t.status) : ''}"></span>
       <span class="o-tab-kind">${t.kind === 'claude' ? '✳' : t.kind === 'shell' ? '$' : '◆'}</span>`}
       <span class="tn">${esc(t.name)}</span>
       <button type="button" class="x" data-act="close" title="Close tab" aria-label="Close tab">${ICON_CLOSE}</button>
@@ -114,6 +115,7 @@ function tabsHTML(tabs, active) {
 }
 
 function tabTitle(t) {
+  if (t.changes) return 'Changes in this workspace';
   if (t.kind === 'file') return t.path;
   const what = t.kind === 'claude' ? 'Claude Code' : t.kind === 'shell' ? 'Shell' : t.name;
   const st = !t.running ? 'stopped' : TAB_STATUS[t.status] || 'running';
@@ -161,7 +163,9 @@ async function onTabClick(e) {
   // Re-rendering the active tab would swallow the second click of a rename.
   if (!e.target.closest('[data-act=close]')) return t.id !== shown?.id && selectTab(t.id);
   const next = t.id === shown?.id ? neighbour(t, tabs) : null;
-  if (t.kind === 'file') {
+  if (t.changes) {
+    closeChanges();
+  } else if (t.kind === 'file') {
     closeFile(t.path);
   } else {
     if (t.running && getSetting('terminal.confirmCloseRunning') !== false &&

@@ -112,7 +112,7 @@ Unlike the main code view, the diff is **not** rendered through the virtualized 
 
 Every rendered row that exists in the working tree carries its line in `data-l`, on both halves of a split context row; a deleted row carries `data-at`, the working-tree line it sat before. `selbar.js` reads these so a selection anywhere in the diff can drive the selection bar, the right-click menu and Edit with Agent (see [Harness Editing & Agent Dispatch](agent-editing.md)).
 
-Both layouts share the same hunk-header, line-number, marker, and code-cell builders; only the row-shape (one column vs. two) differs, so a fix to how a line renders never needs to be made twice.
+Both layouts share the same hunk-header, line-number, marker, and code-cell builders; only the row-shape (one column vs. two) differs, so a fix to how a line renders never needs to be made twice. The builders and the intra-line word diff live in `web/src/difftable.js` (`hunkHeader`, `unifiedTable`, `splitTable`), which the agents page's Changes tab (`web/src/orch/changes.js`) draws with too; `diff.js` passes `lineActions`, the title of each line number's **Edit** button, and the agents page passes none, so its line numbers are plain.
 
 ## 5. Real-Time Streaming & Adaptive Monitoring Engine
 

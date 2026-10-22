@@ -22,7 +22,7 @@ Either side pane can be hidden by the button at its inner edge: the panel button
 
 ### Files beside the terminals
 
-By default, open files sit in a panel of their own right of the terminals, as in VS Code's Agents window, so you can read code while an agent works. Each side has its own tab bar: terminals and agent chats on the left, files on the right. The rightmost tab bar runs over the files pane, and ends with **+** (open a file), **Maximize**, **Open in editor** and the ◫ toggle. Under it, a second row runs the full width: the open file's path, then the files pane's head (hide, refresh, collapse all folders). The file's line count is in the status bar. The panel appears with the first open file and goes when the last one closes.
+By default, open files sit in a panel of their own right of the terminals, as in VS Code's Agents window, so you can read code while an agent works. Each side has its own tab bar: terminals and agent chats on the left, files on the right. The rightmost tab bar runs over the files pane, and ends with **+** (open a file), **Maximize**, **Open in editor** and the ◫ toggle. Under it, a second row runs the full width: the open file's path, then the files pane's head (hide, the changed / all files switch, Diff, refresh, collapse all folders). The file's line count is in the status bar. The panel appears with the first open file and goes when the last one closes.
 
 - **Resize.** Drag the border between them. Each side keeps at least 320 px, and the split keeps its proportion when the window or a side pane changes width. Double-click the border, or focus it and press Enter, for half and half; the arrow keys move it 16 px (64 px with Shift), Home / End to its limits.
 - **Collapse.** Drag the border most of the way into one side and that side collapses; drag back before letting go to keep it. A collapsed side comes back at the width it had before the drag.
@@ -30,6 +30,12 @@ By default, open files sit in a panel of their own right of the terminals, as in
 - **Narrow windows.** While the terminals and the open files have less than 640 px between them (the files pane not counted), files go back among the terminal tabs, and return to their panel once there is room.
 
 Settings → Appearance → **File View** (`layout.fileView`): `beside` (the default) or `tabs`, which always keeps files among the terminal tabs, one in front at a time. The split, what is collapsed and each workspace's last terminal and file tab are remembered in this browser.
+
+### Changed files and the diff
+
+In a git checkout the files pane lists only the files changed against `HEAD`, untracked ones included, with their folders opened. The switch in its head (folder | branch) shows all files instead; the choice is remembered in this browser. Refresh re-reads the changes.
+
+**Diff** opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals the diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. The tab re-reads the changes each time it comes into view, and with the refresh button in the path row.
 
 ## Sidebar
 

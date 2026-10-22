@@ -2,14 +2,16 @@
 // Right pane: the selected workspace's files, from its folder's editor
 // backend (w/<id>/api/tree), expanded lazily. Clicking a file opens it in a
 // tab; the active file tab's row stays highlighted. Rows use the app's tree
-// classes (style.css), so both views look alike.
+// classes (style.css), so both views look alike. In a git checkout the
+// pane shows only the changed files, their folders opened, until the
+// head's switch asks for all of them (punk0.treeMode).
 import { $, esc } from '../state.js';
 import { call } from './api.js';
-import { subscribe, workspace, projectOf, openFile } from './store.js';
+import { subscribe, workspace, projectOf, openFile, hasGit } from './store.js';
 import { view } from './split.js';
 
 /* git status letter -> CSS class + label, as in the app's tree. */
-const GIT_STATUS = {
+export const GIT_STATUS = {
   M: ['git-M', 'modified'], A: ['git-A', 'added'], D: ['git-D', 'deleted'],
   U: ['git-untracked', 'untracked'], R: ['git-R', 'renamed'],
   C: ['git-A', 'copied'], '!': ['git-M', 'unmerged'],
@@ -35,7 +37,9 @@ export function fileKind(name) {
   return (i > 0 && FILE_KIND[name.slice(i + 1).toLowerCase()]) || 'other';
 }
 
-let treeEl, footEl, branchEl;
+const MODE_KEY = 'punk0.treeMode';
+
+let treeEl, footEl, branchEl, modeEl;
 let treeWs = ''; // workspace id the tree shows
 let treeHref = ''; // its folder's backend, "w/<id>/"
 let activePath = null;
@@ -44,20 +48,44 @@ export function initTree() {
   treeEl = $('#o-tree');
   footEl = $('#o-files-foot');
   branchEl = $('#o-files-branch');
+  modeEl = $('#o-tree-mode');
   treeEl.addEventListener('click', onTreeClick);
   $('#o-tree-collapse').addEventListener('click', collapseTree);
   $('#o-tree-refresh').addEventListener('click', refreshTree);
+  modeEl.addEventListener('click', e => {
+    const b = e.target.closest('[data-mode]');
+    if (!b || b.disabled) return;
+    try { localStorage.setItem(MODE_KEY, b.dataset.mode); } catch {}
+    renderTree();
+  });
   subscribe(renderTree);
+}
+
+// changesOnly says whether the tree shows only changed files: the switch's
+// choice, changed files at first, where there is git to tell.
+function changesOnly(w) {
+  return hasGit(w) && localStorage.getItem(MODE_KEY) !== 'all';
 }
 
 function renderTree() {
   const w = workspace();
+  const only = changesOnly(w);
+  const was = treeEl.classList.contains('changed-only');
+  treeEl.classList.toggle('changed-only', only);
+  for (const b of modeEl.querySelectorAll('[data-mode]')) {
+    const on = (b.dataset.mode === 'changes') === only;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+  modeEl.querySelector('[data-mode=changes]').disabled = !hasGit(w);
   if ((w?.id || '') !== treeWs) {
     treeWs = w?.id || '';
     treeHref = w?.href || '';
     treeEl.innerHTML = '';
     if (w?.missing) treeEl.innerHTML = '<p class="o-note">The folder of this workspace is gone.</p>';
     else if (w) drawDir('', treeEl, 0);
+  } else if (only && !was) {
+    expandDirty(treeEl);
   }
   const p = w && projectOf(w.id);
   const branch = w?.kind === 'worktree' ? w.branch : w?.kind === 'local' ? p.branch : '';
@@ -98,8 +126,22 @@ async function drawDir(dir, container, depth) {
     return `<div class="tr file${ig}${g ? ' dirty ' + g[0] : ''}" data-file="${esc(c.path)}" style="padding-left:${pad + 12}px" title="${esc(c.path)}">` +
       `<span class="ic" data-t="${fileKind(c.name)}"></span><span class="nm">${esc(c.name)}</span>${badge}</div>`;
   }).join('') || (dir ? '' : '<p class="o-note">No files.</p>');
+  if (!dir) treeEl.classList.toggle('no-changes', !treeEl.querySelector('.dirty'));
+  if (treeEl.classList.contains('changed-only')) expandDirty(container);
   markActive();
   return true;
+}
+
+// expandDirty opens the changed folders under container, listing the ones
+// not listed yet, so the changed files show without a click on each folder.
+function expandDirty(container) {
+  for (const row of container.querySelectorAll(':scope > .tw > .tr.dir.dirty')) {
+    const kids = row.nextElementSibling;
+    row.classList.add('open');
+    kids.classList.add('open');
+    if (kids.hasChildNodes()) expandDirty(kids);
+    else drawDir(row.dataset.dir, kids, +row.dataset.depth + 1);
+  }
 }
 
 function onTreeClick(e) {

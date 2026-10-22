@@ -271,11 +271,11 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 /* The viewer's path row and code sit in the grid themselves. */
 #o-viewer { display: contents; }
 #o-view-head { grid-area: 2 / 1; }
-#o-code-vp { grid-area: 3 / 1; }
+#o-code-vp, #o-diff-vp { grid-area: 3 / 1; }
 #o-split-resizer { grid-area: 1 / 2 / 4 / 3; display: none; }
 #o-file-head { grid-area: 1 / 3 / 2 / -1; display: none; }
 #o-center.files-open #o-view-head { grid-area: 2 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open #o-code-vp { grid-area: 3 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open :is(#o-code-vp, #o-diff-vp) { grid-area: 3 / 3; border-left: 1px solid var(--line); }
 #o-center.files-open #o-file-head { display: flex; border-left: 1px solid var(--line); }
 #o-center.files-open #o-split-resizer { display: block; }
 .o-resizer[data-side="right"] { grid-area: 3 / 4 / 4 / 5; }
@@ -284,7 +284,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-center.term-off > :is(#o-tab-head, #o-term, #o-empty),
 #o-center.file-off > :is(#o-file-head, #o-viewer),
 #o-center:is(.term-off, .file-off):not(.dragging) > #o-split-resizer { display: none; }
-#o-center.term-off :is(#o-file-head, #o-view-head, #o-code-vp) { border-left: 0; }
+#o-center.term-off :is(#o-file-head, #o-view-head, #o-code-vp, #o-diff-vp) { border-left: 0; }
 #o-file-max .o-ic-restore, #o-center.term-off #o-file-max .o-ic-max { display: none; }
 #o-center.term-off #o-file-max .o-ic-restore { display: inline; }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
@@ -337,6 +337,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-list-head .mini { margin-left: 0; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .o-list-head .mini:hover { background: var(--bg4); }
 .o-list-head .mini:disabled { opacity: .4; cursor: default; background: none; }
+.o-head .mini:disabled { opacity: .4; cursor: default; background: none; }
 /* View options: tinted, with a count, while filters narrow the list. */
 .o-head-acts .mini.o-view-btn { width: auto; min-width: 20px; padding: 0 3px; gap: 3px; }
 .o-view-btn.on { color: var(--accent-fg); }
@@ -489,6 +490,8 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-tab-ic[data-t="doc"]  { background: var(--dim); }
 .o-tab-ic[data-t="web"]  { background: var(--nt); }
 .o-tab-ic[data-t="img"]  { background: var(--nc); }
+.o-tab-svg { width: 12px; height: 12px; flex: none; color: var(--dim); }
+.tab.active .o-tab-svg { color: var(--accent-fg); }
 
 .o-menu {
   position: absolute; z-index: 20; min-width: 170px; padding: 4px 0; display: flex; flex-direction: column;
@@ -526,6 +529,33 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-code-rows .g { cursor: default; }
 #o-code-vp.o-image #o-code-rows { position: static; width: auto; padding: 16px; }
 #o-code-vp.o-image img { display: block; max-width: 100%; }
+
+/* The Changes tab (changes.js): each changed file under a sticky header,
+   its hunks' heads sticking just below it. */
+#o-diff-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); font: var(--fs)/var(--lh) var(--mono); }
+.o-chg-head {
+  position: sticky; top: 0; z-index: 2; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+  background: var(--bg2); border-bottom: 1px solid var(--line); font-size: 11.5px; cursor: pointer; user-select: none;
+}
+.o-chg + .o-chg .o-chg-head { border-top: 1px solid var(--line); }
+.o-chg-fold { display: inline-flex; color: var(--faint); transition: transform .12s ease; }
+.o-chg.folded .o-chg-fold { transform: rotate(-90deg); }
+.o-chg.folded .o-chg-body { display: none; }
+.o-chg-head .gs { flex: none; width: 10px; font-weight: 600; text-align: center; }
+.o-chg-head .gs.git-M, .o-chg-head .gs.git-R { color: var(--accent-fg); }
+.o-chg-head .gs:is(.git-A, .git-untracked) { color: var(--gi); }
+.o-chg-head .gs.git-D { color: var(--gd); }
+.o-chg-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.o-chg-head .mini { margin-left: 0; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.o-chg-head .mini:hover { background: var(--bg4); }
+#o-diff-vp .diff-hunk-head { top: 28px; }
+#o-diff-vp .o-note { font-family: var(--ui); }
+
+/* Files pane: changed files only. Folders carry the backend's dirty flag,
+   so a clean one hides even before it is listed. */
+#o-tree.changed-only .tr.file:not(.dirty) { display: none; }
+#o-tree.changed-only .tw:not(:has(.dirty)) { display: none; }
+#o-tree.changed-only.no-changes::after { content: "No changes"; display: block; padding: 10px 12px; color: var(--faint); font-size: 12px; }
 
 /* The welcome view: a faint dot grid behind a centred card. */
 #o-empty {

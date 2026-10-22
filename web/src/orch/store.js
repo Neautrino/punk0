@@ -28,6 +28,7 @@ export const state = {
   // file tab, and which of the two was used last.
   tabs: loadJSON('punk0.tabs', {}),
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
+  changes: loadJSON('punk0.changes', {}), // workspace id -> true while its Changes tab is open
   // The split layout's collapsed group: '', 'term' (files maximized) or
   // 'file' (file panel hidden). Selecting a tab of that group shows it again.
   collapsed: localStorage.getItem('punk0.splitCollapsed') || '',
@@ -76,14 +77,17 @@ export function reload() {
   return reloading;
 }
 
-// pruneFiles forgets the open files of workspaces that no longer exist.
+// pruneFiles forgets the open files and Changes tabs of workspaces that no
+// longer exist.
 function pruneFiles() {
   if (!state.projects.length) return; // not loaded yet: keep what is stored
   const ids = new Set(state.projects.flatMap(p => p.workspaces.map(w => w.id)));
-  const stale = Object.keys(state.files).filter(id => !ids.has(id));
-  if (!stale.length) return;
-  for (const id of stale) delete state.files[id];
-  saveJSON('punk0.files', state.files);
+  for (const [key, map] of [['punk0.files', state.files], ['punk0.changes', state.changes]]) {
+    const stale = Object.keys(map).filter(id => !ids.has(id));
+    if (!stale.length) continue;
+    for (const id of stale) delete map[id];
+    saveJSON(key, map);
+  }
 }
 
 // workspace returns the workspace with id, or the selected one.
@@ -99,27 +103,38 @@ export function projectOf(wsId) {
   return state.projects.find(p => p.workspaces.some(w => w.id === wsId)) || null;
 }
 
+// hasGit says whether workspace w is a git checkout, so it has changes to show.
+export function hasGit(w) {
+  return !!w && !w.missing && !!(projectOf(w.id)?.git || w.branch);
+}
+
 // wsLabel is what a workspace is called on the page: a scratch chat's title,
 // else its name.
 export const wsLabel = w => w.title || w.name;
 
 export const fileTabId = path => `file:${path}`;
-const kindOf = id => (id.startsWith('file:') ? 'file' : 'term');
+// The Changes tab (changes.js): the workspace's diff, first in the file group.
+export const CHANGES_TAB = 'changes';
+const kindOf = id => (id === CHANGES_TAB || id.startsWith('file:') ? 'file' : 'term');
 
 // tabsOf lists a workspace's tabs: its shells and Claude chats from the
-// server, then the files open in it, which only this browser remembers.
+// server, then its Changes tab and the files open in it, which only this
+// browser remembers.
 export function tabsOf(w) {
   if (!w) return [];
   return [...w.tabs, ...fileTabsOf(w)];
 }
 
+// fileTabsOf lists the file group's tabs. The Changes tab is one of them,
+// with changes set and no path.
 export function fileTabsOf(w) {
-  return (state.files[w?.id] || []).map(path => ({
+  const files = (state.files[w?.id] || []).map(path => ({
     id: fileTabId(path),
     kind: 'file',
     path,
     name: path.slice(path.lastIndexOf('/') + 1),
   }));
+  return state.changes[w?.id] ? [{ id: CHANGES_TAB, kind: 'file', changes: true, name: 'Changes' }, ...files] : files;
 }
 
 // used is the remembered tabs of workspace id; an entry stored in another
@@ -184,13 +199,32 @@ export function openFile(path) {
   selectTab(fileTabId(path));
 }
 
-// closeFile closes path's tab; closing the last one also ends a collapsed
-// split, so the next file opens beside the terminals again.
+// openChanges shows the selected workspace's Changes tab, opening it first.
+export function openChanges() {
+  if (!state.changes[state.ws]) {
+    state.changes[state.ws] = true;
+    saveJSON('punk0.changes', state.changes);
+  }
+  selectTab(CHANGES_TAB);
+}
+
+// closeFile closes path's tab, and closeChanges the Changes tab; closing the
+// file group's last tab also ends a collapsed split, so the next file opens
+// beside the terminals again.
 export function closeFile(path) {
-  const open = (state.files[state.ws] || []).filter(p => p !== path);
-  state.files[state.ws] = open;
+  state.files[state.ws] = (state.files[state.ws] || []).filter(p => p !== path);
   saveJSON('punk0.files', state.files);
-  if (!open.length && state.collapsed) return setCollapsed('');
+  closedFileTab();
+}
+
+export function closeChanges() {
+  delete state.changes[state.ws];
+  saveJSON('punk0.changes', state.changes);
+  closedFileTab();
+}
+
+function closedFileTab() {
+  if (!fileTabsOf(workspace()).length && state.collapsed) return setCollapsed('');
   rerender();
 }
 
