@@ -6,9 +6,10 @@
 // refetch. Rows use the app's .row/.g/.c classes and token colours
 // (style.css). While a text file is in front, the status bar's #st-file
 // shows its cursor (a click places it; clicking Ln / Col or Mod+G opens Go
-// to line), +/- lines against HEAD, tab size, encoding and line endings.
+// to line), +/- lines against HEAD, tab size, encoding and line endings,
+// and the LSP item (lsp.js) takes the file's language as its name.
 import { $, esc, MOD, withKeys } from '../state.js';
-import { on } from '../bus.js';
+import { on, emit } from '../bus.js';
 import { call, pageURL } from './api.js';
 import { getSetting } from './settings.js';
 
@@ -99,6 +100,14 @@ export function showFile(w, path) {
 export function hideFile() {
   current = null;
   drawStatus();
+  announce();
+}
+
+// announce tells lsp.js the text file in front, or that there is none, so
+// the LSP item can take its language's name and start its server.
+function announce() {
+  const d = current?.doc;
+  emit('file:shown', d ? { ws: viewWs, path: current.path, lang: d.lang, missing: d.lspMissing } : null);
 }
 
 // forgetClosed drops the files of workspace wsId no longer open in a tab.
@@ -123,6 +132,7 @@ async function loadFile(f) {
     f.doc = {
       lang: j.lang, total: j.total, lines: new Array(j.total), chunks: new Set(), pending: new Set(),
       eol: j.eol || '', encoding: j.encoding || '', added: j.added || 0, deleted: j.deleted || 0,
+      lspMissing: j.lsp?.missing || '',
     };
     takeChunk(f.doc, 0, j);
   }
@@ -146,6 +156,7 @@ function paint() {
   codeSizer.style.height = '0px';
   codeVp.classList.toggle('o-image', f.image);
   drawStatus();
+  announce();
   if (f.error) {
     fileMeta.textContent = '';
     codeRows.innerHTML = `<p class="o-note o-err">${esc(f.error)}</p>`;
@@ -161,7 +172,7 @@ function paint() {
     fileMeta.textContent = 'Loading…';
     return;
   }
-  fileMeta.textContent = `${d.lang} · ${d.total} line${d.total === 1 ? '' : 's'}`;
+  fileMeta.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
   codeRows.style.setProperty('--gw', String(String(d.total).length));
   codeSizer.style.height = `${d.total * lineH + 100}px`;
   codeVp.scrollTop = f.top;

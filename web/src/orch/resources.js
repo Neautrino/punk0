@@ -6,6 +6,7 @@
 import { $, esc } from '../state.js';
 import { fmtBytes } from '../metricsview.js';
 import { call } from './api.js';
+import { emit } from '../bus.js';
 import { state, subscribe, workspace, projectOf, wsLabel } from './store.js';
 
 const btn = $('#st-res');
@@ -105,6 +106,7 @@ export async function refreshResources() {
   for (const r of last.reviews) remember('item:' + r.id, r.cpu, seen);
   for (const k of history.keys()) if (!seen.has(k)) history.delete(k);
   if (!panel.hidden) render();
+  emit('resources', last); // the LSP item shows its language servers' share
 }
 
 function place() {

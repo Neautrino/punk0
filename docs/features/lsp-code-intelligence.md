@@ -80,7 +80,7 @@ LSP features can be toggled in Settings (`Cmd/Ctrl+,`):
 
 - **LSP: Enabled** (`lsp.enabled`): Master toggle for language server discovery and background communication (defaults to `true`).
 - **LSP: Hover Enabled** (`lsp.hover.enabled`): Enable or disable hover documentation cards (defaults to `true`).
-- **Off by default per folder in punk0**: On the agents page, language servers are off for every folder, since each costs hundreds of megabytes to gigabytes (gopls about 260–316 MB per folder, rust-analyzer 852 MB steady and 1.5 GB peak on a small Anchor project). Turn them on with the **LSP** button on a workspace row; this applies to the workspace's folder, is saved, and restarts that folder's editor. See [Agents Page](workbench.md#language-servers).
+- **Off by default per folder in punk0**: On the agents page, language servers are off for every folder, since each costs hundreds of megabytes to gigabytes (gopls about 260–316 MB per folder, rust-analyzer 852 MB steady and 1.5 GB peak on a small Anchor project). Turn them on with **Turn on** in the menu of the status bar's language server item; this applies to the selected folder, is saved, and restarts that folder's editor. See [Agents Page](workbench.md#language-servers).
 - **CLI Flag `-no-lsp`**: `punk0 -no-lsp` keeps language servers off in every folder, whatever the LSP buttons say, relying exclusively on fast regex extraction.
 
 ---

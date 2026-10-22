@@ -104,6 +104,8 @@
   background: var(--bg); color: var(--fg); font: 12px var(--mono); outline: none;
 }
 .o-goto input:focus { border-color: var(--accent); }
+/* The LSP item's file has no server installed: a hollow dot. */
+#st-lsp[data-state="missing"]::before { background: none; box-shadow: inset 0 0 0 1px var(--faint); }
 /* Under the files pane, exactly its width; shrinks to its contents while
    the pane is hidden, like the left section. */
 .wb-status-end {
@@ -114,6 +116,17 @@
 /* #lsp-menu (style.css) opens up from the item, its right edge on the item's. */
 #lsp-menu .lsp-empty-note { font-size: 11.5px; line-height: 1.5; color: var(--dim); }
 #lsp-menu .lsp-folder { font: 11px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The LSP item's memory: every folder's language servers together. */
+#st-lsp .wb-lsp-ram { font: 11px var(--mono); color: var(--faint); margin-left: 2px; }
+#st-lsp:hover .wb-lsp-ram { color: var(--dim); }
+/* Every folder whose language servers hold memory, under this folder's own. */
+.wb-lsp-folders:empty { display: none; }
+.wb-lsp-folders { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wb-lsp-folders-head { display: flex; justify-content: space-between; font: 600 11px var(--ui); color: var(--dim); padding: 0 2px 2px; }
+.wb-lsp-folders-head span:last-child { font: 11px var(--mono); }
+.wb-lsp-folder-row { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: var(--r); background: var(--bg2); font: 12px var(--ui); }
+.wb-lsp-folder-row.current { box-shadow: inset 2px 0 0 var(--accent); }
+.wb-lsp-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 /* Running terminals, running agents, total RAM: one button, so hovering any
    of them lights all three, and a click opens #wb-res. */
 .wb-res-btn {
