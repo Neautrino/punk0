@@ -30,7 +30,7 @@ export const state = {
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
   // The split layout's collapsed group: '', 'term' (files maximized) or
   // 'file' (file panel hidden). Selecting a tab of that group shows it again.
-  collapsed: localStorage.getItem('punk0.collapsed') || '',
+  collapsed: localStorage.getItem('punk0.splitCollapsed') || '',
 };
 
 export function subscribe(fn) {
@@ -169,7 +169,7 @@ export function selectTab(id) {
 // or none ('').
 export function setCollapsed(kind) {
   state.collapsed = kind;
-  saveJSON('punk0.collapsed', kind);
+  saveJSON('punk0.splitCollapsed', kind);
   rerender();
 }
 

@@ -35,7 +35,16 @@ const ICON_REFRESH = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none
 
 const STATUS_LABEL = { waiting: 'needs you', working: 'working', idle: 'idle' };
 
-const collapsed = new Set(JSON.parse(localStorage.getItem('punk0.collapsed') || '[]'));
+// Folded project rows. The key once held the split's collapsed group too
+// ("term"), so anything but a list counts as none.
+const collapsed = new Set((() => {
+  try {
+    const v = JSON.parse(localStorage.getItem('punk0.collapsed'));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+})());
 let view = localStorage.getItem('punk0.sideView') === 'scratch' ? 'scratch' : 'projects';
 const search = { scratch: '', projects: '' }; // lowercased search text per view
 
