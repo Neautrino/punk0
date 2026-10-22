@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,9 @@ type lspServerDef struct {
 	InitOptions map[string]any
 	Install     []lspInstall // ways to get the binary, best first
 	Docs        string       // the server's install instructions, for when no recipe fits
+	// Usable, when set, must also accept the binary found for Cmd[0]: a
+	// command name another version of the tool shares without the server.
+	Usable func(bin string) bool
 }
 
 func (d lspServerDef) LanguageID(rel string) string {
@@ -78,12 +82,25 @@ var lspRegistry = []lspServerDef{
 		Exts: []string{".py"}, DefaultLang: "python", Docs: "https://docs.astral.sh/ruff/installation/",
 	},
 	{
+		// TypeScript 7, the native port, serves LSP itself. Its tsc shares
+		// the name with older versions' tsc, which do not (see tsNative).
+		Name: "tsc", Lang: "TypeScript and JavaScript", Cmd: []string{"tsc", "--lsp", "--stdio"},
+		Exts:        []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"},
+		LangIDs:     map[string]string{".ts": "typescript", ".tsx": "typescriptreact", ".jsx": "javascriptreact"},
+		DefaultLang: "javascript", Docs: "https://github.com/microsoft/typescript-go",
+		Usable: tsNative,
+		Install: []lspInstall{
+			{Cmd: []string{"npm", "install", "-g", "typescript@latest"}, Auto: true},
+		},
+	},
+	{
+		// Drives tsserver, which TypeScript 7 no longer ships: pinned to 6.
 		Name: "typescript", Lang: "TypeScript and JavaScript", Cmd: []string{"typescript-language-server", "--stdio"},
 		Exts:        []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"},
 		LangIDs:     map[string]string{".ts": "typescript", ".tsx": "typescriptreact", ".jsx": "javascriptreact"},
 		DefaultLang: "javascript", Docs: "https://github.com/typescript-language-server/typescript-language-server",
 		Install: []lspInstall{
-			{Cmd: []string{"npm", "install", "-g", "typescript-language-server", "typescript"}, Auto: true},
+			{Cmd: []string{"npm", "install", "-g", "typescript-language-server", "typescript@6"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "typescript-language-server"}, Auto: true},
 		},
 	},
@@ -235,7 +252,7 @@ func (m *lspManager) discover() {
 	var available []string
 	for i := range lspRegistry {
 		def := lspRegistry[i] // a copy: Cmd[0] becomes the resolved path
-		bin, ok := cachedLookPath(def.Cmd[0])
+		bin, ok := findServer(&def)
 		if !ok {
 			continue
 		}
@@ -358,6 +375,53 @@ func cachedLookPath(name string) (string, bool) {
 	p, ok := lookPathIn(name, binDirCache.dirs)
 	binDirCache.bins[name] = binResolve{path: p, ok: ok}
 	return p, ok
+}
+
+// findServer resolves a server's binary, and has it pass the server's own
+// Usable check when it has one.
+func findServer(def *lspServerDef) (string, bool) {
+	bin, ok := cachedLookPath(def.Cmd[0])
+	if !ok || def.Usable == nil {
+		return bin, ok
+	}
+	return bin, usableOnce(bin, def.Usable)
+}
+
+// usable remembers a Usable verdict per binary, keyed by its path, size and
+// modification time: a check runs the binary, and the menu asks on every
+// refresh, but an upgrade in place replaces the file and asks again.
+var usable sync.Map
+
+func usableOnce(bin string, check func(string) bool) bool {
+	st, err := os.Stat(bin)
+	if err != nil {
+		return false
+	}
+	key := fmt.Sprintf("%s|%d|%d", bin, st.Size(), st.ModTime().UnixNano())
+	if v, ok := usable.Load(key); ok {
+		return v.(bool)
+	}
+	ok := check(bin)
+	usable.Store(key, ok)
+	return ok
+}
+
+// tsNative reports whether tsc is TypeScript 7 or later ("Version 7.0.2"),
+// whose native compiler answers LSP with --lsp. Earlier tsc has no LSP.
+func tsNative(bin string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "--version").Output()
+	if err != nil {
+		return false
+	}
+	f := strings.Fields(string(out))
+	if len(f) == 0 {
+		return false
+	}
+	major, _, _ := strings.Cut(f[len(f)-1], ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 7
 }
 
 // invalidateBinaryCache drops the memoized dirs and binary resolutions, e.g.
@@ -800,7 +864,7 @@ func (m *lspManager) StartServer(name string) error {
 		for i := range lspRegistry {
 			if lspRegistry[i].Name == name {
 				def := lspRegistry[i]
-				if bin, ok := cachedLookPath(def.Cmd[0]); ok {
+				if bin, ok := findServer(&def); ok {
 					def.Cmd = append([]string{bin}, def.Cmd[1:]...)
 					targetDef = &def
 				}
@@ -880,7 +944,7 @@ func (m *lspManager) ServerStatus(def *lspServerDef, procs metrics.Table) map[st
 	// Binary and tool existence is memoized (30s TTL): a status refresh
 	// re-resolves every server and install tool, and uncached that is a
 	// PATH scan per binary per refresh.
-	_, installed := cachedLookPath(def.Cmd[0])
+	_, installed := findServer(def)
 
 	var opts []map[string]any
 	autoIndex := -1

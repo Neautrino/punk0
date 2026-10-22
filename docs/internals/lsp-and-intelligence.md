@@ -34,7 +34,7 @@ Language server definitions reside in [`lspservers.go`](../../lspservers.go). Mu
 | ----------------- | ---------------------------- | ---------------------------- | --------------- | -------------------------- |
 | Go                | `.go`                        | `gopls`                      | -               | `$PATH`, `~/go/bin`        |
 | Rust              | `.rs`                        | `rust-analyzer`              | -               | `$PATH`, `~/.cargo/bin`    |
-| TypeScript / JS   | `.ts`, `.tsx`, `.js`, `.jsx` | `typescript-language-server` | -               | `$PATH`, npm global prefix |
+| TypeScript / JS   | `.ts`, `.tsx`, `.js`, `.jsx` | `tsc --lsp --stdio` (TypeScript 7+) | `typescript-language-server` | `$PATH`, npm global prefix |
 | Python            | `.py`                        | `pyright`                    | `pylsp`, `ruff` | `$PATH`, `~/.local/bin`    |
 | C / C++           | `.c`, `.cpp`, `.h`, `.hpp`   | `clangd`                     | -               | `$PATH`, Homebrew LLVM     |
 | Zig               | `.zig`                       | `zls`                        | -               | `$PATH`                    |
@@ -42,6 +42,8 @@ Language server definitions reside in [`lspservers.go`](../../lspservers.go). Mu
 | Ruby              | `.rb`                        | `solargraph`                 | -               | `$PATH`, Gem bin           |
 | Java              | `.java`                      | `jdtls`                      | -               | `$PATH`                    |
 | C#                | `.cs`                        | `omnisharp`                  | -               | `$PATH`                    |
+
+A definition may carry `Usable`, a check the found binary must also pass (`findServer`). TypeScript needs one: every version installs a `tsc`, but only TypeScript 7, the native port, serves LSP, so `tsNative` runs `tsc --version` and accepts 7 or later. The verdict is remembered per binary path, size and modification time, so the menu's refreshes do not run it again and an upgrade in place is checked anew. `typescript-language-server` drives `tsserver`, which TypeScript 7 no longer ships, so its install recipe pins `typescript@6`.
 
 A server that refuses `initialize` is shut down by `spawn` (`shutdown`: stdin closed, killed after a second): some, such as `typescript-language-server` without a TypeScript it can use, report the error and keep running, and nothing would ever talk to them again.
 

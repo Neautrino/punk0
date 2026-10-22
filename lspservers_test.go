@@ -45,6 +45,34 @@ func TestRefusedServerDoesNotLinger(t *testing.T) {
 	}
 }
 
+// Only TypeScript 7's tsc serves LSP; an older tsc on PATH must not claim
+// .ts files, or every TypeScript file would get a server that cannot start.
+func TestTSNativeNeedsTypeScript7(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	dir := t.TempDir()
+	for _, c := range []struct {
+		out  string
+		want bool
+	}{
+		{"Version 7.0.2", true},
+		{"Version 7.1.0-dev.20261022.1", true},
+		{"Version 10.0.0", true},
+		{"Version 6.0.3", false},
+		{"Version 5.9.3", false},
+		{"", false},
+	} {
+		bin := filepath.Join(dir, "tsc")
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\necho '"+c.out+"'\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if got := tsNative(bin); got != c.want {
+			t.Errorf("tsc printing %q: native = %v, want %v", c.out, got, c.want)
+		}
+	}
+}
+
 // A crashed client is replaced by a fresh spawn, a bounded number of times.
 func TestCrashedServerIsRespawned(t *testing.T) {
 	def := lspServerDef{Name: "gone", Cmd: []string{"px0-test-no-such-language-server"}, Exts: []string{".go"}}

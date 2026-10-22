@@ -33,7 +33,7 @@ px0 natively detects and communicates with standard language servers across majo
 | :--- | :--- | :--- |
 | **Go** | `gopls` | `go install golang.org/x/tools/gopls@latest` |
 | **Rust** | `rust-analyzer` | `rustup component add rust-analyzer` |
-| **TypeScript / JavaScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` |
+| **TypeScript / JavaScript** | `tsc --lsp` (TypeScript 7+), else `typescript-language-server` | `npm install -g typescript@latest`, or `npm install -g typescript-language-server typescript@6` (it needs TypeScript 6's `tsserver`) |
 | **Python** | `pyright` / `pylsp` / `ruff` | `npm install -g pyright` or `pipx install python-lsp-server` |
 | **C / C++** | `clangd` | `sudo apt install clangd` or `brew install llvm` |
 | **Zig** | `zls` | `brew install zls` or download from [zigtools/zls](https://github.com/zigtools/zls) |
