@@ -19,7 +19,7 @@ import { initLsp } from './orch/lsp.js';
 import { initTabs } from './orch/tabs.js';
 import { initTree } from './orch/tree.js';
 import { initPicker } from './orch/picker.js';
-import { initViewer, showFile, forgetClosed } from './orch/viewer.js';
+import { initViewer, showFile, hideFile, forgetClosed } from './orch/viewer.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
 import { initResize } from './orch/resize.js';
 import { initSettings } from './orch/settings.js';
@@ -73,6 +73,7 @@ subscribe(() => {
   viewerPane.hidden = !file;
   emptyPane.hidden = !!t;
   if (file) return showFile(w, t.path);
+  hideFile();
   if (!t) return shownTerm && attachTerm((shownTerm = null));
   if (t.id === shownTerm) return focusTerm();
   attachTerm((shownTerm = t.id));

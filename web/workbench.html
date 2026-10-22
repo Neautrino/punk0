@@ -328,11 +328,14 @@
   </div>
 
   <!-- The status bar, in the panes' columns: under the projects, logo,
-       version and the help / GitHub / settings buttons; at the right corner
-       of the middle, the selected folder's language servers (lsp.js, like
-       px0's LSP item); under the files, one button holding the running
-       terminals, running agents and total RAM, which opens the resource
-       panel (web/src/orch/resources.js, /api/resources in wbresources.go). -->
+       version and the help / GitHub / settings buttons; in the middle, the
+       agents working and needing you (statusbar.js), then, while a file tab
+       is in front, its cursor, +/- lines, tab size, encoding and line endings
+       (viewer.js), and at the right corner the selected folder's language
+       servers (lsp.js, like px0's LSP item); under the files, one button
+       holding the running terminals, running agents and total RAM, which
+       opens the resource panel (web/src/orch/resources.js, /api/resources in
+       wbresources.go). -->
   <footer id="status" class="wb-status">
     <span class="wb-status-side">
     <a class="wb-logo" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub">punk<span>[0]</span></a>
@@ -350,6 +353,17 @@
     </span>
     </span>
     <span class="wb-status-mid">
+      <span class="wb-agent-states">
+        <button type="button" id="st-waiting" class="wb-agent-state waiting" hidden></button>
+        <button type="button" id="st-working" class="wb-agent-state working" hidden></button>
+      </span>
+      <span id="st-file" hidden>
+        <button type="button" id="st-pos" class="wb-st-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="o-goto"></button>
+        <span id="st-diff" title="Lines added and removed since the last commit"></span>
+        <span id="st-tabsize" title="Tab width (Settings, Tab Size)"></span>
+        <span id="st-enc" title="Encoding"></span>
+        <span id="st-eol" title="Line endings"></span>
+      </span>
       <span id="st-lsp" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" hidden>LSP</span>
     </span>
     <span class="wb-status-end">
@@ -372,6 +386,9 @@
     </span>
   </footer>
   <div id="lsp-menu" role="menu" aria-label="Language servers" hidden></div>
+  <form id="o-goto" class="o-goto" role="dialog" aria-label="Go to line" hidden>
+    <input id="o-goto-in" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Line, or line:column">
+  </form>
 </div>
 <section id="wb-res" class="wb-res" role="dialog" aria-label="Resources" hidden>
   <header class="wb-res-head">
