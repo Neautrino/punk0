@@ -18,6 +18,7 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 - **Interactive Attribute Pills**: Every setting displays metadata badges (category, type, default value) along with interactive pill buttons for quick selection (e.g., `[line]`, `[block]`, `[underline]` for cursor styles; `[true]`, `[false]` for boolean toggles). Clicking any pill applies that value immediately.
 - **Instant Live Preview Without Reload**: Adjusting font sizes, line heights, themes, cursor animations, or diff modes takes effect immediately across all open tabs without requiring a page reload.
 - **One-Click Factory Reset**: Any setting that has been customized displays an amber `Modified` badge and an inline `Reset` button, allowing you to restore default settings individually.
+- **Lists and Card Notes**: A list setting such as `agents.hidden` shows one checkbox per choice. Exec-gated cards note that they can only be changed when punk0 listens on 127.0.0.1. Turning `notifications.desktop` on asks the browser for permission; when the page is not on https or localhost, or the browser blocked notifications, the card says so and the value is saved anyway. A refused save shows the server's reason in the footer and the card keeps the stored value.
 - **Clean Workspace Separation**: All configuration lives in your user directory. Your repository working trees, `.git` configs, and tracked files remain 100% pristine.
 
 ---
@@ -39,7 +40,6 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `editor.scrollBeyondLastLine` | Text Editor | `true` | `true`, `false` | Enable scrolling beyond document end |
 | `editor.bracketPairColorization` | Text Editor | `true` | `true`, `false` | Rainbow bracket pairs & matching |
 | `editor.vimMode` | Text Editor | `false` | `true`, `false` | Modal Vim navigation keybindings |
-| `workbench.colorTheme` | Workbench | `"catppuccin-mocha"` | 14 built-in theme IDs | Active color theme |
 | `markdown.preview.open` | Workbench | `true` | `true`, `false` | Open Markdown files in rendered preview |
 | `table.preview.open` | Workbench | `true` | `true`, `false` | Open CSV and TSV files as a table |
 | `diffEditor.renderSideBySide` | Diff Editor | `true` | `true`, `false` | Split vs. unified diff view default |
@@ -63,15 +63,62 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `bitbucket.token` | Bitbucket | `""` | any string | Bitbucket Cloud access token, or an Atlassian API token together with `bitbucket.email`. Takes precedence over `BITBUCKET_TOKEN`. Masked in the Settings UI. |
 | `bitbucket.email` | Bitbucket | `""` | email | The Atlassian account email of an API token; empty for an access token. Falls back to `BITBUCKET_EMAIL`. |
 | `server.basePath` | Server | `"/"` | any path prefix (e.g. `"/rev-123/"`) | Base URL path prefix to serve endpoints and assets from. Overridden by the `-base-path` CLI flag. |
-| `workspace.idleStop` | Server | `5` | minutes, `0` never | Stop Idle Workspace After: how long a folder's editor process keeps running with no open request before punk0 stops it; the next request starts it again. |
-| `terminal.idleStop` | Server | `30` | minutes, `0` never | Stop Idle Terminal After: how long a terminal tab may carry nothing before it is stopped. A shell is only stopped at its prompt, a Claude tab only when its agent is idle. |
+
+---
+
+## Agents Page Settings
+
+The categories listed first in the modal belong to punk0 itself and apply to the agents page, its tabs and workspaces:
+
+| Setting Key | Category | Default | Allowed Values / Range | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `general.openBrowser` | General | `true` | `true`, `false` | Open the agents page when punk0 starts; `-no-open` overrides |
+| `update.auto` | General | `true` | `true`, `false` | Check for and install releases in the background; `-no-update` overrides |
+| `tips.enabled` | General | `true` | `true`, `false` | Show tips in the interface |
+| `workbench.colorTheme` | Appearance | `"catppuccin-mocha"` | 14 built-in theme IDs | Color theme of both pages |
+| `workbench.uiFontFamily` | Appearance | `""` | CSS font stack | Interface font; empty uses the theme's |
+| `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
+| `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
+| `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name, one key per agent (`claude`, `codex`, `opencode`, `agy`, `cursor-agent`) |
+| `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
+| `terminal.fontFamily` | Terminal | `""` | CSS font stack | Terminal font |
+| `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
+| `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab |
+| `terminal.cursorStyle` | Terminal | `"block"` | `"block"`, `"bar"`, `"underline"` | Terminal cursor shape |
+| `terminal.cursorBlink` | Terminal | `true` | `true`, `false` | Blink the terminal cursor |
+| `terminal.copyOnSelect` | Terminal | `false` | `true`, `false` | Copy selected text automatically |
+| `terminal.confirmCloseRunning` | Terminal | `true` | `true`, `false` | Ask before closing a tab that is still running |
+| `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh` |
+| `terminal.env` ⚿ | Terminal | `""` | `KEY=VALUE` per line | Added to every tab's environment; `~/` expands to the home folder, `#` lines are comments |
+| `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent only when idle |
+| `workspace.branchPrefix` | Workspaces | `""` | branch prefix | Prefix for branches New workspace creates (the folder stays unprefixed) |
+| `workspace.fetchBase` | Workspaces | `true` | `true`, `false` | Fetch the base branch before creating a workspace |
+| `workspace.lspDefault` | Workspaces | `false` | `true`, `false` | Default of the language-server toggle for new workspaces |
+| `workspace.deleteMergedBranch` | Workspaces | `false` | `true`, `false` | Delete a workspace's branch with it when it is merged; the delete response notes why it was kept otherwise |
+| `workspace.idleStop` | Workspaces | `5` | minutes, `0` never | Stop a folder's editor process after this long without requests; the next request starts it again |
+| `notifications.desktop` | Notifications | `"off"` | `"off"`, `"unfocused"`, `"always"` | Desktop notifications; asks for browser permission when turned on |
+| `notifications.onWaiting` | Notifications | `true` | `true`, `false` | Notify when an agent waits for input |
+| `notifications.onDone` | Notifications | `true` | `true`, `false` | Notify when an agent finishes |
+| `notifications.sound` | Notifications | `false` | `true`, `false` | Play a sound with a notification |
+| `notifications.titleBadge` | Notifications | `true` | `true`, `false` | Count waiting tabs in the page title |
+
+⚿ marks an Exec-gated key, see below.
+
+---
+
+## Validation & Remote Mode
+
+Every save is checked against the schema before it is written, from the form and from raw JSON alike: a value of the wrong type, a choice that is not one of the options, a list element that is not one of the options, or a number out of range is refused with an error naming the key, and a bad `terminal.env` line is refused naming the line. Keys punk0 does not know are stored as given.
+
+Some values end up in a command line or a process environment: `agents.<id>.args`, `terminal.shell`, `terminal.env` and `agent.harness`. When punk0 listens on anything other than 127.0.0.1, anyone who reaches the port could otherwise plant a command that runs the next time you open a tab or start an agent edit. So in remote mode those keys can only be removed or reset to their default; changing them is refused with `<key> can only be changed when punk0 listens on 127.0.0.1`; picking a harness that is not built in (a command template) is refused the same way, built-in harnesses and models can still be picked. Saving the whole form with those keys untouched still works. Change them on the machine itself, or in the settings file.
 
 ---
 
 ## Accessing Settings
 
 - **Keyboard Shortcut**: Press **`Cmd+,`** (macOS) or **`Ctrl+,`** (Linux/Windows).
-- **Status Bar**: Click the **⚙️ Settings** icon in the bottom-right corner.
+- **Status Bar**: Click the **⚙️ Settings** icon in the bottom-right corner of the editor.
+- **Agents Page**: Click the gear icon. It opens the same modal as the editor, even with no project yet; both pages read and write the one settings file. `Cmd/Ctrl+,` works on either page, except while focus is in a terminal.
 - **Command Palette**: Press `Cmd/Ctrl+Shift+P` and choose:
   - `Preferences: Open Settings (UI)`
   - `Preferences: Open Settings (JSON)`

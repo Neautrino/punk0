@@ -58,10 +58,10 @@ px0 ships with 14 curated themes ready for immediate use:
 
 ### Configuring via Settings UI
 1. Press **`Cmd/Ctrl+,`** to open Settings.
-2. Navigate to **Workbench: Color Theme** (`workbench.colorTheme`).
+2. Navigate to **Appearance: Color Theme** (`workbench.colorTheme`).
 3. Select your preferred theme from the dropdown or click one of the interactive theme pill buttons.
 
-Your choice is saved in `~/.px0/settings.json` and remembered across all future sessions.
+Your choice is saved in `~/.punk0/settings.json` and remembered across all future sessions.
 
 ---
 

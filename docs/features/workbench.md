@@ -78,14 +78,19 @@ Scratch is for agent work that has no repository yet: research, one-off scripts,
 
 ## Tabs
 
-The tab bar holds the selected workspace's terminals and open files. **+** offers a new Claude Code tab, a shell tab, or a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it.
+The tab bar holds the selected workspace's terminals and open files. **+** offers a new tab for every installed agent not hidden in settings (`agents.hidden`) and a shell, with `agents.default` first, then a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it. Closing a running terminal asks first unless `terminal.confirmCloseRunning` is off.
 
-With no tab open, as in a new project or worktree workspace, the center shows the welcome view: punk0's name and version, the workspace and its folder, and buttons for a new Claude Code chat, a new shell or a file. Nothing starts until you pick one. A scratch chat opens on the tab its agent runs in.
+With no tab open, as in a new project or worktree workspace, the center shows the welcome view: punk0's name and version, the workspace and its folder, and the same choices as **+**, the default agent first, then a file. Nothing starts until you pick one. A scratch chat opens on the tab its agent runs in.
 
 - **Terminals are real.** Each terminal tab is your shell in a PTY, started when you first open the tab. A Claude tab runs `claude` in that shell.
 - **They outlive the browser.** Closing or reloading the page leaves every terminal running; reattaching replays its recent output. Everything stops when punk0 stops (Ctrl-C). After a restart, a Claude tab resumes its own chat.
 - **Agent status.** Claude tabs report what the agent is doing through Claude Code hooks. A dot on the tab shows **working**, **waiting** (needs you: a permission prompt or a question) or **idle** (done).
+- **Terminal settings.** Font, line height, scrollback, cursor and copy-on-select (`terminal.*`) apply to the open terminal as soon as they are saved; `terminal.shell` and `terminal.env` apply to tabs started afterwards.
 - **Idle stop.** A terminal that has carried nothing for `terminal.idleStop` minutes (default 30, `0` never) is stopped: a shell only while it sits at its prompt with nothing running in it (Unix only; elsewhere shells are never stopped), a Claude tab only when it is idle. Opening the tab again starts it again.
+
+## Notifications
+
+While the agents page is open, even in a background browser tab, punk0 can tell you when a tab with status starts **waiting** for you or goes from **working** to **idle**: a browser notification (`notifications.desktop`: off, only when the page is not focused, or always), a short tone (`notifications.sound`), and the number of waiting tabs in the page title (`notifications.titleBadge`, on by default). `notifications.onWaiting` and `notifications.onDone` pick which changes count. Clicking a notification focuses the page and selects that tab. Browser notifications need https or localhost; turning them on in settings asks for permission. With no agents page open, nothing notifies.
 
 ## Editor view
 
@@ -117,7 +122,7 @@ If a pull request cannot be opened (a typo in the URL, no access), the error is 
 
 ## Status bar and help
 
-The bottom bar shows the logo and version, then the help, GitHub and settings buttons on the left. On the right, one button shows the running terminals (`>_`), running Claude tabs (robot icon) and the total RAM of punk0 and everything it started. Click it for the resource panel: CPU and RAM for each workspace with a recent-CPU sparkline, then its editor (language servers included) and each terminal (the shell and everything running in it, such as an agent and the tools it starts), then pull request reviews, then punk0 itself. Click a workspace to fold it; Esc or a click elsewhere closes the panel. The **?** button opens the agents page's keyboard shortcuts; Esc or a click closes them. The gear opens the selected workspace's editor with its settings showing. The theme is chosen there; the agents page uses it the next time it loads.
+The bottom bar shows the logo and version, then the help, GitHub and settings buttons on the left. On the right, one button shows the running terminals (`>_`), running agent tabs (robot icon) and the total RAM of punk0 and everything it started. Click it for the resource panel: CPU and RAM for each workspace with a recent-CPU sparkline, then its editor (language servers included) and each terminal (the shell and everything running in it, such as an agent and the tools it starts), then pull request reviews, then punk0 itself. Click a workspace to fold it; Esc or a click elsewhere closes the panel. The **?** button opens the agents page's keyboard shortcuts; Esc or a click closes them. The gear, or Ctrl/Cmd+, outside a terminal, opens the settings on this page, the same settings the editor shows, also with no project added. Theme, interface font and terminal settings apply as soon as they are saved.
 
 ## Security
 
