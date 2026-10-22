@@ -6,7 +6,7 @@
 import { $, esc } from '../state.js';
 import { fmtBytes } from '../metricsview.js';
 import { call } from './api.js';
-import { state, subscribe, workspace, projectOf } from './store.js';
+import { state, subscribe, workspace, projectOf, wsLabel } from './store.js';
 
 const btn = $('#st-res');
 const panel = $('#wb-res');
@@ -51,7 +51,7 @@ function workspaceName(id) {
   const w = workspace(id);
   const p = projectOf(id);
   if (!w) return 'Workspace';
-  if (p?.scratch) return w.name;
+  if (p?.scratch) return wsLabel(w);
   return p && p.name !== w.name ? `${p.name} / ${w.name}` : w.name;
 }
 

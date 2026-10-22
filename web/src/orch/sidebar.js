@@ -4,180 +4,251 @@
 // belong to no project). Each workspace is one feature: local ones share the
 // project folder, worktree ones own a folder and branch, scratch chats own a
 // folder outside any project. A folder's editor (px0's single-folder view)
-// runs in a child the parent starts on demand; its state is the dot. The
-// header's filter narrows either view by name or branch, or to what runs.
+// runs in a child the parent starts on demand; its state is the dot.
+//
+// Under the header, a search field narrows the view by name; the header's
+// View options (listview.js) group, sort and filter it. A chat is named after
+// its first prompt (scratch.go); renaming, grouping, pinning and archiving
+// change labels only. New groups and group names are edited in place.
 import { $, esc } from '../state.js';
 import { call, failed, openEditor } from './api.js';
-import { state, subscribe, reload, selectWorkspace, workspace, tildify } from './store.js';
-import { attachComplete, looksLikeURL } from './complete.js';
+import { state, subscribe, reload, selectWorkspace, workspace, tildify, wsLabel } from './store.js';
+import { openNewChat, closeNewChat } from './newchat.js';
+import { openNewWorkspace, closeNewWorkspace } from './newworkspace.js';
+import { openAddProject, closeAddProject } from './addproject.js';
+import { opts, setOpt, initViewMenu, syncViewButton, closeViewMenu, isRunning, statusOf, stateOf, STATES, agentOf, agentLabel } from './listview.js';
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const ICON_X = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-const ICON_EDITOR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>';
 const ICON_STOP = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>';
 const ICON_PR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4"/><polyline points="13 4 11 6 13 8"/></svg>';
 const ICON_FOLDER = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>';
 const ICON_FOLDER_OPEN = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1"/><path d="M3 18l2.6-6.5A2 2 0 0 1 7.5 10H21l-2.7 7.2a2 2 0 0 1-1.9 1.3H3Z"/></svg>';
+const ICON_MORE = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
+const ICON_PENCIL = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16Z"/><path d="m13.5 6.5 4 4"/></svg>';
+const ICON_RESTORE = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const ICON_PIN = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
+const ICON_REFRESH = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>';
 
-// The tab status that most needs a look wins a workspace's badge.
-const URGENCY = ['waiting', 'working', 'idle'];
 const STATUS_LABEL = { waiting: 'needs you', working: 'working', idle: 'idle' };
 
 const collapsed = new Set(JSON.parse(localStorage.getItem('punk0.collapsed') || '[]'));
 let view = localStorage.getItem('punk0.sideView') === 'scratch' ? 'scratch' : 'projects';
-const filter = { text: '', running: false };
+const search = { scratch: '', projects: '' }; // lowercased search text per view
 
-let listEl, formEl, nameEl, wtRowEl, wtEl, baseEl, submitEl, msgEl, cloneEl, clonePathEl;
-let formFor = null; // { mode: 'project' } or { mode: 'workspace', project, worktree }
-let pendingPR = ''; // the PR URL waiting for its clone to be chosen
+let listEl, searchEl, searchClearEl, chatMenuEl;
+let menuChat = null; // the chat whose actions menu is open
+// The group name being edited in place: { kind: 'new' | 'rename', id, moveChat, error, busy }.
+let editing = null;
 
 export function initSidebar() {
   listEl = $('#o-projects');
-  formEl = $('#o-form');
-  nameEl = $('#o-form-name');
-  wtRowEl = $('#o-form-wt-row');
-  wtEl = $('#o-form-wt');
-  baseEl = $('#o-form-base');
-  submitEl = $('#o-form-submit');
-  msgEl = $('#o-form-msg');
-  cloneEl = $('#o-clone');
-  clonePathEl = $('#o-clone-path');
+  searchEl = $('#o-search');
+  searchClearEl = $('#o-search-clear');
+  chatMenuEl = $('#o-chat-menu');
 
-  attachComplete(nameEl, $('#o-suggest'));
-  attachComplete(clonePathEl, $('#o-clone-suggest'));
-  // + adds a project in the Projects view, a chat in the Scratch view.
+  // In the Scratch view the header's + starts a chat and the folder button
+  // makes a group; in Projects they add a project and a workspace.
   $('#o-add-project').addEventListener('click', () => {
-    const scratch = state.projects.find(p => p.scratch);
-    if (view === 'scratch') return scratch && openForm({ mode: 'workspace', project: scratch });
-    openForm({ mode: 'project' });
+    if (view === 'scratch') return newChat('', $('#o-add-project'));
+    openAddProject($('#o-add-project'));
   });
   $('#o-add-feature').addEventListener('click', () => {
+    if (view === 'scratch') return startNewGroup();
     const project = featureProject();
-    if (project) openForm({ mode: 'workspace', project, worktree: true });
+    if (project) newWorkspace(project, $('#o-add-feature'));
   });
   $('.o-side-tabs').addEventListener('click', e => {
     const v = e.target.closest('[data-view]')?.dataset.view;
     if (v && v !== view) setView(v);
   });
-  initFilter();
-  $('#o-form-cancel').addEventListener('click', closeForm);
-  wtEl.addEventListener('change', () => { baseEl.hidden = !wtEl.checked; });
-  formEl.addEventListener('submit', e => {
-    e.preventDefault();
-    submitForm();
+  initSearch();
+  initViewMenu($('#o-view-btn'), $('#o-view-menu'), {
+    view: () => view,
+    shown: shownChoices,
+    changed: renderSidebar,
   });
-  formEl.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeForm();
-  });
-  $('#o-clone-use').addEventListener('click', () => {
-    const p = clonePathEl.value.trim();
-    if (p && pendingPR) openTarget(pendingPR, p);
-  });
-  clonePathEl.addEventListener('keydown', e => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault(); // not the form's submit: this field answers the clone question
-    $('#o-clone-use').click();
-  });
-  $('#o-clone-managed').addEventListener('click', () => pendingPR && openTarget(pendingPR, 'managed'));
   listEl.addEventListener('click', onListClick);
+  listEl.addEventListener('keydown', e => {
+    if (e.target.matches('[data-edit]')) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitEdit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelEdit();
+      }
+    } else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-act=toggle-archived]')) {
+      e.preventDefault();
+      toggleArchived();
+    }
+  });
+  chatMenuEl.addEventListener('click', onChatMenu);
+  chatMenuEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeChatMenu();
+  });
+  document.addEventListener('mousedown', e => {
+    if (!chatMenuEl.hidden && !chatMenuEl.contains(e.target) && !e.target.closest('[data-act=chat-menu]')) closeChatMenu();
+    // Clicking away from a name being edited keeps it, as Enter does.
+    if (editing && !e.target.closest('[data-edit]')) commitEdit();
+  });
   subscribe(renderSidebar);
 
   // ?open=<url> comes from a workspace's holding page when a PR has no known
-  // clone: ask for it here.
+  // clone: ask for it in Add project.
   const target = new URLSearchParams(location.search).get('open');
   if (target) {
     history.replaceState(null, '', location.pathname);
     if (view !== 'projects') setView('projects');
-    openForm({ mode: 'project' });
-    nameEl.value = target;
-    openTarget(target);
+    // After the first load: the flyout marks registered folders and shortens paths.
+    reload().then(() => openAddProject($('#o-add-project'), target));
   }
 }
 
 function setView(v) {
   view = v;
   localStorage.setItem('punk0.sideView', v);
-  if (formFor) closeForm(); // its + may belong to the other view
+  closeAddProject(); // its + may belong to the other view
+  closeChatMenu();
+  closeNewChat();
+  closeNewWorkspace();
+  closeViewMenu();
+  editing = null;
+  syncSearch();
   renderSidebar();
 }
 
-function initFilter() {
-  const box = $('#o-filter');
-  const btn = $('#o-filter-btn');
-  const input = $('#o-filter-input');
-  const running = $('#o-filter-running');
-  const sync = () => {
-    filter.text = input.value.trim().toLowerCase();
-    filter.running = running.checked;
-    btn.classList.toggle('on', !!(filter.text || filter.running));
+/* ---------- search ---------- */
+
+function initSearch() {
+  searchEl.addEventListener('input', () => {
+    search[view] = searchEl.value.trim().toLowerCase();
+    searchClearEl.hidden = !searchEl.value;
     renderSidebar();
-  };
-  btn.addEventListener('click', () => {
-    box.hidden = !box.hidden;
-    btn.setAttribute('aria-pressed', String(!box.hidden));
-    if (!box.hidden) input.focus();
   });
-  input.addEventListener('input', sync);
-  running.addEventListener('change', sync);
-  // Esc clears the filter and folds it away.
-  box.addEventListener('keydown', e => {
+  searchEl.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    input.value = '';
-    running.checked = false;
-    box.hidden = true;
-    btn.setAttribute('aria-pressed', 'false');
-    sync();
-    btn.focus();
+    if (!searchEl.value) return searchEl.blur();
+    clearSearch();
   });
+  searchClearEl.addEventListener('click', () => {
+    clearSearch();
+    searchEl.focus();
+  });
+  syncSearch();
 }
 
-// featureProject is where the header's new-worktree button adds one: the
+function clearSearch() {
+  searchEl.value = '';
+  search[view] = '';
+  searchClearEl.hidden = true;
+  renderSidebar();
+}
+
+// Each view keeps its own search.
+function syncSearch() {
+  searchEl.value = search[view];
+  searchEl.placeholder = view === 'scratch' ? 'Search chats' : 'Search projects';
+  searchEl.title = view === 'scratch' ? 'Chat titles and group names' : 'Project, workspace and branch names';
+  searchClearEl.hidden = !search[view];
+}
+
+const textMatch = (...s) => !search[view] || s.some(x => x && x.toLowerCase().includes(search[view]));
+
+// shownChoices is the View options menu's Show section: the agents chats
+// run, or the projects.
+function shownChoices() {
+  if (view === 'scratch') {
+    const ids = [...new Set((scratchProject()?.workspaces || []).map(agentOf))];
+    return ids.map(id => [id, agentLabel(id)]).sort((a, b) => a[1].localeCompare(b[1]));
+  }
+  return state.projects.filter(p => !p.scratch).map(p => [p.id, p.name]);
+}
+
+// featureProject is where the header's new workspace button adds one: the
 // selected workspace's project, else the first project.
 function featureProject() {
   const projects = state.projects.filter(p => !p.scratch);
   return projects.find(p => p.workspaces.some(w => w.id === state.ws)) || projects[0] || null;
 }
 
-const filtering = () => !!(filter.text || filter.running);
-const isRunning = w => w.backend === 'running' || w.tabs.some(t => t.running);
-const textMatch = (...s) => !filter.text || s.some(x => x && x.toLowerCase().includes(filter.text));
+const scratchProject = () => state.projects.find(p => p.scratch);
+const scratchGroups = () => scratchProject()?.groups || [];
 
-// shownWorkspaces is what the filter leaves of a project's workspaces: all
-// of them when the project's own name matches, else those whose name or
-// branch does.
-function shownWorkspaces(p) {
-  const own = !p.scratch && filter.text && textMatch(p.name);
-  return p.workspaces.filter(w => (!filter.running || isRunning(w)) && (own || textMatch(w.name, w.branch)));
-}
+/* ---------- rendering ---------- */
 
 function renderSidebar() {
   for (const b of document.querySelectorAll('.o-side-tabs [data-view]')) b.setAttribute('aria-selected', String(b.dataset.view === view));
-  const scratch = state.projects.find(p => p.scratch);
   $('#o-list-title').textContent = view === 'scratch' ? 'Chats' : 'Projects';
-  $('#o-add-feature').hidden = view === 'scratch';
-  $('#o-add-feature').disabled = !featureProject();
+  const feature = $('#o-add-feature');
+  feature.title = view === 'scratch' ? 'New group' : 'New workspace or worktree';
+  feature.setAttribute('aria-label', feature.title);
+  feature.disabled = view !== 'scratch' && !featureProject();
   const add = $('#o-add-project');
-  add.title = view === 'scratch' ? 'New scratch chat' : 'Add a folder or a pull request';
+  add.title = view === 'scratch' ? 'New chat' : 'Add project';
   add.setAttribute('aria-label', add.title);
-  listEl.innerHTML = view === 'scratch' ? renderScratch(scratch) : renderProjects();
+  syncViewButton();
+
+  // The list re-renders while a name is being typed: carry the text over.
+  const input = listEl.querySelector('[data-edit]');
+  const typed = input && { value: input.value, start: input.selectionStart, end: input.selectionEnd };
+  listEl.innerHTML = view === 'scratch' ? renderScratch(scratchProject()) : renderProjects();
+  const next = listEl.querySelector('[data-edit]');
+  if (next) {
+    if (typed) {
+      next.value = typed.value;
+      next.setSelectionRange(typed.start, typed.end);
+    } else next.select();
+    next.focus();
+  }
 }
+
+const section = (title, rows, extra = '') =>
+  rows ? `<div class="o-proj o-scratch${extra}">${title ? `<div class="o-section"><span>${esc(title)}</span></div>` : ''}${rows}</div>` : '';
+
+/* Projects */
 
 function renderProjects() {
-  const projects = state.projects.filter(p => !p.scratch);
-  if (!projects.length) return `
+  const o = opts.projects;
+  const searching = !!search.projects;
+  const all = state.projects.filter(p => !p.scratch);
+  if (!all.length) return `
     <div class="o-side-empty">
       <p>No projects yet.</p>
-      <button type="button" class="wb-btn wb-primary" data-act="add-project">Add a folder</button>
+      <button type="button" class="wb-btn wb-primary" data-act="add-project">Add project</button>
     </div>`;
-  const html = projects.map(renderProject).join('') + renderReviews();
-  return html.trim() ? html : '<p class="o-note">Nothing matches the filter.</p>';
+  const projects = all.filter(p => searching || !o.hiddenProjects.includes(p.id));
+  // Hide sleeping keeps each project's local workspace, its main checkout,
+  // so the project stays in the list to start work from.
+  const keep = w => w.id === state.ws || searching ||
+    ((!o.hideLocal || w.kind !== 'local') && (!o.hideMissing || !w.missing) && (!o.hideSleeping || isRunning(w) || w.kind === 'local'));
+  const shown = p => {
+    const own = textMatch(p.name);
+    return p.workspaces.filter(w => keep(w) && (own || textMatch(w.name, w.branch)));
+  };
+  const filtered = searching || o.hideLocal || o.hideMissing || o.hideSleeping;
+  let html = '';
+  if (o.groupBy === 'project') {
+    html = projects.map(p => {
+      const ws = shown(p);
+      return filtered && !ws.length ? '' : renderProject(p, ws, filtered);
+    }).join('');
+  } else {
+    const rows = projects.flatMap(p => shown(p).map(w => [p, w]));
+    if (o.groupBy === 'status') {
+      html = STATES.map(([st, label]) => section(label, rows.filter(([, w]) => stateOf(w) === st).map(([p, w]) => renderWorkspace(w, p)).join(''))).join('');
+    } else {
+      html = section('', rows.map(([p, w]) => renderWorkspace(w, p)).join(''));
+    }
+  }
+  if (searching || !o.hideReviews) html += renderReviews(o.hideSleeping && !searching);
+  return html.trim() ? html : '<p class="o-note">Nothing matches.</p>';
 }
 
-function renderProject(p) {
-  const ws = shownWorkspaces(p);
-  if (filtering() && !ws.length) return '';
-  // A filter shows every match, folded projects included.
-  const open = filtering() || !collapsed.has(p.id);
+function renderProject(p, ws, filtered) {
+  // A search or filter shows every match, folded projects included.
+  const open = filtered || !collapsed.has(p.id);
   return `
     <div class="o-proj" data-project="${esc(p.id)}">
       <div class="o-proj-row" data-act="toggle" title="${esc(tildify(p.dir))}" aria-expanded="${open}">
@@ -185,31 +256,190 @@ function renderProject(p) {
         <span class="o-proj-name">${esc(p.name)}</span>
         <span class="o-proj-branch">${esc(p.branch || '')}</span>
         <span class="o-acts">
+          <button type="button" class="mini" data-act="refresh-project" title="Refresh: look at the folder again (after git init, a new branch…)" aria-label="Refresh project">${ICON_REFRESH}</button>
           <button type="button" class="mini" data-act="add-ws" title="New workspace" aria-label="New workspace">${ICON_PLUS}</button>
           <button type="button" class="mini o-del" data-act="del-project" title="Remove project from punk0" aria-label="Remove project">${ICON_X}</button>
         </span>
       </div>
-      ${open ? ws.map(renderWorkspace).join('') : ''}
+      ${open ? ws.map(w => renderWorkspace(w)).join('') : ''}
     </div>`;
 }
 
+/* Scratch */
+
+const SORTS = {
+  active: (a, b) => (b.active || 0) - (a.active || 0),
+  created: (a, b) => (b.created || b.active || 0) - (a.created || a.active || 0),
+  name: (a, b) => wsLabel(a).localeCompare(wsLabel(b)),
+};
+
+// Scratch lists its pinned chats first, then the rest the way View options
+// groups them, then, when shown, the archived ones. A pinned chat shows only
+// under Pinned, wherever it is filed.
 function renderScratch(p) {
   if (!p) return '';
-  if (!p.workspaces.length) return `
+  const o = opts.scratch;
+  const searching = !!search.scratch;
+  const groups = p.groups || [];
+  if (!p.workspaces.length && !groups.length && !editing) return `
     <div class="o-side-empty">
       <p>No scratch chats yet.</p>
-      <p class="wb-faint">A chat with Claude in a folder of its own, outside any project.</p>
-      <button type="button" class="wb-btn wb-primary" data-act="add-ws" data-project="${esc(p.id)}">New chat</button>
+      <p class="wb-faint">An agent chat in a folder of its own, outside any project: research, one-off scripts, prototypes.</p>
+      <button type="button" class="wb-btn wb-primary" data-act="new-chat">New chat</button>
     </div>`;
-  const ws = shownWorkspaces(p);
-  if (!ws.length) return '<p class="o-note">Nothing matches the filter.</p>';
-  return `<div class="o-proj o-scratch" data-project="${esc(p.id)}" title="${esc(tildify(p.dir))}">${ws.map(renderWorkspace).join('')}</div>`;
+  scratchDir = p.dir;
+  const groupName = w => groups.find(g => g.id === w.group)?.name;
+  const match = w => textMatch(wsLabel(w), w.name, groupName(w));
+  const keep = w => w.id === state.ws || searching ||
+    ((!o.hideSleeping || isRunning(w)) && (!o.hideMine || ownFolder(w)) && !o.hiddenAgents.includes(agentOf(w)));
+  const sort = SORTS[o.sort] || SORTS.active;
+  const live = p.workspaces.filter(w => !w.archived && keep(w) && match(w)).sort(sort);
+  const rest = live.filter(w => !w.pinned);
+  let html = section('Pinned', live.filter(w => w.pinned).map(renderChat).join(''));
+  switch (o.groupBy) {
+    case 'group': {
+      const ids = new Set(groups.map(g => g.id));
+      const filtered = searching || o.hideSleeping || o.hideMine || o.hiddenAgents.length > 0;
+      html += (editing?.kind === 'new' ? renderNewGroup() : '') +
+        groups.map(g => renderGroup(g, rest.filter(w => w.group === g.id), filtered)).join('') +
+        renderDated(rest.filter(w => !ids.has(w.group)));
+      break;
+    }
+    case 'date':
+      html += renderDated(rest);
+      break;
+    case 'agent': {
+      const agents = [...new Set(rest.map(agentOf))].sort((a, b) => agentLabel(a).localeCompare(agentLabel(b)));
+      html += agents.map(a => section(agentLabel(a), rest.filter(w => agentOf(w) === a).map(renderChat).join(''))).join('');
+      break;
+    }
+    case 'status':
+      html += STATES.map(([st, label]) => section(label, rest.filter(w => stateOf(w) === st).map(renderChat).join(''))).join('');
+      break;
+    default:
+      html += section('', rest.map(renderChat).join(''));
+  }
+  if (o.showArchived || searching) html += renderArchived(p.workspaces.filter(w => w.archived && match(w)).sort(sort));
+  return html.trim() ? html : '<p class="o-note">Nothing matches.</p>';
 }
 
-// statusOf is the most urgent status of a workspace's running tabs.
-function statusOf(w) {
-  const statuses = w.tabs.filter(t => t.running).map(t => t.status);
-  return URGENCY.find(s => statuses.includes(s)) || '';
+// renderGroup lists a group's chats. While searching or filtering, a group
+// with nothing to show is left out.
+function renderGroup(g, chats, filtered) {
+  if (filtered && !chats.length && editing?.id !== g.id) return '';
+  const open = filtered || !collapsed.has(g.id);
+  const name = editing?.kind === 'rename' && editing.id === g.id
+    ? editField(g.name)
+    : `<span class="o-proj-name">${esc(g.name)}</span><span class="o-count">${chats.length || ''}</span>
+        <span class="o-acts">
+          <button type="button" class="mini" data-act="new-chat" title="New chat in ${esc(g.name)}" aria-label="New chat in this group">${ICON_PLUS}</button>
+          <button type="button" class="mini" data-act="rename-group" title="Rename group" aria-label="Rename group">${ICON_PENCIL}</button>
+          <button type="button" class="mini o-del" data-act="del-group" title="Delete group (its chats stay)" aria-label="Delete group">${ICON_X}</button>
+        </span>`;
+  return `
+    <div class="o-proj o-chat-group" data-group="${esc(g.id)}">
+      <div class="o-proj-row" data-act="toggle" aria-expanded="${open}">
+        <span class="o-proj-ico">${open ? ICON_FOLDER_OPEN : ICON_FOLDER}</span>
+        ${name}
+      </div>
+      ${editing?.kind === 'rename' && editing.id === g.id ? editError() : ''}
+      ${!open ? '' : chats.length ? chats.map(renderChat).join('') : '<p class="o-note o-group-empty">Empty. Move a chat here from its ⋯ menu.</p>'}
+    </div>`;
+}
+
+// The new group being named, at the top of the groups.
+function renderNewGroup() {
+  return `
+    <div class="o-proj o-chat-group o-group-new">
+      <div class="o-proj-row">
+        <span class="o-proj-ico">${ICON_FOLDER}</span>
+        ${editField('')}
+      </div>
+      ${editError()}
+    </div>`;
+}
+
+const editField = value =>
+  `<input class="o-inline-input" data-edit type="text" maxlength="40" value="${esc(value)}" placeholder="Group name" aria-label="Group name" spellcheck="false">`;
+const editError = () => (editing?.error ? `<p class="wb-msg o-inline-msg" role="alert">${esc(editing.error)}</p>` : '');
+
+// renderDated lists chats under when they were last used; they come sorted.
+function renderDated(chats) {
+  const today = new Date().setHours(0, 0, 0, 0);
+  const buckets = [
+    ['Today', w => (w.active || 0) >= today],
+    ['Previous 7 days', w => (w.active || 0) >= today - 6 * 864e5],
+    ['Older', () => true],
+  ];
+  let html = '';
+  for (const [title, inBucket] of buckets) {
+    html += section(title, chats.filter(inBucket).map(renderChat).join(''));
+    chats = chats.filter(w => !inBucket(w));
+  }
+  return html;
+}
+
+let archivedOpen = localStorage.getItem('punk0.archivedOpen') === '1';
+
+function renderArchived(chats) {
+  if (!chats.length) return '';
+  const open = !!search.scratch || archivedOpen;
+  return `
+    <div class="o-proj o-scratch o-archived">
+      <div class="o-section o-fold" data-act="toggle-archived" role="button" tabindex="0" aria-expanded="${open}">
+        <span>Archived</span><span class="o-count">${chats.length}</span>
+      </div>
+      ${open ? chats.map(renderArchivedChat).join('') : ''}
+    </div>`;
+}
+
+// when labels a chat's last use without ticking: the time today, the
+// weekday this week, else the date.
+function when(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const today = new Date().setHours(0, 0, 0, 0);
+  if (ms >= today) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (ms >= today - 6 * 864e5) return d.toLocaleDateString([], { weekday: 'short' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// A chat in a folder of yours, rather than one punk0 made, shows the
+// folder's name: deleting the chat leaves that folder alone.
+let scratchDir = '';
+const ownFolder = w => w.dir.startsWith(scratchDir + state.wb.sep);
+const folderChip = w => ownFolder(w) || wsLabel(w) === w.name ? ''
+  : `<span class="o-chip" title="Runs in your folder ${esc(tildify(w.dir))}">${esc(w.name)}</span>`;
+
+function renderChat(w) {
+  return `
+    <div class="o-ws-row o-chat${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}">
+      <span class="o-ws-name">${esc(wsLabel(w))}</span>
+      ${folderChip(w)}${badgeOf(w)}<span class="o-when">${esc(when(w.active))}</span>
+      <span class="o-acts">
+        <button type="button" class="mini o-pin${w.pinned ? ' on' : ''}" data-act="pin" title="${w.pinned ? 'Unpin' : 'Pin to the top'}" aria-label="${w.pinned ? 'Unpin chat' : 'Pin chat'}" aria-pressed="${!!w.pinned}">${ICON_PIN}</button>
+        <button type="button" class="mini" data-act="chat-menu" title="Rename, pin, move to a group, archive" aria-label="Chat actions" aria-haspopup="menu">${ICON_MORE}</button>
+      </span>
+    </div>`;
+}
+
+function renderArchivedChat(w) {
+  return `
+    <div class="o-ws-row o-chat o-chat-archived" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}">
+      <span class="o-ws-name">${esc(wsLabel(w))}</span>${folderChip(w)}
+      <span class="o-when">${esc(when(w.active))}</span>
+      <span class="o-acts">
+        <button type="button" class="mini" data-act="restore" title="Restore chat" aria-label="Restore chat">${ICON_RESTORE}</button>
+        <button type="button" class="mini o-del" data-act="del-ws" title="Delete chat" aria-label="Delete chat">${ICON_TRASH}</button>
+      </span>
+    </div>`;
+}
+
+// badgeOf shows a workspace's running tabs, or their most urgent status.
+function badgeOf(w) {
+  const st = statusOf(w);
+  const running = w.tabs.filter(t => t.running).length;
+  return running ? `<span class="o-badge${st ? ' ' + st : ''}" title="${running} running${st ? ', ' + STATUS_LABEL[st] : ''}">${st ? esc(STATUS_LABEL[st]) : running}</span>` : '';
 }
 
 const BACKEND_TITLE = {
@@ -219,31 +449,27 @@ const BACKEND_TITLE = {
   failed: 'Editor failed to start',
 };
 
-function renderWorkspace(w) {
+// renderWorkspace is a project's workspace row; outside its project's
+// group (p given), it is named with the project. Its editor opens from the
+// tab bar, its language servers from the status bar (lsp.js).
+function renderWorkspace(w, p) {
   let chip = '';
   if (w.missing) chip = '<span class="o-chip o-missing" title="Folder deleted outside punk0">missing</span>';
   else if (w.kind === 'worktree') chip = `<span class="o-chip o-wt" title="Own worktree on branch ${esc(w.branch)}">⑂ ${esc(w.branch)}</span>`;
-  const st = statusOf(w);
-  const running = w.tabs.filter(t => t.running).length;
-  const badge = running ? `<span class="o-badge${st ? ' ' + st : ''}" title="${running} running${st ? ', ' + STATUS_LABEL[st] : ''}">${st ? esc(STATUS_LABEL[st]) : running}</span>` : '';
-  const lspTitle = w.lsp
-    ? 'Language servers on for this folder (click to turn off; restarts its editor)'
-    : 'Language servers off for this folder (click to turn on; restarts its editor)';
+  const name = p && p.name !== w.name ? `${p.name} / ${w.name}` : w.name;
   return `
-    <div class="o-ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}">
+    <div class="o-ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}${p ? ' o-flat' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}">
       <span class="o-backend ${esc(w.backend || 'stopped')}" title="${esc(BACKEND_TITLE[w.backend] || w.backend)}"></span>
-      <span class="o-ws-name">${esc(w.name)}</span>
-      ${chip}${badge}
+      <span class="o-ws-name">${esc(name)}</span>
+      ${chip}${badgeOf(w)}
       <span class="o-acts">
-        <button type="button" class="mini o-lsp${w.lsp ? ' on' : ''}" data-act="lsp" title="${lspTitle}" aria-pressed="${!!w.lsp}">LSP</button>
-        ${w.missing ? '' : `<button type="button" class="mini" data-act="editor" title="Open in editor" aria-label="Open in editor">${ICON_EDITOR}</button>`}
         <button type="button" class="mini o-del" data-act="del-ws" title="Delete workspace" aria-label="Delete workspace">${ICON_X}</button>
       </span>
     </div>`;
 }
 
-function renderReviews() {
-  const items = state.reviews.filter(it => (!filter.running || it.state === 'running') && textMatch(it.title, it.repo, String(it.number)));
+function renderReviews(runningOnly) {
+  const items = state.reviews.filter(it => (!runningOnly || it.state === 'running') && textMatch(it.title, it.repo, String(it.number)));
   if (!items.length) return '';
   return `
     <div class="o-proj o-reviews">
@@ -269,39 +495,190 @@ function renderReview(it) {
     </div>`;
 }
 
+/* ---------- actions ---------- */
+
 async function onListClick(e) {
+  if (e.target.closest('[data-edit]')) return;
   const act = e.target.closest('[data-act]')?.dataset.act;
   const projectId = e.target.closest('[data-project]')?.dataset.project;
   const project = state.projects.find(p => p.id === projectId);
-  const w = workspace(e.target.closest('[data-ws]')?.dataset.ws);
+  const groupId = e.target.closest('[data-group]')?.dataset.group || '';
+  const w = rowWorkspace(e.target, '[data-ws]');
   const prId = e.target.closest('[data-pr]')?.dataset.pr;
 
   if (prId) return reviewAction(state.reviews.find(r => r.id === prId), act);
-  if (act === 'add-project') return openForm({ mode: 'project' });
-  if (act === 'add-ws') return openForm({ mode: 'workspace', project });
+  if (act === 'add-project') return openAddProject(e.target.closest('[data-act]'));
+  if (act === 'add-ws') return newWorkspace(project, e.target.closest('[data-act]'));
   if (act === 'del-project') return removeProject(project);
+  if (act === 'refresh-project') return refreshProject(project, e.target.closest('[data-act]'));
+  // The group's + only shows on hover; point at its row.
+  if (act === 'new-chat') return newChat(groupId, e.target.closest('.o-proj-row') || e.target.closest('[data-act]'));
+  if (act === 'rename-group') return startRenameGroup(groupId);
+  if (act === 'del-group') return removeGroup(groupId);
+  if (act === 'toggle-archived') return toggleArchived();
   if (w && act === 'del-ws') return removeWorkspace(w);
-  if (w && act === 'editor') return openEditor(w.href);
-  if (w && act === 'lsp') return toggleLsp(w);
-  if (w) return w.id !== state.ws && selectWorkspace(w.id);
+  if (w && act === 'chat-menu') return chatMenuEl.hidden || menuChat !== w.id ? openChatMenu(w, e.target.closest('button')) : closeChatMenu();
+  if (w && act === 'restore') return updateChat(w, { archived: false });
+  if (w && act === 'pin') return updateChat(w, { pinned: !w.pinned });
+  // A double-click renames. It is the second click's detail, not a dblclick
+  // event: the first click re-renders the list, which loses dblclick.
+  const second = e.detail === 2 && !e.target.closest('.o-acts');
+  if (w && second && w.kind === 'folder' && !w.archived) return renameChat(w);
+  if (w) return !w.archived && w.id !== state.ws && selectWorkspace(w.id);
   if (act === 'toggle') {
-    if (collapsed.has(projectId)) collapsed.delete(projectId);
-    else collapsed.add(projectId);
-    localStorage.setItem('punk0.collapsed', JSON.stringify([...collapsed]));
+    const key = groupId || projectId;
+    if (collapsed.has(key)) collapsed.delete(key);
+    else collapsed.add(key);
+    saveCollapsed();
+    // The first click of a double-click on a group's name folded it; the
+    // second undoes that and renames the group.
+    if (second && groupId && e.target.closest('.o-proj-name')) return startRenameGroup(groupId);
     renderSidebar();
   }
+}
+
+// rowWorkspace is the workspace of the row el is in, or null outside one.
+// workspace() with no id means the selected one, so it is not asked then.
+function rowWorkspace(el, sel) {
+  const id = el.closest(sel)?.dataset.ws;
+  return id ? workspace(id) : null;
+}
+
+const saveCollapsed = () => localStorage.setItem('punk0.collapsed', JSON.stringify([...collapsed]));
+
+function toggleArchived() {
+  archivedOpen = !archivedOpen;
+  localStorage.setItem('punk0.archivedOpen', archivedOpen ? '1' : '');
+  renderSidebar();
+}
+
+// newChat opens the New chat flyout, in a group when given, and selects the
+// chat it starts. from is the button the New chat flyout points at.
+async function newChat(group, from) {
+  const id = await openNewChat(group, from);
+  if (!id) return;
+  if (group && collapsed.delete(group)) saveCollapsed();
+  if (view !== 'scratch') setView('scratch');
+  await reload();
+  selectWorkspace(id);
+}
+
+async function updateChat(w, change) {
+  const res = await call('PATCH', `api/chats/${encodeURIComponent(w.id)}`, change);
+  if (!res.ok) failed(res);
+  reload();
+}
+
+function renameChat(w) {
+  const title = prompt('Chat name', wsLabel(w))?.trim();
+  if (title && title !== wsLabel(w)) updateChat(w, { title });
+}
+
+/* Groups, named in place */
+
+// startNewGroup adds a group row being named at the top of the groups; a
+// chat moved there from its menu joins the group once it is made. Groups
+// only show grouped by Group, so the list switches to that.
+function startNewGroup(moveChat = '') {
+  if (view !== 'scratch') setView('scratch');
+  if (opts.scratch.groupBy !== 'group') setOpt('scratch', 'groupBy', 'group');
+  editing = { kind: 'new', moveChat };
+  renderSidebar();
+}
+
+function startRenameGroup(id) {
+  if (!scratchGroups().some(g => g.id === id)) return;
+  editing = { kind: 'rename', id };
+  renderSidebar();
+}
+
+function cancelEdit() {
+  editing = null;
+  renderSidebar();
+}
+
+// commitEdit saves the name being edited; an empty or unchanged one cancels.
+// A refused name (a duplicate) stays in place with the reason under it.
+async function commitEdit() {
+  const ed = editing;
+  const input = listEl.querySelector('[data-edit]');
+  if (!ed || ed.busy || !input) return;
+  const name = input.value.trim();
+  const group = ed.kind === 'rename' && scratchGroups().find(g => g.id === ed.id);
+  if (!name || (group && group.name === name)) return cancelEdit();
+  ed.busy = true;
+  const res = ed.kind === 'new'
+    ? await call('POST', 'api/chat-groups', { name })
+    : await call('PATCH', `api/chat-groups/${encodeURIComponent(ed.id)}`, { name });
+  ed.busy = false;
+  if (editing !== ed) return;
+  if (!res.ok) {
+    ed.error = res.data.error;
+    renderSidebar();
+    return;
+  }
+  editing = null;
+  if (ed.kind === 'new' && ed.moveChat) {
+    await call('PATCH', `api/chats/${encodeURIComponent(ed.moveChat)}`, { group: res.data.id });
+  }
+  await reload();
+  renderSidebar();
+}
+
+async function removeGroup(id) {
+  const g = scratchGroups().find(x => x.id === id);
+  if (!g || !confirm(`Delete group "${g.name}"? Its chats are kept, in no group.`)) return;
+  const res = await call('DELETE', `api/chat-groups/${encodeURIComponent(id)}`);
+  if (!res.ok) failed(res);
+  reload();
+}
+
+// The chat actions menu: rename, pin, file under a group, archive.
+function openChatMenu(w, btn) {
+  menuChat = w.id;
+  const item = (g, name) => `<button type="button" role="menuitemradio" aria-checked="${(w.group || '') === g}" data-menu="move" data-group="${esc(g)}">${esc(name)}</button>`;
+  chatMenuEl.innerHTML = `
+    <button type="button" role="menuitem" data-menu="rename">Rename…</button>
+    <button type="button" role="menuitem" data-menu="pin">${w.pinned ? 'Unpin' : 'Pin to the top'}</button>
+    <div class="o-menu-sep" role="separator"></div>
+    <div class="o-menu-label">Group</div>
+    ${item('', 'No group')}
+    ${scratchGroups().map(g => item(g.id, g.name)).join('')}
+    <button type="button" role="menuitem" data-menu="move-new">New group…</button>
+    <div class="o-menu-sep" role="separator"></div>
+    <button type="button" role="menuitem" data-menu="archive">Archive</button>`;
+  chatMenuEl.hidden = false;
+  const r = btn.getBoundingClientRect();
+  chatMenuEl.style.left = `${Math.max(4, Math.min(r.left, innerWidth - chatMenuEl.offsetWidth - 4))}px`;
+  chatMenuEl.style.top = `${Math.max(4, Math.min(r.bottom + 4, innerHeight - chatMenuEl.offsetHeight - 4))}px`;
+  chatMenuEl.querySelector('button').focus();
+}
+
+function closeChatMenu() {
+  if (!chatMenuEl || chatMenuEl.hidden) return;
+  chatMenuEl.hidden = true;
+  menuChat = null;
+}
+
+function onChatMenu(e) {
+  const b = e.target.closest('[data-menu]');
+  const w = workspace(menuChat);
+  if (!b || !w) return;
+  closeChatMenu();
+  const act = b.dataset.menu;
+  if (act === 'rename') return renameChat(w);
+  if (act === 'archive') return updateChat(w, { archived: true });
+  if (act === 'pin') return updateChat(w, { pinned: !w.pinned });
+  if (act === 'move-new') return startNewGroup(w.id);
+  const group = b.dataset.group;
+  if (group && collapsed.delete(group)) saveCollapsed();
+  if (group !== (w.group || '')) updateChat(w, { group });
 }
 
 async function reviewAction(it, act) {
   if (!it) return;
   if (!act) return openEditor(it.href);
   const res = await call('POST', act === 'pr-stop' ? 'api/wb/stop' : 'api/wb/remove', { id: it.id });
-  if (!res.ok) failed(res);
-  reload();
-}
-
-async function toggleLsp(w) {
-  const res = await call('POST', `api/workspaces/${encodeURIComponent(w.id)}/lsp`, { on: !w.lsp });
   if (!res.ok) failed(res);
   reload();
 }
@@ -317,7 +694,9 @@ async function removeWorkspace(w) {
   const what = {
     worktree: `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is kept.`,
     local: `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`,
-    folder: `Delete chat "${w.name}"? Its tabs stop. Its folder ${w.dir} is kept.`,
+    folder: ownFolder(w)
+      ? `Delete chat "${wsLabel(w)}" for good? Its folder ${w.dir} and everything in it are deleted.`
+      : `Delete chat "${wsLabel(w)}"? Its tabs stop. Your folder ${w.dir} is not touched.`,
   }[w.kind];
   if (!confirm(what)) return;
   const path = `api/workspaces/${encodeURIComponent(w.id)}`;
@@ -330,80 +709,23 @@ async function removeWorkspace(w) {
   reload();
 }
 
-function openForm(f) {
-  formFor = f;
-  const ws = f.mode === 'workspace';
-  hideClone();
-  showMsg('');
-  nameEl.value = '';
-  // The header's feature button asks for a worktree: its own folder and
-  // branch. A folder that is not a git repository can only have local ones.
-  const wt = ws && !!f.worktree && f.project.git;
-  nameEl.placeholder = !ws ? '~/path/to/folder or pull request URL'
-    : f.project.scratch ? 'new scratch chat, e.g. research-auth'
-    : wt ? `new feature branch in ${f.project.name}` : `new workspace in ${f.project.name}`;
-  nameEl.setAttribute('aria-label', !ws ? 'Folder path or pull request URL' : 'Workspace name');
-  wtEl.checked = wt;
-  wtRowEl.hidden = !ws || !f.project.git;
-  baseEl.value = '';
-  baseEl.hidden = !wt;
-  submitEl.textContent = ws ? 'Create' : 'Add';
-  formEl.hidden = false;
-  nameEl.focus();
+/* ---------- new workspaces ---------- */
+
+// newWorkspace opens the New workspace panel for project, pointing at from;
+// the panel selects what it makes.
+function newWorkspace(project, from) {
+  if (collapsed.delete(project.id)) saveCollapsed();
+  openNewWorkspace(project, from);
 }
 
-function closeForm() {
-  formFor = null;
-  hideClone();
-  formEl.hidden = true;
-}
-
-const showMsg = text => {
-  msgEl.textContent = text || '';
-  msgEl.hidden = !text;
-};
-
-async function submitForm() {
-  const value = nameEl.value.trim();
-  if (!value || !formFor) return;
-  if (formFor.mode === 'project') return openTarget(value);
-  const res = await call('POST', `api/projects/${encodeURIComponent(formFor.project.id)}/workspaces`, {
-    name: value,
-    worktree: wtEl.checked,
-    base: baseEl.value.trim(),
-  });
-  if (!res.ok) return showMsg(res.data.error);
-  closeForm();
+// refreshProject has punk0 look at the project folder again: git is asked
+// afresh and the folder's editor restarts, so changes made outside punk0
+// (git init, a new branch) show without waiting.
+async function refreshProject(project, btn) {
+  if (!project) return;
+  btn.classList.add('o-spin');
+  const res = await call('POST', `api/projects/${encodeURIComponent(project.id)}/refresh`);
   await reload();
-  selectWorkspace(res.data.id);
-}
-
-// openTarget adds a folder as a project, or opens a pull request for review,
-// through the same /api/wb/open the editor's Open Pull Request uses. A PR
-// whose repository has no known clone first asks for one.
-async function openTarget(target, clone) {
-  showMsg('');
-  const res = await call('POST', 'api/wb/open', clone ? { target, clone } : { target });
-  if (!res.ok) return showMsg(res.data.error);
-  if (res.data.needClone) return askForClone(target, res.data.repo, res.data.managed);
-  closeForm();
-  await reload();
-  if (!looksLikeURL(target) && res.data.workspace) selectWorkspace(res.data.workspace);
-}
-
-function askForClone(prURL, repo, managed) {
-  pendingPR = prURL;
-  $('#o-clone-repo').textContent = repo;
-  $('#o-clone-dest').textContent = managed;
-  $('#o-clone-dest').title = managed;
-  cloneEl.hidden = false;
-  submitEl.hidden = true;
-  clonePathEl.value = '';
-  clonePathEl.focus();
-}
-
-function hideClone() {
-  pendingPR = '';
-  cloneEl.hidden = true;
-  submitEl.hidden = false;
+  btn.classList.remove('o-spin');
+  if (!res.ok) failed(res);
 }

@@ -342,6 +342,11 @@ type workbench struct {
 	mu       sync.Mutex
 	children map[string]*wbChild
 	closing  bool
+	// gitSeen is whether each project folder was a repository when last
+	// listed, so the folder's editor restarts when it turns into one.
+	gitSeen map[string]bool
+	clones  map[string]*cloneJob // Add project's clones, by id (addproject.go)
+	cloning sync.WaitGroup       // runClone goroutines, waited for by Close
 
 	cpu cpuMeter // per-process CPU deltas for /api/resources
 
@@ -418,17 +423,31 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc(wb.route("/api/wb/state"), wb.handleState)
 	wb.mux.HandleFunc(wb.route("/api/wb/complete"), wb.handleComplete)
 	wb.mux.HandleFunc(wb.route("/api/resources"), wb.handleResources)
-	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
 	wb.mux.HandleFunc(wb.route("/api/wb/open"), wb.handleOpen)
 	wb.mux.HandleFunc(wb.route("/api/wb/stop"), wb.handleStop)
 	wb.mux.HandleFunc(wb.route("/api/wb/remove"), wb.handleRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects"), wb.handleProjectList)
 	wb.mux.HandleFunc("POST "+wb.route("/api/projects"), wb.handleProjectAdd)
+	wb.mux.HandleFunc("GET "+wb.route("/api/projects/removed"), wb.handleRemovedProjects)
+	wb.mux.HandleFunc("POST "+wb.route("/api/projects/new"), wb.handleProjectNew)
+	wb.mux.HandleFunc("GET "+wb.route("/api/wb/folder"), wb.handleFolder)
+	wb.mux.HandleFunc("POST "+wb.route("/api/clones"), wb.handleCloneStart)
+	wb.mux.HandleFunc("GET "+wb.route("/api/clones/{id}"), wb.handleCloneStatus)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/clones/{id}"), wb.handleCloneCancel)
+	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/refresh"), wb.handleProjectRefresh)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/projects/{id}"), wb.handleProjectRemove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/workspaces"), wb.handleWorkspaceAdd)
+	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/plan"), wb.handleWorkspacePlan)
+	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/refs"), wb.handleRefs)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
+	wb.mux.HandleFunc("POST "+wb.route("/api/chats"), wb.handleChatAdd)
+	wb.mux.HandleFunc("PATCH "+wb.route("/api/chats/{id}"), wb.handleChatUpdate)
+	wb.mux.HandleFunc("POST "+wb.route("/api/chat-groups"), wb.handleChatGroupAdd)
+	wb.mux.HandleFunc("PATCH "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRename)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRemove)
+	wb.mux.HandleFunc("GET "+wb.route("/api/agents"), wb.handleAgents)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/tabs/{id}"), wb.handleTabRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
@@ -729,6 +748,7 @@ func (wb *workbench) Close() {
 		ids = append(ids, id)
 	}
 	wb.mu.Unlock()
+	wb.cancelClones()
 	wb.records.Close()
 	var wg sync.WaitGroup
 	for _, id := range ids {
@@ -902,7 +922,8 @@ type wbEntry struct {
 // handleComplete completes the folder name being typed: q's last path
 // element is a case-insensitive prefix of folders in its parent. A q ending
 // in a separator lists the folder itself. Each value keeps the q's own
-// spelling of the parent (~, relative), so the input does not jump.
+// spelling of the parent (~, relative), so the input does not jump. Typing
+// gets the first 50; all=1, for the New chat folder browser, gets them all.
 func (wb *workbench) handleComplete(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
 		return
@@ -960,33 +981,10 @@ func (wb *workbench) handleComplete(w http.ResponseWriter, r *http.Request) {
 		}
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
-	if len(out) > 50 {
+	if len(out) > 50 && r.URL.Query().Get("all") != "1" {
 		out = out[:50]
 	}
 	writeJSON(w, map[string]any{"dir": dir, "entries": out})
-}
-
-// handleSettings saves the theme picked on the workbench page. Only the
-// theme: the app's full settings editor lives in each workspace.
-func (wb *workbench) handleSettings(w http.ResponseWriter, r *http.Request) {
-	if !localPost(w, r) {
-		return
-	}
-	var body map[string]any
-	if readJSONBody(r, &body) != nil {
-		fail(w, http.StatusBadRequest, "bad request")
-		return
-	}
-	theme, ok := body["workbench.colorTheme"].(string)
-	if !ok || len(body) != 1 {
-		fail(w, http.StatusBadRequest, "only workbench.colorTheme can be set here")
-		return
-	}
-	if err := updateSettingsMap(map[string]any{"workbench.colorTheme": theme}); err != nil {
-		fail(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true})
 }
 
 // expandPath resolves ~ and relative paths (against base) to a clean absolute path.
@@ -1142,7 +1140,30 @@ func (wb *workbench) handleProjectList(w http.ResponseWriter, r *http.Request) {
 			wb.fillWorkspace(&views[i].Workspaces[j])
 		}
 	}
+	wb.restartNewRepos(views)
 	writeJSON(w, views)
+}
+
+// restartNewRepos stops the editor of a project folder that has become a git
+// repository since it was last listed (git init after adding it). An editor
+// decides at start whether it shows git, so the next request starts one that
+// does.
+func (wb *workbench) restartNewRepos(views []projectView) {
+	var stale []string
+	wb.mu.Lock()
+	if wb.gitSeen == nil {
+		wb.gitSeen = map[string]bool{}
+	}
+	for _, pv := range views {
+		if was, ok := wb.gitSeen[pv.Dir]; ok && !was && pv.Git {
+			stale = append(stale, wbItemID("dir", pv.Dir))
+		}
+		wb.gitSeen[pv.Dir] = pv.Git
+	}
+	wb.mu.Unlock()
+	for _, id := range stale {
+		go wb.stop(id) // the list does not wait for a child to shut down
+	}
 }
 
 // fillWorkspace adds what only the workbench knows: where the folder's editor
@@ -1172,7 +1193,7 @@ func (wb *workbench) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 }
 
 // openFolder registers a folder and answers with the workspace that opens it:
-// the page's add box, `punk0 <dir>` in a terminal and a second punk0 handing
+// the Add project panel, `punk0 <dir>` in a terminal and a second punk0 handing
 // its folder over all come through here, and all of them may name a folder
 // that is already registered.
 func (wb *workbench) openFolder(w http.ResponseWriter, dir string) {
@@ -1196,27 +1217,99 @@ func (wb *workbench) handleProjectRemove(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
+// handleWorkspaceAdd makes a workspace from the New workspace panel
+// (newworkspace.go). A pull request typed there is worked on: its head is
+// fetched and checked out in a worktree of its own.
 func (wb *workbench) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
 	}
-	var body struct {
-		Name     string `json:"name"`
-		Worktree bool   `json:"worktree"`
-		Base     string `json:"base"`
-	}
-	if readJSONBody(r, &body) != nil {
+	var o WorkspaceOptions
+	if readJSONBody(r, &o) != nil {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	ws, err := wb.records.AddWorkspace(r.PathValue("id"), body.Name, body.Worktree, strings.TrimSpace(body.Base))
+	id := r.PathValue("id")
+	if dir := wb.records.ProjectDir(id); dir != "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		pp, ok, err := findProjectPull(ctx, dir, o.Name)
+		cancel()
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if ok {
+			if o, err = pp.workOn(dir, o); err != nil {
+				fail(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+	}
+	ws, warning, err := wb.records.AddWorkspace(id, o)
 	if err != nil {
 		failRecord(w, err)
 		return
 	}
 	view := wb.records.View(ws)
 	wb.fillWorkspace(&view)
-	writeJSON(w, view)
+	writeJSON(w, struct {
+		workspaceView
+		Warning string `json:"warning,omitempty"`
+	}{view, warning})
+}
+
+// handleWorkspacePlan answers the panel as it is filled in: what creating
+// the workspace would do, or why it cannot. A pull request is looked up on
+// its forge, so the panel can offer to review it or work on it.
+func (wb *workbench) handleWorkspacePlan(w http.ResponseWriter, r *http.Request) {
+	if !trustedGet(w, r) {
+		return
+	}
+	q := r.URL.Query()
+	o := WorkspaceOptions{
+		Name:     q.Get("name"),
+		Worktree: q.Get("worktree") == "1",
+		Base:     q.Get("base"),
+	}
+	id := r.PathValue("id")
+	if dir := wb.records.ProjectDir(id); dir != "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+		pp, ok, err := findProjectPull(ctx, dir, o.Name)
+		cancel()
+		if err != nil {
+			writeJSON(w, WorkspacePlan{Worktree: true, Action: planPR, Error: err.Error()})
+			return
+		}
+		if ok {
+			// The base is the PR's head, fetched only when the worktree is made.
+			pl := wb.records.Plan(id, pp.options(o))
+			pl.Action, pl.Base, pl.Fetch, pl.PR = planPR, "", "", pp.view()
+			pl.Dir = tildePath(pl.Dir)
+			writeJSON(w, pl)
+			return
+		}
+	}
+	pl := wb.records.Plan(id, o)
+	pl.Dir = tildePath(pl.Dir)
+	writeJSON(w, pl)
+}
+
+// handleRefs lists a project's branches for the panel's start point, with
+// the one a new branch starts from by default.
+func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
+	if !trustedGet(w, r) {
+		return
+	}
+	dir := wb.records.ProjectDir(r.PathValue("id"))
+	if dir == "" {
+		fail(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if !gitAvailable(dir) {
+		writeJSON(w, map[string]any{"default": "", "refs": []string{}})
+		return
+	}
+	writeJSON(w, map[string]any{"default": defaultBase(dir), "refs": gitRefs(dir), "empty": !hasCommit(dir)})
 }
 
 // handleWorkspaceRemove answers 409 while a worktree has uncommitted changes;
@@ -1257,6 +1350,111 @@ func (wb *workbench) handleLSP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wb.stop(wbItemID("dir", ws.Dir))
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+/* ---------- scratch chats (scratch.go) ---------- */
+
+// handleChatAdd starts a scratch chat from the New chat dialog. A relative
+// or ~ path is resolved like the Add project panel's.
+func (wb *workbench) handleChatAdd(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var o ChatOptions
+	if readJSONBody(r, &o) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if strings.TrimSpace(o.Dir) != "" {
+		dir, err := expandPath(o.Dir, wb.cwd)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		o.Dir = dir
+	} else {
+		o.Dir = ""
+	}
+	ws, err := wb.records.NewChat(o)
+	if err != nil {
+		failRecord(w, err)
+		return
+	}
+	view := wb.records.View(ws)
+	wb.fillWorkspace(&view)
+	writeJSON(w, view)
+}
+
+// handleChatUpdate renames, regroups, archives or restores a chat. An
+// archived chat's editor is stopped along with its tabs.
+func (wb *workbench) handleChatUpdate(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	var u ChatUpdate
+	if readJSONBody(r, &u) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	id := r.PathValue("id")
+	if err := wb.records.UpdateChat(id, u); err != nil {
+		failRecord(w, err)
+		return
+	}
+	if u.Archived != nil && *u.Archived {
+		if ws := wb.records.Workspace(id); ws != nil {
+			wb.stop(wbItemID("dir", ws.Dir))
+		}
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleChatGroupAdd(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	g, err := wb.records.AddChatGroup(body.Name)
+	if err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, g)
+}
+
+func (wb *workbench) handleChatGroupRename(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if err := wb.records.RenameChatGroup(r.PathValue("id"), body.Name); err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleChatGroupRemove(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	if err := wb.records.RemoveChatGroup(r.PathValue("id")); err != nil {
+		failRecord(w, err)
+		return
+	}
 	writeJSON(w, map[string]any{"ok": true})
 }
 

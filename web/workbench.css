@@ -42,8 +42,9 @@
 .wb-state.starting { color: var(--mark-active); }
 .wb-state.failed { color: var(--err); }
 
-/* The app's status bar, standing alone at the bottom of the page. */
-.wb-status { gap: 10px; }
+/* The app's status bar, standing alone at the bottom of the page, in the
+   columns of the panes above it. */
+.wb-status { gap: 0; }
 /* punk[0]: drawn in text in the style of px0's px[0] logo, so it follows the theme. */
 .wb-logo {
   flex: none; padding: 1px 3px; border-radius: var(--r);
@@ -54,13 +55,25 @@
 /* Logo and version at the left, the buttons at the right: exactly the
    sidebar's width, with its border carried down, as px0's footer sits under
    its file tree. The bar's own left padding moves inside this box. */
-#status.wb-status { padding-left: 0; } /* the id: style.css sets #status padding */
+#status.wb-status { padding: 0; } /* the id: style.css sets #status padding */
 /* Spacing as px0's .side-foot: 6px between logo, version and buttons; the
    buttons keep style.css's 2px apart. */
 .wb-status-side {
   width: var(--wb-left); align-self: stretch; display: flex; align-items: center; gap: 6px;
   padding: 0 8px; border-right: 1px solid var(--line);
 }
+/* The middle: the selected folder's LSP item at its right corner. */
+.wb-status-mid { flex: 1 !important; min-width: 0; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding: 0 6px; }
+/* Under the files pane, exactly its width; shrinks to its contents while
+   the pane is hidden, like the left section. */
+.wb-status-end {
+  width: var(--wb-right); align-self: stretch; display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 10px 0 8px; border-left: 1px solid var(--line);
+}
+#wb-app.hide-right .wb-status-end { width: auto; border-left: 0; }
+/* #lsp-menu (style.css) opens up from the item, its right edge on the item's. */
+#lsp-menu .lsp-empty-note { font-size: 11.5px; line-height: 1.5; color: var(--dim); }
+#lsp-menu .lsp-folder { font: 11px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Running terminals, running agents, total RAM: one button, so hovering any
    of them lights all three, and a click opens #wb-res. */
 .wb-res-btn {
@@ -121,16 +134,6 @@
 /* Rows sit 4px in so the hover reads as a pill; their text stays on the header's columns. */
 .wb-res-rows .wb-res-row { margin: 0 4px; padding: 0 8px; }
 
-/* Theme picker, opened from the palette button. */
-.wb-menu {
-  position: fixed; z-index: 70; min-width: 200px; max-height: 60vh; overflow: auto;
-  list-style: none; margin: 0; padding: 4px 0;
-  background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
-}
-.wb-menu li { display: flex; align-items: center; gap: 10px; padding: 4px 12px; cursor: pointer; font: 12px var(--ui); color: var(--fg); }
-.wb-menu li[aria-selected="true"] { background: var(--bg4); }
-.wb-menu li .wb-faint { margin-left: auto; font-size: 11px; }
-
 /* ---------- orchestrator: three panes ---------- */
 #o-main { flex: 1; min-height: 0; display: flex; }
 #o-side, #o-files {
@@ -166,7 +169,6 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 #o-tab-head .o-show { display: none; }
 #wb-app.hide-left #o-show-left, #wb-app.hide-right #o-show-right { display: inline-flex; }
 #o-show-left { margin: 0 4px 0 6px; }
-#o-show-right { margin-left: auto; }
 #wb-app.hide-left .wb-status-side { width: auto; border-right: 0; }
 #o-center { flex: 1; min-width: 320px; display: flex; flex-direction: column; position: relative; background: var(--bg); }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
@@ -193,8 +195,10 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 
 /* Something is under way: starting editors, working agents. */
 @keyframes o-pulse { 50% { opacity: .35; } }
+@keyframes o-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: no-preference) {
   .o-backend.starting, .o-tab-dot.working, .o-badge.working::before { animation: o-pulse 1.2s ease-in-out infinite; }
+  .o-spin svg { animation: o-spin .8s linear infinite; }
 }
 .o-acts .mini:hover { background: var(--bg4); }
 
@@ -211,21 +215,46 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 .o-side-tabs button:hover { color: var(--fg); }
 .o-side-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg3); }
 .o-side-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-/* Under it, Orca-style: the list's name and its filter / new worktree / add buttons. */
-.o-list-head { flex: none; display: flex; align-items: center; gap: 6px; height: 32px; padding: 4px 8px 0 14px; user-select: none; }
+/* Under the search, Orca-style: the list's name and its filter / new worktree / add buttons. */
+.o-list-head { flex: none; display: flex; align-items: center; gap: 6px; height: 30px; padding: 2px 8px 0 14px; user-select: none; }
 .o-list-title { font-size: 12px; font-weight: 600; color: var(--dim); }
 .o-list-head .mini { margin-left: 0; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .o-list-head .mini:hover { background: var(--bg4); }
 .o-list-head .mini:disabled { opacity: .4; cursor: default; background: none; }
-/* An active filter tints its button, so a narrowed list is not mistaken for all of it. */
-#o-filter-btn.on, #o-filter-btn[aria-pressed="true"] { color: var(--accent-fg); }
-.o-filter { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 2px 8px 8px; }
-.o-filter[hidden] { display: none; }
-#o-projects { padding: 2px 0 12px; }
-.o-form {
-  flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px;
-  background: var(--bg); border-bottom: 1px solid var(--line);
+/* View options: tinted, with a count, while filters narrow the list. */
+.o-head-acts .mini.o-view-btn { width: auto; min-width: 20px; padding: 0 3px; gap: 3px; }
+.o-view-btn.on { color: var(--accent-fg); }
+.o-view-count { font: 600 9.5px/1 var(--mono); }
+.o-view-menu { position: fixed; z-index: 70; min-width: 200px; max-height: calc(100vh - 16px); overflow: auto; }
+.o-view-menu button:disabled { color: var(--faint); cursor: default; background: none; }
+.o-menu button[role="menuitemcheckbox"]::before { content: ""; width: 10px; height: 10px; flex: none; border: 1px solid var(--line); border-radius: 2px; }
+.o-menu button[role="menuitemcheckbox"][aria-checked="true"]::before { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--bg3); }
+/* The search field between the view switch and the list head: always
+   there, cleared with Esc. A soft fill until focused, then the accent. */
+.o-search {
+  flex: none; display: flex; align-items: center; gap: 7px; margin: 8px 8px 2px; padding: 0 4px 0 9px; height: 28px;
+  border: 1px solid transparent; border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--faint);
+  transition: background-color .12s, border-color .12s;
 }
+.o-search:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.o-search:focus-within { background: var(--bg); border-color: var(--accent); color: var(--dim); }
+.o-search svg { flex: none; }
+.o-search input {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none;
+  font: 12px var(--ui); color: var(--fg); text-overflow: ellipsis;
+}
+.o-search input::placeholder { color: var(--faint); opacity: 1; }
+.o-search .mini { width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); }
+.o-search .mini:hover { background: var(--bg4); color: var(--fg); }
+/* A group name typed in place: a new group, or a rename. */
+.o-inline-input {
+  flex: 1; min-width: 0; height: 22px; padding: 0 6px; font: 600 12.5px var(--ui); color: var(--fg);
+  background: var(--bg2); border: 1px solid var(--accent); border-radius: var(--r); outline: none;
+}
+.o-inline-msg { padding: 2px 12px 4px 36px; font-size: 11px; }
+.o-ws-row.o-flat { padding-left: 12px; }
+#o-projects { padding: 2px 0 12px; }
 .o-field { position: relative; }
 .o-field input, .o-input {
   width: 100%; height: 26px; padding: 0 8px; font: 12px var(--mono);
@@ -258,6 +287,9 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
   border: 1px solid transparent; border-radius: var(--r-lg);
 }
 .o-scratch .o-ws-row { padding-left: 12px; }
+/* Chats in a group line up under its name, not its folder icon. */
+.o-chat-group .o-ws-row { padding-left: 30px; }
+.o-group-empty { padding: 4px 12px 6px 36px; }
 .o-ws-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .o-ws-row.active {
   background: color-mix(in srgb, var(--fg) 8%, transparent);
@@ -285,6 +317,15 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 .o-ws-row:hover .o-badge, .o-ws-row:focus-within .o-badge { display: none; }
 .o-ws-row.active .o-ws-name, .o-ws-row:hover .o-ws-name { color: var(--fg); }
 .o-ws-row.missing .o-ws-name { color: var(--faint); text-decoration: line-through; }
+/* A chat's last use: steps aside for the actions like the badge. */
+.o-when { flex: none; font: 10.5px var(--mono); color: var(--faint); }
+.o-ws-row:hover .o-when, .o-ws-row:focus-within .o-when { display: none; }
+.o-chat-archived .o-ws-name, .o-ws-row.o-chat-archived:hover .o-ws-name { color: var(--faint); }
+.o-chat-archived { cursor: default; }
+.o-count { flex: 1; min-width: 0; margin-left: 6px; font: 400 10.5px var(--mono); color: var(--faint); }
+.o-fold { cursor: pointer; border-radius: var(--r); }
+.o-fold:hover { color: var(--fg); }
+.o-fold:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 
 .o-chip {
   flex: 0 1 auto; min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
@@ -302,8 +343,6 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 .o-badge.working { color: var(--accent-fg); }
 .o-badge.idle { color: var(--gi); }
 .o-badge.waiting { color: var(--mark-active); font-weight: 600; }
-.o-acts .mini.o-lsp { width: auto; padding: 0 4px; font: 600 9.5px/1 var(--mono); letter-spacing: .03em; }
-.o-acts .mini.o-lsp.on { color: var(--accent-fg); }
 
 .o-pr-ico { flex: none; display: inline-flex; color: var(--gi); }
 .o-pr-text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
@@ -317,6 +356,8 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 #o-tabs::-webkit-scrollbar { display: none; }
 #o-tabs .tab { height: 100%; line-height: normal; }
 #o-new-tab { flex: none; margin-left: 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* Open in editor, at the bar's right end, before the show-files button. */
+#o-open-editor { flex: none; margin-left: auto; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 
 /* A terminal tab's PTY: hollow when stopped, then by agent status. */
 .o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
@@ -346,6 +387,11 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
   content: ""; display: inline-block; width: 8px; height: 10px; vertical-align: -1px;
   border: 1.5px solid currentColor; border-radius: var(--r);
 }
+/* A scratch chat's ⋯ menu, placed at its button wherever the list scrolls. */
+.o-chat-menu { position: fixed; z-index: 70; }
+.o-menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
+.o-menu-label { padding: 2px 12px; font-size: 11px; color: var(--faint); }
+.o-menu button[role="menuitemradio"][aria-checked="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; color: var(--accent-fg); }
 
 #o-term { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
 
@@ -410,6 +456,99 @@ body.wb-resizing #o-main > :not(.o-resizer) { pointer-events: none; }
 #o-picker-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
 #o-picker-list .pi { align-items: center; padding: 4px 14px; }
 #o-picker-list .pn { font-size: 12.5px; }
+
+/* New chat: a flyout just right of the sidebar, its notch pointing at the
+   button that opened it (--notch, set by newchat.js). */
+.o-flyout {
+  position: fixed; z-index: 70; width: 320px; max-width: calc(100vw - 16px);
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px;
+  background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+.o-flyout[hidden] { display: none; }
+.o-flyout::before {
+  content: ""; position: absolute; left: -6px; top: calc(var(--notch, 20px) - 5px); width: 10px; height: 10px;
+  background: var(--bg3); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg);
+}
+.o-flyout-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.o-flyout-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg); }
+.o-chat-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--dim); }
+.o-chat-field .o-input, .o-chat-field .o-select { width: 100%; }
+#o-chat-title { font: 12.5px var(--ui); color: var(--fg); }
+.o-chat-path { display: flex; gap: 6px; }
+.o-chat-path .o-field { flex: 1; min-width: 0; }
+.o-chat-note { margin: 0; font-size: 11px; line-height: 1.45; color: var(--faint); }
+.o-select {
+  height: 26px; padding: 0 6px; font: 12px var(--ui); color: var(--fg); background: var(--bg2);
+  border: 1px solid var(--line); border-radius: var(--r);
+}
+.o-select:focus { border-color: var(--accent); outline: none; }
+.o-select:disabled { opacity: .5; }
+.o-browser { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg2); }
+.o-browser-head { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.o-browser-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); color: var(--fg); }
+.o-browser-list { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow: auto; }
+.o-browser-list li[data-path] { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px; border-radius: var(--r); cursor: pointer; font-size: 12px; color: var(--fg); }
+.o-browser-list li[data-path]:hover, .o-browser-list li[data-path]:focus-visible { background: var(--bg4); outline: none; }
+.o-browser-ico { flex: none; display: inline-flex; color: var(--faint); }
+.o-browser-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-browser .o-note { padding: 6px; }
+.o-browser-view { display: flex; flex-direction: column; gap: 6px; }
+.o-browser-list input[type=checkbox] { flex: none; margin: 0; accent-color: var(--accent); }
+.o-browser-badge { flex: none; font-size: 10px; color: var(--faint); }
+
+/* Add project (addproject.js): steps share the form; data-only names the
+   steps an element shows in. */
+.o-flyout.o-ap { width: 360px; }
+.o-ap[data-step="main"] [data-only]:not([data-only~="main"]),
+.o-ap[data-step="browse"] [data-only]:not([data-only~="browse"]),
+.o-ap[data-step="clone"] [data-only]:not([data-only~="clone"]),
+.o-ap[data-step="create"] [data-only]:not([data-only~="create"]) { display: none; }
+.o-ap-title { display: flex; align-items: center; gap: 4px; }
+#o-ap-url, #o-ap-name { font: 12px var(--mono); color: var(--fg); }
+.o-ap .o-browser-list { max-height: 180px; }
+.o-ap-note-dest { font: 11px var(--mono); color: var(--fg); overflow-wrap: anywhere; }
+.o-ap-section { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.o-ap-section[hidden] { display: none; }
+.o-ap-section h3 { margin: 0; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.o-ap-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.o-ap-list button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; text-align: left;
+  border-radius: var(--r); color: var(--faint);
+}
+.o-ap-list button:hover, .o-ap-list button:focus-visible { background: var(--bg4); outline: none; }
+.o-ap-list button > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.o-ap-list b { font-size: 12px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-ap-list small { font-size: 11px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-ap-list .o-ap-count { flex: none; font-size: 11px; color: var(--faint); }
+.o-ap-progress { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--dim); }
+.o-ap-progress[hidden] { display: none; }
+.o-ap-progress-text { display: flex; justify-content: space-between; }
+.o-ap-bar { height: 4px; border-radius: 2px; background: var(--bg2); overflow: hidden; }
+.o-ap-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s ease-out; }
+
+/* New workspace (newworkspace.js): the New chat flyout, wider, with a
+   segmented Where switch and a plan line saying what Create will do. */
+.o-flyout.o-nw { width: 360px; }
+.o-seg { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
+.o-seg button { flex: 1; height: 22px; border-radius: var(--r); font-size: 12px; color: var(--dim); }
+.o-seg button:hover:not(:disabled) { color: var(--fg); }
+.o-seg button[aria-checked="true"] { color: var(--fg); background: var(--bg4); }
+.o-seg button:disabled { opacity: .45; cursor: default; }
+.o-seg button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-nw-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.o-nw-base { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); }
+.o-nw-base .o-input { width: 150px; height: 22px; font-size: 11px; }
+#o-nw-name { font: 12.5px var(--ui); color: var(--fg); }
+.o-nw-plan {
+  margin: -2px 0 0; padding: 6px 8px; min-height: 3.2em; font-size: 11.5px; line-height: 1.5; color: var(--dim);
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); overflow-wrap: anywhere;
+}
+.o-nw-plan code { font: 11px var(--mono); color: var(--fg); }
+.o-nw-plan b { color: var(--fg); font-weight: 600; }
+.o-nw-plan.err { color: var(--err); }
+.o-nw-plan.pending { opacity: .6; }
+.o-nw-dir { font: 11px var(--mono); color: var(--faint); }
+.o-acts .mini.o-pin.on { color: var(--accent-fg); }
 
 /* ---------- right: files ---------- */
 #o-tree { padding: 4px 0 16px; }

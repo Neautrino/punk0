@@ -9,9 +9,13 @@
 // tabs in the middle (terminals from the parent, files from the folder's
 // editor backend), its files on the right.
 import { $, esc } from './state.js';
-import { state, subscribe, reload, workspace, activeTab, projectOf, tildify } from './orch/store.js';
+import { state, subscribe, reload, workspace, activeTab, projectOf, tildify, wsLabel } from './orch/store.js';
 import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
+import { initNewChat } from './orch/newchat.js';
+import { initNewWorkspace } from './orch/newworkspace.js';
+import { initAddProject } from './orch/addproject.js';
+import { initLsp } from './orch/lsp.js';
 import { initTabs } from './orch/tabs.js';
 import { initTree } from './orch/tree.js';
 import { initPicker } from './orch/picker.js';
@@ -29,7 +33,11 @@ const emptyPane = $('#o-empty');
 
 initResize(); // first: the panes take their widths before anything measures them
 const pollResources = initStatusBar();
+initAddProject(); // before the sidebar, which may open it for ?open=<url>
 initSidebar();
+initNewChat();
+initNewWorkspace();
+initLsp();
 initTabs();
 initTree();
 initPicker();
@@ -52,7 +60,7 @@ subscribe(() => {
   }
   emptyPane.dataset.ws = !w ? 'none' : w.missing ? 'missing' : 'yes';
   const p = w && projectOf(w.id);
-  $('#o-empty-ws').innerHTML = w ? `<b>${esc(p && !p.scratch ? p.name + ' / ' + w.name : w.name)}</b> <span class="wb-faint">${esc(tildify(w.dir))}</span>` : '';
+  $('#o-empty-ws').innerHTML = w ? `<b>${esc(p && !p.scratch ? p.name + ' / ' + w.name : wsLabel(w))}</b> <span class="wb-faint">${esc(tildify(w.dir))}</span>` : '';
   if ((t?.id || null) === shown) return;
   shown = t?.id || null;
 

@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -244,22 +245,39 @@ func (wb *workbench) makeClone(c *wbChild, it wbItem) (string, error) {
 	return dest, nil
 }
 
-// runCtx runs cmd and kills it if ctx ends first.
+// runCtx runs cmd and kills it if ctx ends first, with whatever it started:
+// git fetch and clone run git-remote-http, which would otherwise keep running
+// and hold the output pipe open, so Wait would not return.
 func runCtx(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	var out strings.Builder
-	cmd.Stdout, cmd.Stderr = &out, &out
+	err := runCtxTo(ctx, cmd, &out)
+	return []byte(out.String()), err
+}
+
+// runCtxTo is runCtx with the command's output going to w as it is written.
+func runCtxTo(ctx context.Context, cmd *exec.Cmd, w io.Writer) error {
+	cmd.Stdout, cmd.Stderr = w, w
+	setProcessGroup(cmd)
+	// exec only runs Cancel for a CommandContext command: it is called here.
+	kill := cmd.Cancel
+	cmd.Cancel = nil
+	cmd.WaitDelay = 2 * time.Second // where no group can be killed (Windows)
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return err
 	}
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
-		return []byte(out.String()), err
+		return err
 	case <-ctx.Done():
-		cmd.Process.Kill()
+		if kill != nil {
+			kill()
+		} else {
+			cmd.Process.Kill()
+		}
 		<-done
-		return []byte(out.String()), ctx.Err()
+		return ctx.Err()
 	}
 }
 

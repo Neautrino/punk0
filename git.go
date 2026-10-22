@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // gitDisabled turns off all git awareness (the -no-git flag). Like uiQuiet, a
@@ -26,11 +27,18 @@ type gitInfo struct {
 
 var (
 	gitMu    sync.Mutex
-	gitCache = map[string]gitInfo{}
+	gitCache = map[string]gitInfo{}   // roots inside a working tree
+	gitMiss  = map[string]time.Time{} // roots that were not, and when that was seen
 )
 
+// gitMissTTL is how long "not a repository" is believed: a folder can become
+// one at any time (git init, a clone into it), and every caller should see
+// that soon, without a restart.
+var gitMissTTL = 3 * time.Second
+
 // gitAvailable reports whether the git binary is on PATH and root sits inside a
-// working tree. Memoized per root: detection shells out once. Fails quiet -- no
+// working tree. A repository is remembered per root, so detection shells out
+// once; "not a repository" is asked again after gitMissTTL. Fails quiet -- no
 // git, no repo, or -no-git all yield false, never an error.
 func gitAvailable(root string) bool { return gitProbe(root).ok }
 
@@ -45,6 +53,9 @@ func gitProbe(root string) gitInfo {
 	defer gitMu.Unlock()
 	if info, ok := gitCache[root]; ok {
 		return info
+	}
+	if seen, ok := gitMiss[root]; ok && time.Since(seen) < gitMissTTL {
+		return gitInfo{}
 	}
 	var info gitInfo
 	if _, err := exec.LookPath("git"); err == nil {
@@ -62,8 +73,22 @@ func gitProbe(root string) gitInfo {
 			info = gitInfo{ok: true, toplevel: top, gitdir: gd}
 		}
 	}
-	gitCache[root] = info
+	if info.ok {
+		gitCache[root] = info
+		delete(gitMiss, root)
+	} else {
+		gitMiss[root] = time.Now()
+	}
 	return info
+}
+
+// gitForget drops what gitProbe remembers about root, so the next call asks
+// git again: a project's Refresh.
+func gitForget(root string) {
+	gitMu.Lock()
+	defer gitMu.Unlock()
+	delete(gitCache, root)
+	delete(gitMiss, root)
 }
 
 // gitStatus maps repo-relative-to-served-root path -> single-letter status for

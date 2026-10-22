@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // cleanRepo builds a repository with one commit and nothing uncommitted, the
@@ -56,6 +57,13 @@ func openRecords(t *testing.T, home string) *Records {
 	return rec
 }
 
+// addWorkspace adds a local or worktree workspace named name, the rest left
+// as the New workspace panel defaults it.
+func addWorkspace(rec *Records, projectID, name string, worktree bool) (*Workspace, error) {
+	w, _, err := rec.AddWorkspace(projectID, WorkspaceOptions{Name: name, Worktree: worktree})
+	return w, err
+}
+
 func TestProjectAddAndReload(t *testing.T) {
 	repo, home := cleanRepo(t), t.TempDir()
 	rec := openRecords(t, home)
@@ -73,7 +81,7 @@ func TestProjectAddAndReload(t *testing.T) {
 	if len(p.Workspaces) != 1 || p.Workspaces[0].Kind != kindLocal || p.Workspaces[0].Name != "main" || len(p.Workspaces[0].Tabs) != 0 {
 		t.Fatalf("new project should hold one local workspace on main, with no tabs: %+v", p.Workspaces)
 	}
-	local, err := rec.AddWorkspace(p.ID, "sidebar design", false, "")
+	local, err := addWorkspace(rec, p.ID, "sidebar design", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +138,7 @@ func TestWorkspacesShareOneBackendPerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := rec.AddWorkspace(p.ID, "review", false, "")
+	second, err := addWorkspace(rec, p.ID, "review", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +149,7 @@ func TestWorkspacesShareOneBackendPerFolder(t *testing.T) {
 	if rec.Folder(id) != repo {
 		t.Fatalf("backend %s resolves to %q, want %q", id, rec.Folder(id), repo)
 	}
-	wt, err := rec.AddWorkspace(p.ID, "feat-x", true, "")
+	wt, err := addWorkspace(rec, p.ID, "feat-x", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +184,7 @@ func TestRecordsOpenIsIdempotent(t *testing.T) {
 		t.Fatalf("%d projects after opening the same folder twice", n)
 	}
 
-	wt, err := rec.AddWorkspace(p.ID, "feat-open", true, "")
+	wt, err := addWorkspace(rec, p.ID, "feat-open", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +241,7 @@ func TestWorktreeWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w, err := rec.AddWorkspace(p.ID, "feat-a", true, "")
+	w, err := addWorkspace(rec, p.ID, "feat-a", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +275,7 @@ func TestWorktreeFoundAfterReadd(t *testing.T) {
 	repo := cleanRepo(t)
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
-	w, err := rec.AddWorkspace(p.ID, "feat-b", true, "")
+	w, err := addWorkspace(rec, p.ID, "feat-b", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +296,7 @@ func TestWorktreeDeletedOutsidePunk0(t *testing.T) {
 	repo := cleanRepo(t)
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
-	w, err := rec.AddWorkspace(p.ID, "feat-c", true, "")
+	w, err := addWorkspace(rec, p.ID, "feat-c", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,23 +321,19 @@ func TestAddWorkspaceRejects(t *testing.T) {
 	runGit(t, repo, "branch", "used")
 	runGit(t, repo, "worktree", "add", "-q", filepath.Join(t.TempDir(), "elsewhere"), "used")
 
-	for _, tc := range []struct {
-		name     string
-		worktree bool
-		base     string
-	}{
-		{"..", true, ""},        // escapes the worktrees folder
-		{"a/b", true, ""},       // nested directory
-		{"-x", true, ""},        // option-like
-		{"", false, ""},         // no name
-		{"main", false, ""},     // duplicate of the first workspace
-		{"ok", true, "-x"},      // option-like base
-		{"bad..ref", true, ""},  // invalid branch
-		{"used", true, ""},      // branch checked out in another worktree
-		{"ok", true, "nowhere"}, // unknown base
+	for _, o := range []WorkspaceOptions{
+		{Name: "", Worktree: true},                       // no name
+		{Name: "main"},                                   // duplicate of the first workspace
+		{Name: "main", Worktree: true},                   // branch checked out in the project folder
+		{Name: "ok", Worktree: true, Base: "-x"},         // option-like base
+		{Name: "ok", Worktree: true, Branch: "bad..ref"}, // invalid branch
+		{Name: "ok", Worktree: true, Branch: "-x"},       // option-like branch
+		{Name: "used", Worktree: true},                   // branch checked out in another worktree
+		{Name: "ok", Worktree: true, Base: "nowhere"},    // unknown base
+		{Name: "ok", Worktree: true, Agent: "nonesuch"},  // unknown agent
 	} {
-		if _, err := rec.AddWorkspace(p.ID, tc.name, tc.worktree, tc.base); err == nil {
-			t.Errorf("AddWorkspace(%q, %v, %q) succeeded", tc.name, tc.worktree, tc.base)
+		if _, _, err := rec.AddWorkspace(p.ID, o); err == nil {
+			t.Errorf("AddWorkspace(%+v) succeeded", o)
 		}
 	}
 	if n := len(listed(rec, p.ID).Workspaces); n != 1 {
@@ -340,7 +344,7 @@ func TestAddWorkspaceRejects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := rec.AddWorkspace(plain.ID, "x", true, ""); err == nil {
+	if _, err := addWorkspace(rec, plain.ID, "x", true); err == nil {
 		t.Fatal("made a worktree in a folder that is not a git repository")
 	}
 }
@@ -353,26 +357,115 @@ func TestScratchChats(t *testing.T) {
 		t.Fatalf("empty records should list only Scratch: %+v", views)
 	}
 	scratch := views[0]
+	if _, err := addWorkspace(rec, scratch.ID, "research", false); err == nil {
+		t.Fatal("added a named workspace to Scratch")
+	}
 
-	w, err := rec.AddWorkspace(scratch.ID, "research", false, "")
+	// A folder left by an older chat of the same minute is never reused.
+	stale := filepath.Join(home, "scratch", "chat-"+time.Now().Format("0102-1504"))
+	os.Mkdir(stale, 0o700)
+	os.WriteFile(filepath.Join(stale, "notes.md"), []byte("old"), 0o644)
+	w, err := rec.NewChat(ChatOptions{Agent: tabClaude})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Kind != kindFolder || w.Dir != filepath.Join(home, "scratch", "research") || !isDir(w.Dir) {
-		t.Fatalf("scratch chat %+v, want its own folder under <state>/scratch", w)
+	if w.Kind != kindFolder || filepath.Dir(w.Dir) != filepath.Join(home, "scratch") || w.Dir == stale || !isDir(w.Dir) {
+		t.Fatalf("chat %+v, want a new folder of its own under <state>/scratch", w)
 	}
-	if len(w.Tabs) != 1 || w.Tabs[0].Kind != tabClaude || w.Tabs[0].Session == "" {
-		t.Fatalf("scratch chat should open on a claude tab: %+v", w.Tabs)
+	if len(w.Tabs) != 1 || w.Tabs[0].Kind != tabClaude || w.Tabs[0].Session == "" || w.Active == 0 {
+		t.Fatalf("chat should open on a claude tab, active now: %+v", w)
 	}
-	if _, err := rec.AddWorkspace(scratch.ID, "../escape", false, ""); err == nil {
-		t.Fatal("scratch chat name escaped its folder")
+	scratchDir := filepath.Join(home, "scratch")
+	for _, o := range []ChatOptions{
+		{Agent: tabClaude, Group: "no-such-group"},
+		{Agent: "vim"},
+		{Agent: tabClaude, Title: "\x07"},
+		{Agent: tabClaude, Dir: stale},                                  // another chat's folder, deleted with it
+		{Agent: tabClaude, Dir: filepath.Join(scratchDir, "a", "b")},    // not directly in scratch
+		{Agent: tabClaude, Dir: filepath.Join(scratchDir, "has space")}, // not a folder name punk0 makes
+		{Agent: tabClaude, Dir: scratchDir},
+	} {
+		if _, err := rec.NewChat(o); err == nil {
+			t.Errorf("NewChat(%+v) succeeded", o)
+		}
 	}
-	os.WriteFile(filepath.Join(w.Dir, "notes.md"), []byte("findings"), 0o644)
-	if err := rec.RemoveWorkspace(w.ID, false); err != nil {
+
+	// A title and a scratch folder named in the dialog.
+	named, err := rec.NewChat(ChatOptions{Agent: tabShell, Title: " Auth research ", Dir: filepath.Join(scratchDir, "auth-research")})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(w.Dir, "notes.md")); err != nil {
-		t.Fatalf("deleting a scratch chat deleted its folder: %v", err)
+	if named.Title != "Auth research" || named.Name != "auth-research" || !isDir(named.Dir) || named.Tabs[0].Kind != tabShell {
+		t.Fatalf("named chat: %+v", named)
+	}
+
+	// A folder of mine, made when missing.
+	mine := filepath.Join(t.TempDir(), "photos")
+	ext, err := rec.NewChat(ChatOptions{Agent: "codex", Dir: mine})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ext.Dir != mine || !isDir(mine) || ext.Title != "" || ext.Tabs[0].Kind != "codex" || ext.Tabs[0].Name != "Codex" {
+		t.Fatalf("chat in my folder: %+v %+v", ext, ext.Tabs[0])
+	}
+
+	// The first real prompt names the chat; later ones and commands do not.
+	tab := w.Tabs[0].ID
+	rec.ChatPrompt(tab, "/model opus")
+	rec.ChatPrompt(tab, "compare zod and valibot\nfor form validation")
+	rec.ChatPrompt(tab, "now benchmark them")
+	if got := rec.Workspace(w.ID).Title; got != "compare zod and valibot" {
+		t.Fatalf("title %q", got)
+	}
+	title := "  Validation libs "
+	if err := rec.UpdateChat(w.ID, ChatUpdate{Title: &title}); err != nil || rec.Workspace(w.ID).Title != "Validation libs" {
+		t.Fatalf("rename: %v %q", err, rec.Workspace(w.ID).Title)
+	}
+	blank := " "
+	if err := rec.UpdateChat(w.ID, ChatUpdate{Title: &blank}); err == nil {
+		t.Fatal("renamed to nothing")
+	}
+
+	g, err := rec.AddChatGroup("Research")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rec.AddChatGroup("research"); err == nil {
+		t.Fatal("two groups named alike")
+	}
+	if err := rec.UpdateChat(w.ID, ChatUpdate{Group: &g.ID}); err != nil || rec.Workspace(w.ID).Group != g.ID {
+		t.Fatalf("move to group: %v", err)
+	}
+	grouped, err := rec.NewChat(ChatOptions{Agent: tabShell, Group: g.ID})
+	if err != nil || grouped.Group != g.ID {
+		t.Fatalf("new chat in group: %v %+v", err, grouped)
+	}
+	if err := rec.RemoveChatGroup(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Workspace(w.ID).Group != "" || rec.Workspace(grouped.ID).Group != "" {
+		t.Fatal("removing a group left chats filed under it")
+	}
+
+	yes := true
+	if err := rec.UpdateChat(w.ID, ChatUpdate{Archived: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openRecords(t, home)
+	if got := reopened.Workspace(w.ID); got == nil || !got.Archived || got.Title != "Validation libs" {
+		t.Fatalf("archived chat after reload: %+v", got)
+	}
+
+	// Deleting a chat deletes the folder punk0 made for it, never another,
+	// and never a folder of yours.
+	os.WriteFile(filepath.Join(w.Dir, "notes.md"), []byte("findings"), 0o644)
+	for _, id := range []string{w.ID, ext.ID, named.ID} {
+		if err := rec.RemoveWorkspace(id, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if isDir(w.Dir) || isDir(named.Dir) || !isDir(stale) || !isDir(grouped.Dir) || !isDir(mine) {
+		t.Fatal("deleting a chat should remove its own folder and only that")
 	}
 	if err := rec.RemoveProject(scratch.ID); err == nil {
 		t.Fatal("removed Scratch")
@@ -387,6 +480,46 @@ func TestScratchChats(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("reopened records list %d Scratch projects, want 1", n)
+	}
+}
+
+func TestChatTitle(t *testing.T) {
+	long := strings.Repeat("word ", 30)
+	cases := map[string]string{
+		"  fix the flaky test  ":  "fix the flaky test",
+		"first line\nsecond line": "first line",
+		"tabs\tand   spaces":      "tabs and spaces",
+		"/clear":                  "",
+		long:                      strings.TrimSpace(strings.Repeat("word ", 12)) + "…",
+		strings.Repeat("x", 70):   strings.Repeat("x", 60) + "…",
+		"ünïcödé " + strings.Repeat("é", 70): "ünïcödé…",
+	}
+	for in, want := range cases {
+		if got := chatTitle(in); got != want {
+			t.Errorf("chatTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestAgentCommand(t *testing.T) {
+	claude := claudeCommand()
+	cases := []struct {
+		kind  string
+		first bool
+		want  string
+	}{
+		{tabShell, true, ""},
+		{tabClaude, true, claude + " --session-id S"},
+		{tabClaude, false, claude + " --resume S || " + claude + " --session-id S"},
+		{"codex", true, "codex"}, // a new tab never picks up an older session in the folder
+		{"codex", false, "codex resume --last || codex"},
+		{"opencode", false, "opencode --continue || opencode"},
+		{"cursor-agent", false, "cursor-agent"},
+	}
+	for _, c := range cases {
+		if got := agentCommand(c.kind, "S", c.first); got != c.want {
+			t.Errorf("agentCommand(%s, %v)\n got %s\nwant %s", c.kind, c.first, got, c.want)
+		}
 	}
 }
 

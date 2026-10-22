@@ -517,21 +517,6 @@ func TestWorkbenchCompleteFolders(t *testing.T) {
 	}
 }
 
-func TestWorkbenchSettingsOnlyTakesTheme(t *testing.T) {
-	newTestStore(t)
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
-	if w := postJSON(t, wb, "/api/settings", `{"github.token":"x"}`); w.Code != http.StatusBadRequest {
-		t.Fatalf("token accepted: %d", w.Code)
-	}
-	if w := postJSON(t, wb, "/api/settings", `{"workbench.colorTheme":"rose-pine"}`); w.Code != http.StatusOK {
-		t.Fatalf("theme refused: %d %s", w.Code, w.Body.String())
-	}
-	if got := wbTheme(); got != "rose-pine" {
-		t.Fatalf("theme %q", got)
-	}
-}
-
 // reqJSON sends a write the way punk0's own page does.
 func reqJSON(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -695,7 +680,7 @@ func TestWorkbenchHandsOverWorktreeFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt, err := wb.records.AddWorkspace(p.ID, "feat-handoff", true, "")
+	wt, err := addWorkspace(wb.records, p.ID, "feat-handoff", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +706,7 @@ func TestWorkbenchRefusesDirtyWorktreeDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt, err := wb.records.AddWorkspace(p.ID, "feat-dirty", true, "")
+	wt, err := addWorkspace(wb.records, p.ID, "feat-dirty", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,10 +770,11 @@ func TestHookStatus(t *testing.T) {
 		{`{"hook_event_name":"Stop","background_tasks":[{"id":"1"}]}`, statusWorking, true, "a background task keeps running"},
 		{`{"hook_event_name":"SessionEnd"}`, "", true, "the session is gone"},
 		{`{"hook_event_name":"Whatever"}`, "", false, ""},
-		{`not json`, "", false, ""},
 	}
 	for _, c := range cases {
-		got, ok := hookStatus([]byte(c.body))
+		var ev hookEvent
+		json.Unmarshal([]byte(c.body), &ev)
+		got, ok := hookStatus(ev)
 		if got != c.want || ok != c.known {
 			t.Errorf("%s: got %q %v, want %q %v %s", c.body, got, ok, c.want, c.known, c.reason)
 		}

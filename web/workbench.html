@@ -37,34 +37,73 @@
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
         </button>
       </header>
+      <!-- Search: names, branches, groups. It reaches rows the view options
+           hide; Esc clears it. -->
+      <div class="o-search">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="o-search" type="text" spellcheck="false" autocomplete="off" aria-label="Search">
+        <button id="o-search-clear" type="button" class="mini" title="Clear search (Esc)" aria-label="Clear search" hidden>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
       <div class="o-list-head">
         <span class="o-list-title" id="o-list-title">Projects</span>
         <span class="o-head-acts">
-          <button id="o-filter-btn" type="button" class="mini" title="Filter" aria-label="Filter" aria-pressed="false" aria-controls="o-filter">
+          <!-- View options: group by, sort, show, filters (listview.js); the
+               count is how many filters are on. -->
+          <button id="o-view-btn" type="button" class="mini o-view-btn" title="View options" aria-label="View options" aria-haspopup="menu" aria-expanded="false" aria-controls="o-view-menu">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+            <span class="o-view-count" hidden></span>
           </button>
           <button id="o-add-feature" type="button" class="mini" title="New worktree or feature workspace" aria-label="New worktree or feature workspace">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M12 10v6M9 13h6"/></svg>
           </button>
-          <button id="o-add-project" type="button" class="mini" title="Add a folder or a pull request" aria-label="Add a folder or a pull request">
+          <button id="o-add-project" type="button" class="mini" title="Add project" aria-label="Add project">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </span>
       </div>
-      <div id="o-filter" class="o-filter" hidden>
-        <input id="o-filter-input" class="o-input" type="search" placeholder="Filter by name or branch" spellcheck="false" autocomplete="off" aria-label="Filter by name or branch">
-        <label class="o-check"><input id="o-filter-running" type="checkbox"> Running only</label>
-      </div>
-      <form id="o-form" class="o-form" autocomplete="off" hidden>
-        <div class="o-field">
-          <input id="o-form-name" type="text" spellcheck="false" autocapitalize="off" aria-autocomplete="list" aria-controls="o-suggest">
-          <ul id="o-suggest" class="wb-suggest" role="listbox" hidden></ul>
+      <div id="o-view-menu" class="o-menu o-view-menu" role="menu" aria-label="View options" hidden></div>
+      <!-- Add project: a flyout beside the sidebar (web/src/orch/addproject.js).
+           Its main step is a menu: a folder path or pull request URL typed in,
+           Browse folder (a folder, or the repositories inside one), Clone,
+           Create new, and the projects removed lately. Browse, Clone and
+           Create are steps of their own, with the folder browser. data-only
+           says which steps show an element. -->
+      <form id="o-ap-form" class="o-flyout o-ap" role="dialog" aria-labelledby="o-ap-heading" autocomplete="off" data-step="main" hidden>
+        <header class="o-flyout-head">
+          <span class="o-ap-title">
+            <button id="o-ap-back" type="button" class="mini" data-only="browse clone create" title="Back (Esc)" aria-label="Back">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            </button>
+            <h2 id="o-ap-heading">Add project</h2>
+          </span>
+          <button id="o-ap-close" type="button" class="mini" title="Close (Esc)" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+        <div class="o-chat-field" data-only="main browse">
+          <label for="o-ap-path">Folder</label>
+          <div class="o-field">
+            <input id="o-ap-path" type="text" spellcheck="false" autocapitalize="off" placeholder="~/path/to/folder or pull request URL"
+                   aria-autocomplete="list" aria-controls="o-ap-suggest">
+            <ul id="o-ap-suggest" class="wb-suggest" role="listbox" hidden></ul>
+          </div>
         </div>
-        <label id="o-form-wt-row" class="o-check" hidden><input id="o-form-wt" type="checkbox"> Own worktree and branch</label>
-        <input id="o-form-base" class="o-input" type="text" placeholder="base branch (default: HEAD)" spellcheck="false" autocapitalize="off" aria-label="Base branch" hidden>
+        <label class="o-chat-field" data-only="clone">Git URL
+          <input id="o-ap-url" class="o-input" type="text" spellcheck="false" autocapitalize="off" placeholder="https://github.com/user/repo.git">
+        </label>
+        <label class="o-chat-field" data-only="create">Name
+          <input id="o-ap-name" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="100" placeholder="my-project">
+        </label>
+        <div class="o-chat-field" data-only="browse clone create">
+          <span id="o-ap-browse-label">Browse</span>
+          <div id="o-ap-browser" class="o-browser o-browser-view" aria-labelledby="o-ap-browse-label"></div>
+        </div>
+        <p id="o-ap-note" class="o-chat-note" role="status" aria-live="polite"></p>
         <!-- Shown when a PR's repository has no known local clone: its PRs are
              always worktrees of one clone (workbench_clone.go). -->
-        <div id="o-clone" class="o-clone" hidden>
+        <div id="o-clone" class="o-clone" data-only="main" hidden>
           <p>No local clone of <b id="o-clone-repo"></b> found. Pull requests open as worktrees of one clone, so nothing is cloned twice.</p>
           <div class="o-field">
             <input id="o-clone-path" type="text" spellcheck="false" autocapitalize="off" placeholder="~/path/to/your/clone"
@@ -77,13 +116,128 @@
           </div>
           <p class="wb-faint">punk0 clones into <span id="o-clone-dest" class="o-mono"></span>, once; later pull requests reuse it.</p>
         </div>
-        <p id="o-form-msg" class="wb-msg" role="status" hidden></p>
+        <div id="o-ap-progress" class="o-ap-progress" data-only="clone" hidden>
+          <div class="o-ap-progress-text"><span id="o-ap-phase"></span><span id="o-ap-percent"></span></div>
+          <div class="o-ap-bar"><div id="o-ap-bar"></div></div>
+        </div>
+        <p id="o-ap-msg" class="wb-msg" role="status" hidden></p>
         <div class="o-form-acts">
-          <button id="o-form-cancel" type="button" class="wb-btn">Cancel</button>
-          <button id="o-form-submit" type="submit" class="wb-btn wb-primary">Add</button>
+          <button id="o-ap-cancel" type="button" class="wb-btn">Cancel</button>
+          <button id="o-ap-submit" type="submit" class="wb-btn wb-primary">Add</button>
+        </div>
+        <section class="o-ap-section" data-only="main">
+          <ul class="o-ap-list">
+            <li><button type="button" data-step-to="browse">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1"/><path d="M3 18l2.6-6.5A2 2 0 0 1 7.5 10H21l-2.7 7.2a2 2 0 0 1-1.9 1.3H3Z"/></svg>
+              <span><b>Browse folder</b><small>A project, a git repository, or a folder of repositories</small></span></button></li>
+          </ul>
+        </section>
+        <section class="o-ap-section" data-only="main">
+          <h3>Other ways to add</h3>
+          <ul class="o-ap-list">
+            <li><button type="button" data-step-to="clone">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+              <span><b>Clone from URL</b><small>Clone a remote git repository</small></span></button></li>
+            <li><button type="button" data-step-to="create">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span><b>Create new project</b><small>A new folder with git init</small></span></button></li>
+          </ul>
+        </section>
+        <section id="o-ap-removed" class="o-ap-section" data-only="main" hidden>
+          <h3>Recently removed</h3>
+          <ul id="o-ap-removed-list" class="o-ap-list"></ul>
+        </section>
+      </form>
+      <!-- New chat: a flyout beside the sidebar, pointing at the button that
+           opened it. Title, agent, group and the folder the chat runs in,
+           with a folder browser (web/src/orch/newchat.js). -->
+      <form id="o-chat-form" class="o-flyout" role="dialog" aria-labelledby="o-chat-heading" autocomplete="off" hidden>
+        <header class="o-flyout-head">
+          <h2 id="o-chat-heading">New chat</h2>
+          <button id="o-chat-close" type="button" class="mini" title="Close (Esc)" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+        <label class="o-chat-field">Title
+          <input id="o-chat-title" class="o-input" type="text" maxlength="80">
+        </label>
+        <label class="o-chat-field">Agent
+          <select id="o-chat-agent" class="o-select"></select>
+        </label>
+        <p id="o-chat-agent-note" class="o-chat-note" hidden></p>
+        <label class="o-chat-field">Group
+          <select id="o-chat-group" class="o-select"></select>
+        </label>
+        <div class="o-chat-field">
+          <label for="o-chat-dir">Folder</label>
+          <div class="o-chat-path">
+            <div class="o-field">
+              <input id="o-chat-dir" type="text" spellcheck="false" autocapitalize="off" aria-autocomplete="list" aria-controls="o-chat-dir-suggest">
+              <ul id="o-chat-dir-suggest" class="wb-suggest" role="listbox" hidden></ul>
+            </div>
+            <button id="o-chat-browse" type="button" class="wb-btn" aria-expanded="false" aria-controls="o-chat-browser">Browse</button>
+          </div>
+        </div>
+        <!-- The folder browser: open a folder by clicking it, then choose it. -->
+        <div id="o-chat-browser" class="o-browser" hidden>
+          <div id="o-chat-browser-view" class="o-browser-view"></div>
+          <div class="o-form-acts">
+            <button id="o-browser-new" type="button" class="wb-btn">New folder here</button>
+            <button id="o-browser-pick" type="button" class="wb-btn wb-primary">Use this folder</button>
+          </div>
+        </div>
+        <p id="o-chat-dir-note" class="o-chat-note"></p>
+        <p id="o-chat-msg" class="wb-msg" role="status" hidden></p>
+        <div class="o-form-acts">
+          <button id="o-chat-cancel" type="button" class="wb-btn">Cancel</button>
+          <button id="o-chat-start" type="submit" class="wb-btn wb-primary">Start chat</button>
+        </div>
+      </form>
+      <!-- New workspace: a flyout beside the sidebar. The plan line says what
+           creating it will do before anything is made (web/src/orch/newworkspace.js). -->
+      <form id="o-nw-form" class="o-flyout o-nw" role="dialog" aria-labelledby="o-nw-heading" autocomplete="off" hidden>
+        <header class="o-flyout-head">
+          <h2 id="o-nw-heading">New workspace</h2>
+          <button id="o-nw-close" type="button" class="mini" title="Close (Esc)" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+        <label class="o-chat-field">Project
+          <select id="o-nw-project" class="o-select"></select>
+        </label>
+        <div class="o-chat-field">
+          <span id="o-nw-where-label">Where</span>
+          <div class="o-seg" role="radiogroup" aria-labelledby="o-nw-where-label">
+            <button type="button" role="radio" data-where="worktree" title="Its own folder and branch, beside the project folder">New worktree</button>
+            <button type="button" role="radio" data-where="local" title="The project folder itself, on the branch it is on">Project folder</button>
+          </div>
+        </div>
+        <div class="o-chat-field">
+          <div class="o-nw-label-row">
+            <label for="o-nw-name">Name or start from</label>
+            <span id="o-nw-base-row" class="o-nw-base">
+              <label for="o-nw-base">from</label>
+              <input id="o-nw-base" class="o-input" type="text" list="o-nw-refs" spellcheck="false" autocapitalize="off" title="What a new branch starts from: a branch, tag or commit">
+              <datalist id="o-nw-refs"></datalist>
+            </span>
+          </div>
+          <input id="o-nw-name" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="300">
+        </div>
+        <p id="o-nw-plan" class="o-nw-plan" role="status" aria-live="polite"></p>
+        <label class="o-chat-field">Agent
+          <select id="o-nw-agent" class="o-select"></select>
+        </label>
+        <label id="o-nw-lsp-row" class="o-check" title="Code intelligence in this folder: 300 MB to 1.5 GB of memory per folder"><input id="o-nw-lsp" type="checkbox"> Language servers in this folder</label>
+        <p id="o-nw-msg" class="wb-msg" role="status" hidden></p>
+        <div class="o-form-acts">
+          <button id="o-nw-cancel" type="button" class="wb-btn">Cancel</button>
+          <button id="o-nw-review" type="button" class="wb-btn" hidden>Review</button>
+          <button id="o-nw-create" type="submit" class="wb-btn wb-primary" title="Ctrl+Enter">Create</button>
         </div>
       </form>
       <div id="o-projects" class="o-scroll"></div>
+      <!-- A scratch chat's ⋯ menu: rename, group, archive (sidebar.js). -->
+      <div id="o-chat-menu" class="o-menu o-chat-menu" role="menu" aria-label="Chat actions" hidden></div>
     </aside>
     <div class="o-resizer" data-side="left" role="separator" aria-orientation="vertical" aria-label="Resize projects" tabindex="0"></div>
 
@@ -97,6 +251,10 @@
         <div id="o-tabs" role="tablist"></div>
         <button id="o-new-tab" type="button" class="mini" title="New tab" aria-label="New tab" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <!-- The selected workspace's folder in the full editor, in its own browser tab. -->
+        <button id="o-open-editor" type="button" class="mini" title="Open in editor" aria-label="Open in editor">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
         </button>
         <button id="o-show-right" type="button" class="mini o-show" title="Show files (Ctrl+Alt+B)" aria-label="Show files">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
@@ -171,17 +329,19 @@
     </aside>
   </div>
 
-  <!-- The status bar: logo, version and the theme / GitHub / settings buttons
-       on the left. On the right one button holds the running terminals,
-       running agents and total RAM, and opens the resource panel
-       (web/src/orch/resources.js, /api/resources in wbresources.go). -->
+  <!-- The status bar, in the panes' columns: under the projects, logo,
+       version and the help / GitHub / settings buttons; at the right corner
+       of the middle, the selected folder's language servers (lsp.js, like
+       px0's LSP item); under the files, one button holding the running
+       terminals, running agents and total RAM, which opens the resource
+       panel (web/src/orch/resources.js, /api/resources in wbresources.go). -->
   <footer id="status" class="wb-status">
     <span class="wb-status-side">
     <a class="wb-logo" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub">punk<span>[0]</span></a>
     <span id="st-ver" class="status-ver" title="punk0 version"></span>
     <span class="side-actions">
-      <button class="mini" id="btn-theme" title="Select theme" aria-label="Select theme" aria-haspopup="listbox">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="1" fill="currentColor"/><circle cx="17.5" cy="10.5" r="1" fill="currentColor"/><circle cx="8.5" cy="7.5" r="1" fill="currentColor"/><circle cx="6.5" cy="12.5" r="1" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+      <button class="mini" id="btn-help" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
       <a class="mini" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub" aria-label="punk0 on GitHub">
         <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -191,7 +351,10 @@
       </button>
     </span>
     </span>
-    <span class="grow"></span>
+    <span class="wb-status-mid">
+      <span id="st-lsp" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" hidden>LSP</span>
+    </span>
+    <span class="wb-status-end">
     <button type="button" id="st-res" class="wb-res-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-res">
       <span id="st-terms" class="wb-count">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
@@ -208,7 +371,9 @@
         <span id="st-mem">-- MB</span>
       </span>
     </button>
+    </span>
   </footer>
+  <div id="lsp-menu" role="menu" aria-label="Language servers" hidden></div>
 </div>
 <section id="wb-res" class="wb-res" role="dialog" aria-label="Resources" hidden>
   <header class="wb-res-head">
@@ -222,7 +387,7 @@
   <div class="wb-res-cols" aria-hidden="true"><span>Name</span><span>CPU</span><span>RAM</span></div>
   <div id="wb-res-rows" class="wb-res-rows"></div>
 </section>
-<ul id="wb-theme-menu" class="wb-menu" role="listbox" aria-label="Themes" hidden></ul>
+<div id="helpsheet" hidden></div>
 <div id="toast" hidden></div>
 <script src="static/workbench.js"></script>
 </body>

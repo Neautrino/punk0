@@ -52,10 +52,13 @@ export function reload() {
       state.wb = rest;
     }
     pruneFiles();
-    if (!workspace()) {
-      const all = state.projects.flatMap(pr => pr.workspaces);
+    // An archived chat cannot stay selected: its tabs are stopped.
+    const sel = workspace();
+    if (!sel || sel.archived) {
+      const all = state.projects.flatMap(pr => pr.workspaces).filter(w => !w.archived);
       const first = all.find(w => !projectOf(w.id)?.scratch) || all[0];
       if (first) return selectWorkspace(first.id);
+      if (sel) return selectWorkspace('');
     }
     const sig = JSON.stringify([state.projects, state.reviews, state.wb.version]);
     if (sig !== lastSig) {
@@ -88,6 +91,10 @@ export function workspace(id = state.ws) {
 export function projectOf(wsId) {
   return state.projects.find(p => p.workspaces.some(w => w.id === wsId)) || null;
 }
+
+// wsLabel is what a workspace is called on the page: a scratch chat's title,
+// else its name.
+export const wsLabel = w => w.title || w.name;
 
 export const fileTabId = path => `file:${path}`;
 

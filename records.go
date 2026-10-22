@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -42,7 +43,7 @@ const (
 	tabClaude = "claude"
 )
 
-// dirName is a worktree workspace's directory and default branch name. The
+// dirName is a folder name punk0 makes under its state directory. The
 // leading letter or digit rules out ".", ".." and option-like names.
 var dirName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
@@ -53,28 +54,39 @@ var (
 
 // Project is a folder the user registered: a git repository's top level or a
 // plain folder. The one Scratch project holds chats that belong to no
-// project; it is always listed and cannot be removed.
+// project; it is always listed and cannot be removed. Groups is Scratch's
+// only: the groups its chats can be filed under.
 type Project struct {
 	ID         string       `json:"id"`
 	Name       string       `json:"name"`
 	Dir        string       `json:"dir"`
 	Scratch    bool         `json:"scratch,omitempty"`
+	Groups     []ChatGroup  `json:"groups,omitempty"`
 	Workspaces []*Workspace `json:"workspaces"`
 }
 
 // Workspace is one feature: the tabs running in Dir, and the files the editor
-// view shows, which come from the punk0 child serving that folder.
+// view shows, which come from the punk0 child serving that folder. Title,
+// Group, Pinned, Archived, Active and Created are a scratch chat's only
+// (scratch.go).
 type Workspace struct {
-	ID     string       `json:"id"`
-	Name   string       `json:"name"`
-	Kind   string       `json:"kind"`
-	Dir    string       `json:"dir"`
-	Branch string       `json:"branch,omitempty"` // worktree kind: shown when the folder is gone
-	Tabs   []*Satellite `json:"tabs"`
+	ID       string       `json:"id"`
+	Name     string       `json:"name"`
+	Kind     string       `json:"kind"`
+	Dir      string       `json:"dir"`
+	Branch   string       `json:"branch,omitempty"`   // worktree kind: shown when the folder is gone
+	Title    string       `json:"title,omitempty"`    // the chat's label; Name stays its folder's name
+	Group    string       `json:"group,omitempty"`    // ChatGroup.ID, "" when in none
+	Pinned   bool         `json:"pinned,omitempty"`   // listed at the top, above the groups
+	Archived bool         `json:"archived,omitempty"` // tabs stopped and hidden from the list; folder kept
+	Active   int64        `json:"active,omitempty"`   // unix ms of the last prompt, else of creation
+	Created  int64        `json:"created,omitempty"`  // unix ms the chat was made
+	Tabs     []*Satellite `json:"tabs"`
 }
 
 // Satellite is one tab: a shell in its workspace's folder, started on first
-// attach so a stopped tab costs no process.
+// attach so a stopped tab costs no process. Kind is "shell" or the agent the
+// shell runs first (tabagents.go).
 type Satellite struct {
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
@@ -83,34 +95,24 @@ type Satellite struct {
 
 	dir     string
 	hook    string // PUNK0_HOOK_URL the agent's hooks report to
-	newChat bool   // a claude tab made this run whose session does not exist yet
+	newChat bool   // an agent tab made this run whose session does not exist yet
 	mu      sync.Mutex
 	sh      *Shell
 	status  string // last hook status: "", "working", "waiting", "idle"
 }
 
 // Shell returns the tab's running shell, starting one if there is none or the
-// last one exited. A claude tab's shell runs Claude first: a new session on
-// the tab's first start, else a resume. Claude exits 1 when there is nothing
-// to resume (the tab never got a message), and the || then starts the session
-// under the same id.
+// last one exited. An agent tab's shell runs the agent first: a new session
+// on the tab's first start, else a resume (agentCommand).
 func (s *Satellite) Shell() (*Shell, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.sh == nil || s.sh.Exited() {
-		var line string
-		if s.Kind == tabClaude {
-			start := claudeCommand() + " --session-id " + s.Session
-			line = claudeCommand() + " --resume " + s.Session + " || " + start
-			if s.newChat {
-				line = start
-			}
-		}
 		var env []string
 		if s.hook != "" {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
-		sh, err := startShell(s.dir, line, env)
+		sh, err := startShell(s.dir, agentCommand(s.Kind, s.Session, s.newChat), env)
 		if err != nil {
 			return nil, err
 		}
@@ -172,18 +174,31 @@ type Records struct {
 	home      string // <state>: XDG_STATE_HOME/punk0 or ~/.punk0
 	worktrees string // home/worktrees, symlinks resolved to match git's paths
 
-	// mu guards projects, lsp and the file, and serializes worktree add and
-	// remove so two requests cannot race for one name.
+	// mu guards projects, lsp, creating and the file. git never runs under
+	// it (newworkspace.go).
 	mu       sync.Mutex
 	projects []*Project
-	lsp      map[string]bool // folder -> language servers wanted there
-	hookBase string          // this punk0's loopback URL, for PUNK0_HOOK_URL
+	removed  []RemovedProject // newest first, at most maxRemoved
+	lsp      map[string]bool  // folder -> language servers wanted there
+	hookBase string           // this punk0's loopback URL, for PUNK0_HOOK_URL
+	creating map[string]bool  // folders and names of workspaces whose git is running
 }
+
+// RemovedProject is a project the user removed, offered again by the Add
+// project panel: adding it back finds the worktrees punk0 made for it.
+type RemovedProject struct {
+	Name    string `json:"name"`
+	Dir     string `json:"dir"`
+	Removed int64  `json:"removed"` // unix ms
+}
+
+const maxRemoved = 10
 
 // recordsFile is what records.json holds.
 type recordsFile struct {
-	Projects []*Project      `json:"projects"`
-	LSP      map[string]bool `json:"lsp,omitempty"`
+	Projects []*Project       `json:"projects"`
+	Removed  []RemovedProject `json:"removed,omitempty"`
+	LSP      map[string]bool  `json:"lsp,omitempty"`
 }
 
 // OpenRecords loads <state>/records.json; a missing file is an empty list. A
@@ -199,7 +214,7 @@ func OpenRecords(home string) (*Records, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Records{home: home, worktrees: wt, lsp: map[string]bool{}}
+	r := &Records{home: home, worktrees: wt, lsp: map[string]bool{}, creating: map[string]bool{}}
 	var f recordsFile
 	data, err := os.ReadFile(r.file())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -210,7 +225,7 @@ func OpenRecords(home string) (*Records, error) {
 			return nil, fmt.Errorf("%s: %w", r.file(), err)
 		}
 	}
-	r.projects = f.Projects
+	r.projects, r.removed = f.Projects, f.Removed
 	for k, v := range f.LSP {
 		r.lsp[k] = v
 	}
@@ -252,7 +267,7 @@ func (r *Records) adoptLocked(w *Workspace) {
 }
 
 func (r *Records) saveLocked() error {
-	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, LSP: r.lsp})
+	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp})
 }
 
 type projectView struct {
@@ -296,11 +311,15 @@ func (r *Records) List() []projectView {
 		lsp[k] = v
 	}
 	for i, p := range r.projects {
-		views[i].Project = p
+		// Copies, so a rename under the lock cannot race the encoder.
+		pc := *p
+		pc.Groups = slices.Clone(p.Groups)
+		views[i].Project = &pc
 		views[i].Workspaces = make([]workspaceView, len(p.Workspaces))
 		for j, w := range p.Workspaces {
 			wv := &views[i].Workspaces[j]
-			wv.Workspace, wv.Branch, wv.LSP = w, w.Branch, lsp[w.Dir]
+			wc := *w
+			wv.Workspace, wv.Branch, wv.LSP = &wc, w.Branch, lsp[w.Dir]
 			wv.Tabs = make([]tabView, len(w.Tabs))
 			for k, t := range w.Tabs {
 				wv.Tabs[k] = tabView{ID: t.ID, Kind: t.Kind, Name: t.Name, tab: t}
@@ -338,7 +357,8 @@ func (r *Records) List() []projectView {
 // that made it. The workbench fills in Href and Backend.
 func (r *Records) View(ws *Workspace) workspaceView {
 	r.mu.Lock()
-	v := workspaceView{Workspace: ws, Branch: ws.Branch, LSP: r.lsp[ws.Dir]}
+	wc := *ws
+	v := workspaceView{Workspace: &wc, Branch: ws.Branch, LSP: r.lsp[ws.Dir]}
 	tabs := slices.Clone(ws.Tabs)
 	r.mu.Unlock()
 	if !isDir(ws.Dir) {
@@ -353,7 +373,7 @@ func (r *Records) View(ws *Workspace) workspaceView {
 	return v
 }
 
-// Open is what `punk0 <dir>` and the add-project box resolve to: the project
+// Open is what `punk0 <dir>` and the Add project panel resolve to: the project
 // and workspace a folder belongs to, registering the project when it is new.
 // A folder punk0 made a worktree in is that worktree's workspace, even if the
 // project was removed meanwhile.
@@ -400,10 +420,20 @@ func (r *Records) byDir(dir string) (*Project, *Workspace) {
 	return nil, nil
 }
 
+// ProjectAt returns the id of the project registered for dir, or "".
+func (r *Records) ProjectAt(dir string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i := slices.IndexFunc(r.projects, func(p *Project) bool { return p.Dir == dir }); i >= 0 {
+		return r.projects[i].ID
+	}
+	return ""
+}
+
 // AddProject registers dir, or returns the project already registered for it.
 // A folder inside a git repository registers the repository's top level. A
-// new project starts with one local workspace holding one shell tab, plus any
-// worktrees punk0 made for it before it was last removed.
+// new project starts with one local workspace, plus any worktrees punk0 made
+// for it before it was last removed.
 func (r *Records) AddProject(dir string) (*Project, error) {
 	dir, err := projectFolder(dir)
 	if err != nil {
@@ -433,6 +463,7 @@ func (r *Records) AddProject(dir string) (*Project, error) {
 		r.adoptLocked(w)
 	}
 	r.projects = append(r.projects, p)
+	r.forgetRemovedLocked(dir)
 	return p, r.saveLocked()
 }
 
@@ -453,67 +484,52 @@ func (r *Records) RemoveProject(id string) error {
 		tabs = append(tabs, w.Tabs...)
 	}
 	closeAll(tabs)
+	gone := r.projects[i]
 	r.projects = slices.Delete(r.projects, i, i+1)
+	r.forgetRemovedLocked(gone.Dir)
+	r.removed = slices.Insert(r.removed, 0, RemovedProject{Name: gone.Name, Dir: gone.Dir, Removed: time.Now().UnixMilli()})
+	if len(r.removed) > maxRemoved {
+		r.removed = r.removed[:maxRemoved]
+	}
 	return r.saveLocked()
 }
 
-// AddWorkspace adds a feature to a project with one shell tab. A local
-// workspace runs in the project folder. A worktree workspace gets its own
-// worktree under <state>/worktrees on branch name, which is created from base
-// (HEAD when empty) unless it already exists. In Scratch, every workspace is
-// a chat with one claude tab in its own folder, kept when the chat is deleted
-// and reused by a new chat of the same name.
-func (r *Records) AddWorkspace(projectID, name string, worktree bool, base string) (*Workspace, error) {
-	name = strings.TrimSpace(name)
-	if strings.HasPrefix(base, "-") {
-		return nil, fmt.Errorf("invalid base %q", base)
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p := r.projectLocked(projectID)
-	if p == nil {
-		return nil, fmt.Errorf("project %q: %w", projectID, errNotFound)
-	}
-	if worktree || p.Scratch {
-		if !dirName.MatchString(name) {
-			return nil, fmt.Errorf("invalid name %q: use letters, digits, '.', '_' and '-'", name)
-		}
-	} else if name == "" || len(name) > 80 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
-		return nil, fmt.Errorf("invalid name %q", name)
-	}
-	if slices.ContainsFunc(p.Workspaces, func(w *Workspace) bool { return w.Name == name }) {
-		return nil, fmt.Errorf("workspace %q already exists", name)
-	}
-	var w *Workspace
-	switch {
-	case p.Scratch:
-		dir := filepath.Join(p.Dir, name)
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return nil, err
-		}
-		w = newWorkspace(name, kindFolder, dir, "")
-	case worktree:
-		if !gitAvailable(p.Dir) {
-			return nil, errors.New("worktrees need a git repository")
-		}
-		dir := filepath.Join(r.worktrees, p.ID, name)
-		if err := addWorktree(p.Dir, dir, name, base); err != nil {
-			return nil, err
-		}
-		w = newWorkspace(name, kindWorktree, dir, name)
-	default:
-		w = newWorkspace(name, kindLocal, p.Dir, "")
-	}
-	r.adoptLocked(w)
-	p.Workspaces = append(p.Workspaces, w)
-	return w, r.saveLocked()
+func (r *Records) forgetRemovedLocked(dir string) {
+	r.removed = slices.DeleteFunc(r.removed, func(rp RemovedProject) bool { return rp.Dir == dir })
 }
 
-// RemoveWorkspace stops the workspace's tabs and forgets it. Local and
-// scratch workspaces leave their folder alone. A worktree workspace also
-// removes its worktree, but answers errDirty while it has uncommitted
-// changes unless force is set; its branch is always kept.
+// removedView is a removed project as the Add project panel lists it.
+type removedView struct {
+	RemovedProject
+	Worktrees int `json:"worktrees"` // punk0's worktrees that come back with it
+}
+
+// Removed lists the removed projects whose folders still exist, newest
+// first, with how many of punk0's worktrees adding each back would restore.
+func (r *Records) Removed() []removedView {
+	r.mu.Lock()
+	removed := slices.Clone(r.removed)
+	r.mu.Unlock()
+	out := []removedView{}
+	for _, rp := range removed {
+		if !isDir(rp.Dir) {
+			continue
+		}
+		v := removedView{RemovedProject: rp}
+		if gitAvailable(rp.Dir) {
+			v.Worktrees = len(r.ownWorktrees(rp.Dir))
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// RemoveWorkspace stops the workspace's tabs and forgets it; workspaces
+// listed under it move to the top level. A local workspace leaves the project
+// folder alone. A scratch chat's folder is deleted with it: the page offers
+// that only for an archived chat. A worktree workspace also removes its
+// worktree, but answers errDirty while it has uncommitted changes unless
+// force is set; its branch is always kept.
 func (r *Records) RemoveWorkspace(id string, force bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -551,6 +567,13 @@ func (r *Records) RemoveWorkspace(id string, force bool) error {
 		}
 		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 			return gitError(out, err)
+		}
+	}
+	// A chat's folder goes with it only when punk0 made it; a chat started
+	// in a folder of yours leaves that folder alone.
+	if w.Kind == kindFolder && strings.HasPrefix(w.Dir, p.Dir+string(filepath.Separator)) {
+		if err := os.RemoveAll(w.Dir); err != nil {
+			return err
 		}
 	}
 	p.Workspaces = slices.Delete(p.Workspaces, i, i+1)
@@ -817,39 +840,23 @@ func (r *Records) ownWorktrees(dir string) []*Workspace {
 	return ws
 }
 
-func addWorktree(repo, dir, branch, base string) error {
-	if out, err := exec.Command("git", "-C", repo, "check-ref-format", "--branch", branch).CombinedOutput(); err != nil {
-		return gitError(out, err)
-	}
-	args := []string{"-C", repo, "worktree", "add"}
-	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
-		args = append(args, dir, branch)
-	} else {
-		args = append(args, "-b", branch, dir)
-		if base != "" {
-			args = append(args, base)
-		}
-	}
-	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-		return gitError(out, err)
-	}
-	return nil
-}
-
-// newWorkspace opens empty, on the page's welcome view, except a scratch
-// chat: the chat is its Claude tab.
+// newWorkspace opens empty, on the page's welcome view; a scratch chat gets
+// its agent's tab from NewChat.
 func newWorkspace(name, kind, dir, branch string) *Workspace {
-	tabs := []*Satellite{}
-	if kind == kindFolder {
-		tabs = append(tabs, newTab(tabClaude, dir))
-	}
-	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: tabs}
+	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: []*Satellite{}}
 }
 
+// newTab makes a tab of kind. An agent tab starts a new session the first
+// time it runs; a claude tab gets the session id its conversation will be
+// saved under.
 func newTab(kind, dir string) *Satellite {
 	t := &Satellite{ID: newID(), Kind: kind, Name: kind, dir: dir}
+	if a, ok := tabAgents[kind]; ok && kind != tabClaude {
+		t.Name = a.Label
+	}
+	t.newChat = kind != tabShell
 	if kind == tabClaude {
-		t.Session, t.newChat = newUUID(), true
+		t.Session = newUUID()
 	}
 	return t
 }
@@ -895,10 +902,15 @@ func isDir(path string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// gitBranch is the branch checked out in dir ("HEAD" when detached), or "".
+// A new repository's branch has no commit yet, which rev-parse cannot name.
 func gitBranch(dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
 	if err != nil {
-		return ""
+		out, err = exec.Command("git", "-C", dir, "symbolic-ref", "--short", "-q", "HEAD").Output()
+		if err != nil {
+			return ""
+		}
 	}
 	return strings.TrimSpace(string(out))
 }

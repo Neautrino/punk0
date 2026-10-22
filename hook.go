@@ -83,21 +83,19 @@ func runHook() {
 	}
 }
 
-// hookEvent is the part of a Claude Code hook event a tab's status depends on.
+// hookEvent is the part of a Claude Code hook event punk0 uses: what the tab
+// shows, and the prompt a scratch chat is titled after.
 type hookEvent struct {
 	Name         string          `json:"hook_event_name"`
 	Notification string          `json:"notification_type"`
 	Background   json.RawMessage `json:"background_tasks"`
+	Prompt       string          `json:"prompt"` // UserPromptSubmit
 }
 
 // hookStatus maps one hook event to the status its tab shows. The second
 // result is false for an event that says nothing about the agent, so an
 // unknown event leaves the status as it was.
-func hookStatus(body []byte) (string, bool) {
-	var ev hookEvent
-	if json.Unmarshal(body, &ev) != nil {
-		return "", false
-	}
+func hookStatus(ev hookEvent) (string, bool) {
 	switch ev.Name {
 	case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure":
 		return statusWorking, true
@@ -148,8 +146,19 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if status, ok := hookStatus(body); ok {
+	var ev hookEvent
+	if json.Unmarshal(body, &ev) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if status, ok := hookStatus(ev); ok {
 		tab.setStatus(status)
+	}
+	if ev.Name == "UserPromptSubmit" {
+		if err := wb.records.ChatPrompt(tab.ID, ev.Prompt); err != nil {
+			fail(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	writeJSON(w, map[string]any{"ok": true})
 }

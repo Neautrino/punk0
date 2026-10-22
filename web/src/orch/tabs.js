@@ -2,9 +2,10 @@
 // Tab bar of the selected workspace: shells, Claude Code chats and open
 // files. "+" offers a new Claude or shell tab, or the open file picker; the
 // empty center's welcome view offers the same. Double-click renames a
-// terminal tab after what it is for.
+// terminal tab after what it is for. At the right end, the workspace's folder
+// opens in the full editor.
 import { $, esc } from '../state.js';
-import { call, failed } from './api.js';
+import { call, failed, openEditor } from './api.js';
 import { subscribe, reload, workspace, tabsOf, activeTab, selectTab, closeFile } from './store.js';
 import { fileKind } from './tree.js';
 import { openPicker } from './picker.js';
@@ -12,13 +13,18 @@ import { openPicker } from './picker.js';
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 const TAB_STATUS = { working: 'working', waiting: 'waiting for you', idle: 'idle' };
 
-let barEl, addEl, menuEl;
+let barEl, addEl, menuEl, editorEl;
 
 export function initTabs() {
   barEl = $('#o-tabs');
   addEl = $('#o-new-tab');
   menuEl = $('#o-new-menu');
+  editorEl = $('#o-open-editor');
   addEl.addEventListener('click', toggleNewMenu);
+  editorEl.addEventListener('click', () => {
+    const w = workspace();
+    if (w && !w.missing) openEditor(w.href);
+  });
   menuEl.addEventListener('click', e => {
     const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
     if (!kind) return;
@@ -43,11 +49,11 @@ export function initTabs() {
 function renderTabs() {
   const w = workspace();
   const active = activeTab();
-  addEl.disabled = !w || w.missing;
+  addEl.disabled = editorEl.disabled = !w || w.missing;
   barEl.innerHTML = tabsOf(w).map(t => `
     <div class="tab${t.id === active?.id ? ' active' : ''}" data-tab="${esc(t.id)}" title="${esc(tabTitle(t))}" role="tab" aria-selected="${t.id === active?.id}">
       ${t.kind === 'file' ? `<span class="o-tab-ic" data-t="${fileKind(t.name)}"></span>` : `<span class="o-tab-dot${t.running ? ' on' : ''}${t.status ? ' ' + esc(t.status) : ''}"></span>
-      <span class="o-tab-kind">${t.kind === 'claude' ? '✳' : '$'}</span>`}
+      <span class="o-tab-kind">${t.kind === 'claude' ? '✳' : t.kind === 'shell' ? '$' : '◆'}</span>`}
       <span class="tn">${esc(t.name)}</span>
       <button type="button" class="x" data-act="close" title="Close tab" aria-label="Close tab">${ICON_CLOSE}</button>
     </div>`).join('');
@@ -56,7 +62,7 @@ function renderTabs() {
 
 function tabTitle(t) {
   if (t.kind === 'file') return t.path;
-  const what = t.kind === 'claude' ? 'Claude Code' : 'Shell';
+  const what = t.kind === 'claude' ? 'Claude Code' : t.kind === 'shell' ? 'Shell' : t.name;
   const st = !t.running ? 'stopped' : TAB_STATUS[t.status] || 'running';
   return `${what}, ${st}: double-click to rename`;
 }
