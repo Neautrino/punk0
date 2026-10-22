@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"px0/internal/metrics"
 )
 
 // Setting up a language server from the UI: report what is missing for a file,
@@ -340,6 +342,11 @@ func (s *Server) relevantLSPServers() []map[string]any {
 
 	seen := map[string]bool{}
 	var result []map[string]any
+	// One process table for every server's memory, taken only when one runs.
+	var procs metrics.Table
+	if s.lsp.HasClients() {
+		procs = metrics.Processes()
+	}
 
 	// 1. Add servers matching extensions present in the workspace
 	for i := range lspRegistry {
@@ -353,7 +360,7 @@ func (s *Server) relevantLSPServers() []map[string]any {
 		}
 		if matchesExt && !seen[def.Name] {
 			seen[def.Name] = true
-			result = append(result, s.lsp.ServerStatus(def))
+			result = append(result, s.lsp.ServerStatus(def, procs))
 		}
 	}
 
@@ -378,7 +385,7 @@ func (s *Server) relevantLSPServers() []map[string]any {
 		for i := range lspRegistry {
 			if lspRegistry[i].Name == name {
 				seen[name] = true
-				result = append(result, s.lsp.ServerStatus(&lspRegistry[i]))
+				result = append(result, s.lsp.ServerStatus(&lspRegistry[i], procs))
 				break
 			}
 		}

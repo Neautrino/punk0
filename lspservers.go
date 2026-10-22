@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"px0/internal/metrics"
 )
 
 // lspServerDef describes one language server we know how to drive. Nothing here
@@ -24,6 +26,7 @@ type lspServerDef struct {
 	DefaultLang string
 	InitOptions map[string]any
 	Install     []lspInstall // ways to get the binary, best first
+	Docs        string       // the server's install instructions, for when no recipe fits
 }
 
 func (d lspServerDef) LanguageID(rel string) string {
@@ -39,7 +42,7 @@ func (d lspServerDef) LanguageID(rel string) string {
 var lspRegistry = []lspServerDef{
 	{
 		Name: "gopls", Lang: "Go", Cmd: []string{"gopls"},
-		Exts: []string{".go"}, DefaultLang: "go",
+		Exts: []string{".go"}, DefaultLang: "go", Docs: "https://go.dev/gopls/",
 		Install: []lspInstall{
 			{Cmd: []string{"go", "install", "golang.org/x/tools/gopls@latest"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "gopls"}, Auto: true},
@@ -47,7 +50,7 @@ var lspRegistry = []lspServerDef{
 	},
 	{
 		Name: "rust-analyzer", Lang: "Rust", Cmd: []string{"rust-analyzer"},
-		Exts: []string{".rs"}, DefaultLang: "rust",
+		Exts: []string{".rs"}, DefaultLang: "rust", Docs: "https://rust-analyzer.github.io/",
 		Install: []lspInstall{
 			{Cmd: []string{"rustup", "component", "add", "rust-analyzer"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "rust-analyzer"}, Auto: true},
@@ -55,7 +58,7 @@ var lspRegistry = []lspServerDef{
 	},
 	{
 		Name: "pyright", Lang: "Python", Cmd: []string{"pyright-langserver", "--stdio"},
-		Exts: []string{".py", ".pyi"}, DefaultLang: "python",
+		Exts: []string{".py", ".pyi"}, DefaultLang: "python", Docs: "https://microsoft.github.io/pyright/",
 		Install: []lspInstall{
 			{Cmd: []string{"npm", "install", "-g", "pyright"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "pyright"}, Auto: true},
@@ -63,7 +66,7 @@ var lspRegistry = []lspServerDef{
 	},
 	{
 		Name: "pylsp", Lang: "Python", Cmd: []string{"pylsp"},
-		Exts: []string{".py", ".pyi"}, DefaultLang: "python",
+		Exts: []string{".py", ".pyi"}, DefaultLang: "python", Docs: "https://github.com/python-lsp/python-lsp-server",
 		Install: []lspInstall{
 			{Cmd: []string{"pipx", "install", "python-lsp-server"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "python-lsp-server"}, Auto: true},
@@ -72,13 +75,13 @@ var lspRegistry = []lspServerDef{
 	{
 		// Not offered for install: it lints, but answers no call hierarchy.
 		Name: "ruff", Lang: "Python", Cmd: []string{"ruff", "server"},
-		Exts: []string{".py"}, DefaultLang: "python",
+		Exts: []string{".py"}, DefaultLang: "python", Docs: "https://docs.astral.sh/ruff/installation/",
 	},
 	{
 		Name: "typescript", Lang: "TypeScript and JavaScript", Cmd: []string{"typescript-language-server", "--stdio"},
 		Exts:        []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"},
 		LangIDs:     map[string]string{".ts": "typescript", ".tsx": "typescriptreact", ".jsx": "javascriptreact"},
-		DefaultLang: "javascript",
+		DefaultLang: "javascript", Docs: "https://github.com/typescript-language-server/typescript-language-server",
 		Install: []lspInstall{
 			{Cmd: []string{"npm", "install", "-g", "typescript-language-server", "typescript"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "typescript-language-server"}, Auto: true},
@@ -88,7 +91,7 @@ var lspRegistry = []lspServerDef{
 		Name: "clangd", Lang: "C and C++", Cmd: []string{"clangd", "--background-index"},
 		Exts:        []string{".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".m", ".mm"},
 		LangIDs:     map[string]string{".c": "c", ".h": "c"},
-		DefaultLang: "cpp",
+		DefaultLang: "cpp", Docs: "https://clangd.llvm.org/installation",
 		Install: []lspInstall{
 			{OS: "darwin", Cmd: []string{"brew", "install", "llvm"}, Auto: true},
 			// System package managers want an administrator: shown, not run.
@@ -98,21 +101,21 @@ var lspRegistry = []lspServerDef{
 	},
 	{
 		Name: "zls", Lang: "Zig", Cmd: []string{"zls"},
-		Exts: []string{".zig"}, DefaultLang: "zig",
+		Exts: []string{".zig"}, DefaultLang: "zig", Docs: "https://zigtools.org/zls/install/",
 		Install: []lspInstall{
 			{OS: "darwin", Cmd: []string{"brew", "install", "zls"}, Auto: true},
 		},
 	},
 	{
 		Name: "lua", Lang: "Lua", Cmd: []string{"lua-language-server"},
-		Exts: []string{".lua"}, DefaultLang: "lua",
+		Exts: []string{".lua"}, DefaultLang: "lua", Docs: "https://luals.github.io/#install",
 		Install: []lspInstall{
 			{OS: "darwin", Cmd: []string{"brew", "install", "lua-language-server"}, Auto: true},
 		},
 	},
 	{
 		Name: "solargraph", Lang: "Ruby", Cmd: []string{"solargraph", "stdio"},
-		Exts: []string{".rb"}, DefaultLang: "ruby",
+		Exts: []string{".rb"}, DefaultLang: "ruby", Docs: "https://solargraph.org/",
 		Install: []lspInstall{
 			{Cmd: []string{"gem", "install", "solargraph"}, Auto: true},
 			{OS: "darwin", Cmd: []string{"brew", "install", "solargraph"}, Auto: true},
@@ -120,18 +123,18 @@ var lspRegistry = []lspServerDef{
 	},
 	{
 		Name: "jdtls", Lang: "Java", Cmd: []string{"jdtls"},
-		Exts: []string{".java"}, DefaultLang: "java",
+		Exts: []string{".java"}, DefaultLang: "java", Docs: "https://github.com/eclipse-jdtls/eclipse.jdt.ls",
 		Install: []lspInstall{
 			{OS: "darwin", Cmd: []string{"brew", "install", "jdtls"}, Auto: true},
 		},
 	},
 	{
 		Name: "omnisharp", Lang: "C#", Cmd: []string{"omnisharp", "-lsp"},
-		Exts: []string{".cs"}, DefaultLang: "csharp",
+		Exts: []string{".cs"}, DefaultLang: "csharp", Docs: "https://github.com/OmniSharp/omnisharp-roslyn",
 	},
 	{
 		Name: "texlab", Lang: "LaTeX", Cmd: []string{"texlab"},
-		Exts: []string{".tex"}, DefaultLang: "latex",
+		Exts: []string{".tex"}, DefaultLang: "latex", Docs: "https://github.com/latex-lsp/texlab",
 		Install: []lspInstall{
 			{OS: "darwin", Cmd: []string{"brew", "install", "texlab"}, Auto: true},
 		},
@@ -398,8 +401,8 @@ func (m *lspManager) Available() []string {
 func (m *lspManager) Enabled() bool { return m.enabled }
 
 // memBytes returns the combined resident memory of every currently running
-// language server process, best-effort: a server whose RSS can't be read
-// (exited, unsupported platform, no permission) contributes 0.
+// language server, best-effort: a server whose RSS can't be read (exited,
+// unsupported platform, no permission) contributes 0.
 func (m *lspManager) memBytes() uint64 {
 	m.mu.RLock()
 	pids := make([]int, 0, len(m.clients))
@@ -409,12 +412,34 @@ func (m *lspManager) memBytes() uint64 {
 		}
 	}
 	m.mu.RUnlock()
-
+	if len(pids) == 0 {
+		return 0
+	}
+	procs := metrics.Processes()
 	var total uint64
 	for _, pid := range pids {
-		total += readRSSForPID(pid)
+		total += lspTreeRSS(procs, pid)
 	}
 	return total
+}
+
+// lspTreeRSS is the memory of a server and everything it started: much of
+// typescript-language-server's is in the tsserver processes under it. procs
+// is one snapshot shared by every server measured; where none can be taken
+// (Windows) only the server's own process counts.
+func lspTreeRSS(procs metrics.Table, pid int) uint64 {
+	if procs != nil {
+		return procs.Tree(pid).RSS
+	}
+	return readRSSForPID(pid)
+}
+
+// HasClients reports whether any server process exists, so a caller can skip
+// snapshotting the process table when there is nothing to measure.
+func (m *lspManager) HasClients() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.clients) > 0
 }
 
 func (m *lspManager) defFor(rel string) *lspServerDef {
@@ -837,7 +862,8 @@ func shortLangName(lang string) string {
 }
 
 // ServerStatus returns the status summary of a language server definition.
-func (m *lspManager) ServerStatus(def *lspServerDef) map[string]any {
+// procs is the process table its memory is measured from (see lspTreeRSS).
+func (m *lspManager) ServerStatus(def *lspServerDef, procs metrics.Table) map[string]any {
 	m.mu.RLock()
 	c, ok := m.clients[def.Name]
 	_, starting := m.starting[def.Name]
@@ -875,6 +901,7 @@ func (m *lspManager) ServerStatus(def *lspServerDef) map[string]any {
 		"running":   false,
 		"state":     "stopped",
 		"options":   opts,
+		"docs":      def.Docs,
 		"autoOpt":   autoIndex,
 	}
 
@@ -927,7 +954,7 @@ func (m *lspManager) ServerStatus(def *lspServerDef) map[string]any {
 		if c.cmd != nil && c.cmd.Process != nil {
 			pid := c.cmd.Process.Pid
 			res["pid"] = pid
-			res["memBytes"] = readRSSForPID(pid)
+			res["memBytes"] = lspTreeRSS(procs, pid)
 		}
 		return res
 	}
