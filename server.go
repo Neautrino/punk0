@@ -151,6 +151,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/markdown"), s.handleMarkdown)
 	s.mux.HandleFunc(s.routePath("/api/table"), s.handleTable)
 	s.mux.HandleFunc(s.routePath("/api/diff"), s.handleDiff)
+	s.mux.HandleFunc(s.routePath("/api/changes"), s.handleChanges)
 	s.mux.HandleFunc(s.routePath("/api/gutter"), s.handleGutter)
 	s.mux.HandleFunc(s.routePath("/api/stream"), s.handleEventStream)
 	s.mux.HandleFunc(s.routePath("/api/git/stream"), s.handleEventStream)

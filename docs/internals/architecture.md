@@ -91,6 +91,7 @@ When hosted behind reverse proxies or multi-tenant review platforms, px0 support
 | `/api/outline`        | `GET`  | Regex-extracted symbol outline for a given file (`?path=...`)          | JSON array of symbol declarations          |
 | `/api/def`            | `GET`  | Quick definition lookup fallback                                        | JSON array of matching definition locations|
 | `/api/diff`           | `GET`  | Unified diff of working tree vs. `HEAD` (`?path=...`)                   | JSON (`{path, diff, available}`)           |
+| `/api/changes`        | `GET`  | Every changed file vs. `HEAD` with its hunks, untracked files as added (agents page Changes tab) | JSON (`{git, files, truncated}`) |
 | `/api/gutter`         | `GET`  | Per-line change markers for code view gutter                            | JSON (`{added, modified, deleted}`)        |
 | `/api/stream`         | `GET`  | Unified SSE stream for real-time `git-status` and `metrics` events (aliased by `/api/git/stream`) | `text/event-stream`   |
 | `/api/git/refresh`    | `POST` | Triggers immediate git status check and returns status payload          | JSON (`{git, gitChanges, gitFiles, ...}`)  |
