@@ -1932,6 +1932,11 @@ func (s *Server) handleGitCommitMessage(w http.ResponseWriter, r *http.Request) 
 	if !s.agentOrFail(w) {
 		return
 	}
+	// Without a harness to run, leave the index as it is.
+	if s.agent.Name() == "" {
+		fail(w, http.StatusBadRequest, errAgentNone.Error())
+		return
+	}
 	root := s.ix.Root()
 	files := gitStagedFiles(root)
 	if len(files) == 0 {

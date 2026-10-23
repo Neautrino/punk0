@@ -1288,3 +1288,33 @@ func TestThreadDeleteAPI(t *testing.T) {
 		t.Fatalf("delete without id = %d, want 400", code)
 	}
 }
+
+// A commit message with no harness to write it is refused before the
+// auto-stage, so the index stays as it was.
+func TestGitCommitMessageWithoutHarnessLeavesIndex(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	gitTestRun(t, root, "reset", "-q")
+	if err := os.WriteFile(filepath.Join(root, "keep.go"), []byte("package keep\n// changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	isolateSettings(t)
+	m, err := newAgentManager(root, "", nil) // available, nothing selected
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix := NewIndex(root)
+	ix.Build()
+	s := NewServer(ix, nil)
+	s.SetAgent(m)
+
+	code, body := agentPost(t, s, "/api/git/commit-message")
+	if code != 400 || !strings.Contains(fmt.Sprint(body["error"]), "no coding harness") {
+		t.Fatalf("commit-message with no harness = %d %v, want 400 no coding harness", code, body)
+	}
+	if staged := gitStagedPaths(root); len(staged) != 0 {
+		t.Fatalf("a refused commit message staged %v", staged)
+	}
+}
