@@ -27,6 +27,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"px0/internal/settings"
 )
 
 // Workspace kinds. A folder workspace is a scratch chat in its own folder
@@ -577,7 +579,7 @@ func (r *Records) RemoveWorkspace(id string, force bool) (note string, err error
 		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 			return "", gitError(out, err)
 		}
-		if settingOr[bool]("workspace.deleteMergedBranch") {
+		if settings.SettingOr[bool]("workspace.deleteMergedBranch") {
 			repo, branch = p.Dir, w.Branch
 		}
 	}

@@ -28,3 +28,7 @@ func setPTYSize(f *os.File, cols, rows uint16) error {
 func foregroundPgrp(f *os.File) (int, error) {
 	return 0, errors.New("no foreground process group on Windows")
 }
+
+// setProcessGroup has no Windows equivalent: exec.CommandContext kills the
+// process directly on cancel.
+func setProcessGroup(cmd *exec.Cmd) {}

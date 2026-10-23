@@ -1,7 +1,7 @@
 // web/src/palette.js
 import { $, esc, S, doc_, api, debounce, withKeys } from './state.js';
 import { render, toggleWordWrap } from './renderer.js';
-import { openFile, centerLine, closeTab, reopenClosedTab } from './tabs.js';
+import { openFile, centerLine, closeTab, closeAllTabs, reopenClosedTab } from './tabs.js';
 import { updateStatus, openLspMenu } from './status.js';
 import { pushHistory } from './history.js';
 import { showPanel, reindexWorkspace } from './panels.js';
@@ -99,7 +99,7 @@ export const COMMANDS = [
   { name: 'Next Theme', run: cycleTheme },
   { name: 'Re-index Workspace', run: reindexWorkspace },
   { name: 'Close Tab', run: () => { if (S.active >= 0) closeTab(S.active); } },
-  { name: 'Close All Tabs', run: () => { while (S.tabs.length) closeTab(0); } },
+  { name: 'Close All Tabs', run: () => closeAllTabs() },
   { name: withKeys('Reopen Closed Tab ({Alt+Shift+T})'), run: () => reopenClosedTab() },
   { name: 'Threads: Show All', run: () => showRightInspector('threads') },
   { name: withKeys('Threads: Start New Thread ({Alt+T} on a selection)'), run: () => newThread(null) },
@@ -132,7 +132,10 @@ export function openPalette(mode, seed) {
   refreshPalette();
 }
 
+let palSeq = 0;
+
 export function closePalette() {
+  palSeq++;
   overlay.hidden = true;
   if (pal && pal.restoreTheme) setTheme(pal.restoreTheme, false); // dismissed mid-preview
   pal = null;
@@ -140,6 +143,7 @@ export function closePalette() {
 
 export const refreshPalette = debounce(async () => {
   if (!pal) return;
+  const seq = ++palSeq;
   let raw = palInput.value;
   // theme and openpr have no prefix character: once entered (via a command),
   // they stay put regardless of what's typed, unlike file/symbol/line/command
@@ -163,7 +167,10 @@ export const refreshPalette = debounce(async () => {
     pal.items = COMMANDS.filter(c => c.name.toLowerCase().includes(lq)).map(c => ({ kind: 'cmd', cmd: c, label: c.name, sub: '' }));
   } else if (mode === 'symbol') {
     const d = doc_();
-    if (d && !d.outline) { try { d.outline = (await api('/api/outline', { path: d.path })).symbols || []; } catch { d.outline = []; } }
+    if (d && !d.outline) {
+      try { d.outline = (await api('/api/outline', { path: d.path })).symbols || []; } catch { d.outline = []; }
+      if (seq !== palSeq || !pal) return;
+    }
     const lq = q.toLowerCase();
     pal.items = ((d && d.outline) || []).filter(s => !lq || s.name.toLowerCase().includes(lq))
       .slice(0, 400).map(s => ({ kind: 'sym', n: s.line, label: s.name, sub: s.kind, right: String(s.line) }));
@@ -176,7 +183,9 @@ export const refreshPalette = debounce(async () => {
   } else {
     let j;
     try { j = await api('/api/find', { q, limit: 120 }); } catch { return; }
-    pal.items = j.results.map(r => {
+    if (seq !== palSeq || !pal) return;
+    pal.indexing = !!j.indexing;
+    pal.items = (j.results || []).map(r => {
       const cut = r.path.length - r.name.length;
       return {
         kind: 'file', path: r.path,
@@ -185,6 +194,11 @@ export const refreshPalette = debounce(async () => {
         raw: true,
       };
     });
+    if (pal.indexing && pal.mode === 'file') {
+      setTimeout(() => {
+        if (pal && pal.mode === 'file' && pal.indexing) refreshPalette();
+      }, 300);
+    }
   }
   pal.sel = mode === 'theme' ? Math.max(0, pal.items.findIndex(it => it.id === currentTheme())) : 0;
   drawPalette();
@@ -205,7 +219,14 @@ export function fuzzyHTML(text, pos) {
 
 export function drawPalette() {
   if (!pal) return;
-  if (!pal.items.length) { palList.innerHTML = '<div class="pi"><span class="pp">No matches</span></div>'; return; }
+  if (!pal.items.length) {
+    if (pal.indexing) {
+      palList.innerHTML = '<div class="pi"><span class="pp">Indexing…</span></div>';
+      return;
+    }
+    palList.innerHTML = '<div class="pi"><span class="pp">No matches</span></div>';
+    return;
+  }
   palList.innerHTML = pal.items.map((it, i) =>
     '<div class="pi' + (i === pal.sel ? ' sel' : '') + '" data-i="' + i + '">' +
     '<span class="pn">' + (it.raw ? it.label : esc(it.label)) + '</span>' +

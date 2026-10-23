@@ -2,6 +2,7 @@
 import { $, S, doc_, apiPostJson, LH } from './state.js';
 import { vp, showToast, flashActionSuccess } from './ui.js';
 import { drawTabs, loadGutter, reloadOpenTabs } from './tabs.js';
+import { lineTopY } from './renderer.js';
 import { syncPreview, previewing, previewTopLine, previewKind } from './markdown.js';
 import { syncDiffView } from './diff.js';
 import { triggerRefresh } from './gitstream.js';
@@ -16,20 +17,42 @@ export const btnSaveFile = $('#btn-save-file');
 export const btnCancelEdit = $('#btn-cancel-edit');
 
 let mirror = null;
+let lastGutterLineCount = -1;
+let lastGutterWrap = null;
+let gutterRAF = 0;
+
+export function scheduleUpdateGutter() {
+  if (gutterRAF) return;
+  gutterRAF = requestAnimationFrame(() => {
+    gutterRAF = 0;
+    updateGutter();
+  });
+}
 
 export function updateGutter() {
   if (!editTextarea || !editGutterEl) return;
   const text = editTextarea.value;
-  const lines = text.split('\n');
-  const lineCount = lines.length;
-  const digits = String(lineCount).length;
-  editGutterEl.style.width = Math.max(45, digits * (S.chW || 7.8) + 26) + 'px';
   if (!S.wrap) {
+    let lineCount = 1;
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) lineCount++;
+    }
+    if (lineCount === lastGutterLineCount && lastGutterWrap === false) return;
+    lastGutterLineCount = lineCount;
+    lastGutterWrap = false;
+    const digits = String(lineCount).length;
+    editGutterEl.style.width = Math.max(45, digits * (S.chW || 7.8) + 26) + 'px';
     let s = '';
     for (let i = 1; i <= lineCount; i++) s += i + '\n';
     editGutterEl.textContent = s;
     return;
   }
+  const lines = text.split('\n');
+  const lineCount = lines.length;
+  const digits = String(lineCount).length;
+  editGutterEl.style.width = Math.max(45, digits * (S.chW || 7.8) + 26) + 'px';
+  lastGutterLineCount = lineCount;
+  lastGutterWrap = true;
   // Wrapped lines span several visual rows: measure each in a hidden mirror
   // laid out like the textarea and size the matching gutter number to it.
   if (!mirror) {
@@ -39,27 +62,40 @@ export function updateGutter() {
     editTextarea.parentElement.appendChild(mirror);
   }
   mirror.style.width = editTextarea.clientWidth + 'px';
-  mirror.textContent = '';
-  const frag = document.createDocumentFragment();
-  for (const l of lines) {
-    const row = document.createElement('div');
-    row.textContent = l || ' ';
-    frag.appendChild(row);
+  const mRows = mirror.children;
+  while (mRows.length > lineCount) mirror.lastElementChild.remove();
+  if (mRows.length < lineCount) {
+    const frag = document.createDocumentFragment();
+    for (let i = mRows.length; i < lineCount; i++) {
+      frag.appendChild(document.createElement('div'));
+    }
+    mirror.appendChild(frag);
   }
-  mirror.appendChild(frag);
-  const rows = mirror.children;
-  const heights = new Array(lineCount);
-  for (let i = 0; i < lineCount; i++) heights[i] = rows[i].offsetHeight;
-  mirror.textContent = '';
-  const out = document.createDocumentFragment();
   for (let i = 0; i < lineCount; i++) {
-    const n = document.createElement('div');
-    n.textContent = i + 1;
-    n.style.height = heights[i] + 'px';
-    out.appendChild(n);
+    const want = lines[i] || ' ';
+    if (mRows[i].textContent !== want) mRows[i].textContent = want;
   }
-  editGutterEl.textContent = '';
-  editGutterEl.appendChild(out);
+  const heights = new Array(lineCount);
+  for (let i = 0; i < lineCount; i++) heights[i] = mRows[i].offsetHeight;
+
+  if (editGutterEl.childElementCount === 0 && editGutterEl.textContent) {
+    editGutterEl.textContent = '';
+  }
+  const gRows = editGutterEl.children;
+  while (gRows.length > lineCount) editGutterEl.lastElementChild.remove();
+  if (gRows.length < lineCount) {
+    const out = document.createDocumentFragment();
+    for (let i = gRows.length; i < lineCount; i++) {
+      const n = document.createElement('div');
+      n.textContent = String(i + 1);
+      out.appendChild(n);
+    }
+    editGutterEl.appendChild(out);
+  }
+  for (let i = 0; i < lineCount; i++) {
+    const h = heights[i] + 'px';
+    if (gRows[i].style.height !== h) gRows[i].style.height = h;
+  }
 }
 
 // The doc whose text is currently in the textarea; lets any tab switch path
@@ -83,9 +119,55 @@ function editLH() {
 
 // Top of line n in the textarea. Wrapped lines are taller than one line;
 // their gutter rows were sized to match, so read the offset from there.
-function editLineTop(n) {
+export function editLineTop(n) {
   const row = S.wrap && editGutterEl?.children[n - 1];
   return row ? row.offsetTop : (n - 1) * editLH();
+}
+
+export function centerEditLine(n, startChar, endChar) {
+  if (!editTextarea || !editViewEl || editViewEl.hidden) return;
+  const d = doc_();
+  const text = editTextarea.value;
+  const lines = text.split('\n');
+  const lineCount = lines.length;
+  const targetLine = Math.max(1, Math.min(n, lineCount));
+
+  if (typeof startChar === 'string' && startChar) {
+    const q = startChar;
+    const lineStr = lines[targetLine - 1] || '';
+    const idx = lineStr.toLowerCase().indexOf(q.toLowerCase());
+    let offset = 0;
+    for (let i = 0; i < targetLine - 1 && i < lineCount; i++) {
+      offset += lines[i].length + 1;
+    }
+    if (idx >= 0) {
+      startChar = offset + idx;
+      endChar = startChar + q.length;
+    } else {
+      startChar = offset;
+      endChar = offset;
+    }
+  }
+
+  if (typeof startChar === 'number' && typeof endChar === 'number') {
+    editTextarea.focus();
+    editTextarea.setSelectionRange(startChar, endChar);
+  } else {
+    let offset = 0;
+    for (let i = 0; i < targetLine - 1 && i < lineCount; i++) {
+      offset += lines[i].length + 1;
+    }
+    editTextarea.focus();
+    editTextarea.setSelectionRange(offset, offset);
+  }
+
+  const top = Math.max(0, editLineTop(targetLine) - Math.max(0, editTextarea.clientHeight / 2 - editLH() * 2));
+  editTextarea.scrollTop = top;
+  if (editGutterEl) editGutterEl.scrollTop = top;
+  if (d) {
+    d.cur = targetLine;
+    d.editScrollTop = top;
+  }
 }
 
 // The first line visible at the top of the textarea.
@@ -218,7 +300,7 @@ export async function exitEditMode(force = false) {
     return;
   }
   d.cur = top;
-  vp.scrollTop = (top - 1) * LH;
+  vp.scrollTop = lineTopY(top, d);
   if (previewKind(d)) d.mdLine = top;
   // Reloads the source and, through a fresh doc, the preview: a save made in
   // edit mode leaves both stale.
@@ -258,7 +340,14 @@ export function initEditView() {
     if (S.wrap && w && w !== lastW && !editViewEl.hidden) updateGutter();
     lastW = w;
   }).observe(editTextarea);
+  let lastWrapClass = document.body.classList.contains('word-wrap');
+  let lastHideLinesClass = document.body.classList.contains('hide-lines');
   new MutationObserver(() => {
+    const wrapClass = document.body.classList.contains('word-wrap');
+    const hideLinesClass = document.body.classList.contains('hide-lines');
+    if (wrapClass === lastWrapClass && hideLinesClass === lastHideLinesClass) return;
+    lastWrapClass = wrapClass;
+    lastHideLinesClass = hideLinesClass;
     if (!editViewEl.hidden) updateGutter();
   }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
@@ -276,7 +365,15 @@ export function initEditView() {
         drawTabs();
       }
     }
-    updateGutter();
+    if (S.find && S.find.editing) {
+      S.find = null;
+      const cnt = $('#find-count');
+      if (cnt) cnt.textContent = '—';
+      const mm = $('#minimap-hits');
+      if (mm) mm.innerHTML = '';
+    }
+    if (S.wrap) scheduleUpdateGutter();
+    else updateGutter();
   });
 
   editTextarea.addEventListener('keydown', e => {

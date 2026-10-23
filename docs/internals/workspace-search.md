@@ -1,6 +1,6 @@
 # Workspace Search & Symbol Extraction
 
-This document explains px0's high-throughput parallel search engine ([`search.go`](../../search.go)) and fast regex symbol extractor ([`symbols.go`](../../symbols.go)).
+This document explains px0's high-throughput parallel search engine ([`search.go`](../../search.go)) and fast regex symbol extractor ([`internal/symbols/symbols.go`](../../internal/symbols/symbols.go)).
 
 ## 1. Search Engine Architecture
 
@@ -67,17 +67,12 @@ For case-insensitive literal searches, converting full UTF-8 strings with `strin
 
 The vast majority of files in any repository do not contain the search term. Splitting file contents into lines and iterating line-by-line is expensive.
 
-px0 applies an instant rejection test before doing any line parsing:
+px0 applies a whole-file rejection test before doing any line parsing—covering plain literal queries, whole-word queries (`Word: true`, used by `/api/def`), and regular expressions that expose a literal prefix (`re.LiteralPrefix()`):
 
-```go
-if !isRegex && !caseSensitive {
-    if !bytes.Contains(lowerData, queryLower) {
-        return // Term does not exist anywhere in file: skip immediately
-    }
-}
-```
+- For case-sensitive searches, `bytes.Contains(data, s.lit)` rejects non-matching files immediately.
+- For case-insensitive searches, a zero-allocation ASCII fold scan (`containsFoldASCII(data, s.lit)`) checks the raw file buffer first, populating `w.lower` only when a match actually exists in the file.
 
-If `bytes.Contains()` returns `false`, the entire file is discarded in a few microseconds without examining a single newline.
+If the prefilter returns `false`, the entire file is discarded in a few microseconds without splitting lines or invoking `regexp`.
 
 ## 4. Structured Snippet Elision (`{Pre, Mid, Post}`)
 
@@ -100,23 +95,24 @@ type Match struct {
 - `snipLead = 32`: Match offset threshold before leading text is elided.
 - `snipKeep = 16`: Number of leading runes retained when truncating (e.g., `...getComponent()`).
 - `snipMax = 240`: Maximum total rune budget for the entire rendered snippet.
+- Lines whose byte lengths already fall within `snipLead` and `snipMax` take a direct byte-slice fast path without UTF-8 rune counting or `[]rune` conversions.
 
 ### Why Structured Slices?
 
 1. Zero Client Discrepancies: JavaScript uses UTF-16 code units, whereas Go uses UTF-8 byte sequences. Sending offsets requires complex client-side reconciliation. Sending pre-split strings completely eliminates boundary alignment bugs.
 1. Bandwidth Savings: Discarding massive leading and trailing line segments shrinks JSON payloads significantly.
 
-## 5. Regex Symbol Extraction ([`symbols.go`](../../symbols.go))
+## 5. Regex Symbol Extraction ([`internal/symbols/symbols.go`](../../internal/symbols/symbols.go))
 
 When language servers are disabled or unavailable, px0 provides instantaneous symbol outlines and declaration jump navigation via heuristic regular expressions.
 
 ### Parallel Symbol Flagging
 
-During full-text searches, lines that look like function, class, struct, or type declarations are automatically flagged (`Match.Def = true`). This allows the frontend to visually highlight definition matches in search results without running a secondary query.
+During full-text searches, lines that look like function, class, struct, or type declarations are automatically flagged (`Match.Def = true`). Declaration patterns (`defRegexForExt`) are compiled lazily per language family only when a file produces a match, allowing the frontend to visually highlight definition matches in search results without running a secondary query.
 
 ### Supported Language Grammars
 
-`symbols.go` maintains high-performance compiled regular expressions for:
+`internal/symbols/symbols.go` maintains high-performance compiled regular expressions for:
 
 - Go: `func (r *Receiver) Name(...)`, `type Name struct/interface`
 - TypeScript / JavaScript: `function name()`, `class Name`, `const name = () =>`, `interface Name`

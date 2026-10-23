@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/px0-ai/harness"
+
+	"px0/internal/settings"
 )
 
 // tabAgent is how one agent starts in a tab.
@@ -47,7 +49,7 @@ func agentCommand(kind, session string, first bool) string {
 		return ""
 	}
 	bin := a.bin
-	if args := strings.TrimSpace(settingOr[string]("agents." + kind + ".args")); args != "" {
+	if args := strings.TrimSpace(settings.SettingOr[string]("agents." + kind + ".args")); args != "" {
 		bin += " " + args
 	}
 	if kind == tabClaude {

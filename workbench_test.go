@@ -821,3 +821,57 @@ func TestIdleLimit(t *testing.T) {
 		t.Errorf("0 should mean never: %v", got)
 	}
 }
+
+// Pinning went with the recent-items list; removing a recorded pull request
+// from the workbench is all that is left of it.
+func TestWorkbenchRemovesRecordedItem(t *testing.T) {
+	st := newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	wb.store = st
+
+	it := wbDirItem("/work/test-repo")
+	if err := st.Record(it); err != nil {
+		t.Fatal(err)
+	}
+
+	w := postJSON(t, wb, "/api/wb/remove", `{"id":"`+it.ID+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("remove failed: %d %s", w.Code, w.Body.String())
+	}
+	if _, ok := st.Get(it.ID); ok {
+		t.Fatal("item was not removed")
+	}
+}
+
+func TestWorkbenchLockLifecycle(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	// No lock initially
+	if url := runningWorkbench(); url != "" {
+		t.Errorf("expected empty runningWorkbench, got %q", url)
+	}
+
+	// Write lock with a mock server that answers ping
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/wb/ping" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"workbench":true}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	writeWorkbenchLock(ts.URL)
+
+	// Verify runningWorkbench finds it
+	if u := runningWorkbench(); u != ts.URL {
+		t.Errorf("runningWorkbench = %q, want %q", u, ts.URL)
+	}
+
+	// Remove lock
+	removeWorkbenchLock()
+	if u := runningWorkbench(); u != "" {
+		t.Errorf("runningWorkbench after remove = %q, want empty", u)
+	}
+}

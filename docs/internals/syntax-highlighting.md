@@ -1,6 +1,6 @@
 # Windowed Syntax Highlighting Engine
 
-This document details the architecture and performance strategies of px0's windowed syntax highlighting engine ([`highlight.go`](../../highlight.go)).
+This document details the architecture and performance strategies of px0's windowed syntax highlighting engine ([`internal/render/render.go`](../../internal/render/render.go)).
 
 ## 1. The Syntax Highlighting Bottleneck
 
@@ -42,6 +42,8 @@ flowchart LR
   - Trailing Context Purpose: Ensures open tokens are properly closed without trailing syntax anomalies.
 - `hlWindowBytes = 512 KB`: Maximum byte size for any tokenization window.
 
+When constructing a `Doc` (`newDoc`), line byte offsets (`lineOff`) and maximum visual column width are computed in a single `strings.IndexByte` scan over the source string without splitting the file into a `[]string` slice. If filename matching (`lexers.Match`) does not identify the language, content analysis (`lexers.Analyse`) is capped to the first 4 KB (`4096` bytes).
+
 ### Byte-Cap Protection (`hlWindowBytes`)
 
 In minified JavaScript or massive one-line JSON documents, 1,000 lines could equal 20+ megabytes of text. If a window slice exceeds `512 KB`, context lines are automatically dropped to prevent CPU hangs.
@@ -76,8 +78,8 @@ sequenceDiagram
     end
 ```
 
-1. Tier 1 (Instant Viewport Pass): Evaluates the bounded window (`start - hlContext` to `start + count + hlContext`). Slices out and returns the target lines in 1-2 ms. If the window contains potential multi-line ambiguities, the payload includes `refine: true`.
-1. Tier 2 (Background Exact Pass): If the file is under `bgLimit = 2 MB`, a background goroutine performs an exact full-file tokenization pass. The exact result is stored in the LRU cache. The frontend's `refineChunk()` updates the rendered rows in-place without disturbing the user's scroll position or selection.
+1. Tier 1 (Instant Viewport Pass): Evaluates the bounded window (`start - hlContext` to `start + count + hlContext`). Slices out and returns the target lines in 1-2 ms. If the entire file fits within the first chunk (`Total <= hlChunk` and within `hlWindowBytes`), `chunk(0)` marks the document exact (`d.full = true`) immediately so no background pass is needed. Otherwise, if the window contains potential multi-line ambiguities, the payload includes `refine: true`.
+1. Tier 2 (Background Exact Pass): For multi-chunk files under `bgLimit = 2 MB`, a background goroutine performs an exact full-file tokenization pass. The exact result is stored in the LRU cache. The frontend's `refineChunk()` updates the rendered rows in-place without disturbing the user's scroll position or selection.
 
 ## 4. Short-Class CSS Tokenization
 
@@ -96,16 +98,20 @@ px0 maps token types to minimal 1-to-2 character CSS classes:
 | `.kt`  | `KeywordType`        | Primitive types (`int`, `string`, `bool`)     |
 | `.err` | `Error`              | Syntax errors                                 |
 
-This keeps network payloads minimal and guarantees that CSS stylesheets define colors cleanly through CSS custom properties (`--k`, `--nf`, `--s`, `--c`).
+This keeps network payloads minimal and guarantees that CSS stylesheets define colors cleanly through CSS custom properties (`--k`, `--nf`, `--s`, `--c`). During formatting, token text is HTML-escaped directly into the line's `strings.Builder` (`writeHTMLEscaped`) to avoid intermediate string allocations per token.
 
-## 5. Byte-Budgeted LRU Memory Cache
+## 5. Byte-Budgeted LRU Memory Cache & Idle Scavenging
 
 Generated HTML fragments are cached in memory using a Least Recently Used (LRU) eviction policy backed by Go's `container/list`.
 
 ```go
-const cacheBudget = 512 * 1024 * 1024 // 512 MB memory budget
+const (
+	cacheBudget     = 64 << 20 // 64 MB active memory budget
+	idleCacheBudget = 8 << 20  // 8 MB idle budget after 15s scavenger pass
+)
 ```
 
 - Every cached line entry tracks its raw string byte footprint.
 - When total cached line data exceeds `cacheBudget`, oldest entries are evicted from the tail of the LRU list until memory drops below the threshold.
+- When the server has been idle for 15 seconds, `Server.scavenge()` invokes `render.Scavenge()`, trimming the cache down to `idleCacheBudget` (8 MB) before calling `debug.FreeOSMemory()`.
 - Switching between tabs and scrolling backward reuses cached HTML strings instantly without hitting Chroma.

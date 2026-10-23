@@ -74,3 +74,15 @@ func ptyIoctl(f *os.File, req uintptr, arg unsafe.Pointer) error {
 	}
 	return nil
 }
+
+// setProcessGroup starts cmd in its own process group and makes cancellation
+// kill the whole group, so a git clone's helper processes go with it.
+func setProcessGroup(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+}

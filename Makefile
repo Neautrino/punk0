@@ -1,4 +1,4 @@
-.PHONY: all build web test dist publish clean help
+.PHONY: all build web build-web test dist publish clean help
 
 VERSION ?= $(shell cat VERSION 2>/dev/null | tr -d ' \r\n')
 # Support 'make publish 0.2.0' where target argument is passed as next goal
@@ -29,7 +29,12 @@ help:
 	@echo "  make web               - bundle web assets (JS/CSS/themes)"
 	@echo "  make test              - run go test suite"
 	@echo "  make test-short        - run fast unit tests (short mode)"
+	@echo "  make coverage          - run tests and output statement coverage per package"
+	@echo "  make verify            - run unified test and micro-benchmark verification (fast mode)"
+	@echo "  make verify-all        - run full test, benchmark and coverage verification suite"
 	@echo "  make check             - bundle web assets and run fast test suite"
+	@echo "  make bench             - run root Go micro-benchmarks"
+	@echo "  make benchmark         - run real repository macroscopic benchmarks"
 	@echo "  make dist              - compile cross-platform binaries into dist/"
 	@echo "  make publish <version> - bump VERSION, commit, tag, and build dist binaries"
 	@echo "  make clean             - remove build artifacts"
@@ -38,19 +43,30 @@ web:
 	@echo "Bundling web assets..."
 	@node ./scripts/build-web.js
 
+build-web: web
+
 build: web
 	@echo "Building punk0 for local system..."
 	go build -trimpath -ldflags="$(LDFLAGS)" -o punk0 .
 	@echo "Built ./punk0 ($$(du -h punk0 | cut -f1))"
 
 test: web
-	go test -v .
+	go test -v ./...
 
 web-check:
 	@node ./scripts/check-web.js
 
 test-short:
-	go test -short .
+	go test -short ./...
+
+coverage: web
+	./scripts/test-bench.sh --test
+
+verify: web
+	./scripts/test-bench.sh --fast
+
+verify-all: web
+	./scripts/test-bench.sh
 
 check: web-check web test-short
 

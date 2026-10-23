@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"px0/internal/settings"
 )
 
 // settingsReq posts body (JSON, or a query when body is nil) the way the
@@ -53,7 +55,7 @@ func TestSettingsWorkbenchRoute(t *testing.T) {
 	if rec := settingsReq(t, wb, "/api/settings", map[string]any{"tips.enabled": false}); rec.Code != 200 {
 		t.Fatalf("POST: %d %s", rec.Code, rec.Body.String())
 	}
-	if readMergedSettingsMap()["tips.enabled"] != false {
+	if settings.ReadMergedMap()["tips.enabled"] != false {
 		t.Fatal("tips.enabled not saved")
 	}
 }
@@ -62,7 +64,7 @@ func TestSettingsExecGateOffLoopback(t *testing.T) {
 	isolateSettings(t)
 	srv := agentServer(t, t.TempDir(), "echo")
 	srv.localOnly = false
-	if err := updateSettingsMap(map[string]any{"terminal.shell": "/bin/bash"}); err != nil {
+	if err := settings.UpdateMap(map[string]any{"terminal.shell": "/bin/bash"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -84,12 +86,12 @@ func TestSettingsExecGateOffLoopback(t *testing.T) {
 			t.Errorf("%s: want 403, got %d %s", c.name, rec.Code, rec.Body.String())
 		}
 	}
-	if got := readMergedSettingsMap()["terminal.shell"]; got != "/bin/bash" {
+	if got := settings.ReadMergedMap()["terminal.shell"]; got != "/bin/bash" {
 		t.Fatalf("terminal.shell changed to %v", got)
 	}
 
 	// The modal's Save sends the whole merged map: unchanged gated keys pass.
-	full := readMergedSettingsMap()
+	full := settings.ReadMergedMap()
 	full["tips.enabled"] = false
 	if rec := settingsReq(t, srv, "/api/settings", full); rec.Code != 200 {
 		t.Fatalf("full save: %d %s", rec.Code, rec.Body.String())
@@ -97,7 +99,7 @@ func TestSettingsExecGateOffLoopback(t *testing.T) {
 	if rec := settingsReq(t, srv, "/api/settings", map[string]any{"terminal.shell": nil}); rec.Code != 200 {
 		t.Fatalf("removal: %d %s", rec.Code, rec.Body.String())
 	}
-	if _, ok := readSettingsRawMap()["terminal.shell"]; ok {
+	if _, ok := settings.ReadRawMap()["terminal.shell"]; ok {
 		t.Fatal("terminal.shell not removed")
 	}
 	if rec := settingsReq(t, srv, "/api/agent/select?name=claude", nil); rec.Code == http.StatusForbidden {
@@ -121,7 +123,7 @@ func TestSettingsExecGateLoopback(t *testing.T) {
 	if rec := settingsReq(t, srv, "/api/settings?terminal.fontSize=14", nil); rec.Code != 200 {
 		t.Errorf("query: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := readMergedSettingsMap()["terminal.fontSize"]; got != 14.0 {
+	if got := settings.ReadMergedMap()["terminal.fontSize"]; got != 14.0 {
 		t.Errorf("query fontSize = %v", got)
 	}
 }

@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"px0/internal/settings"
 )
 
 // WorkspaceOptions is what the New workspace panel asks for.
@@ -162,7 +164,7 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 			// workspace.branchPrefix marks only branches punk0 names itself;
 			// the folder keeps the bare name.
 			folder = folderName(branchSlug(name))
-			branch = strings.TrimSpace(settingOr[string]("workspace.branchPrefix")) + branchSlug(name)
+			branch = strings.TrimSpace(settings.SettingOr[string]("workspace.branchPrefix")) + branchSlug(name)
 		}
 	}
 	if strings.HasPrefix(branch, "-") || branch == "" {
@@ -201,7 +203,7 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 			return pl, fmt.Errorf("unknown start point %q", pl.Base)
 		}
 	}
-	if pl.Base != "" && !o.fetched && settingOr[bool]("workspace.fetchBase") {
+	if pl.Base != "" && !o.fetched && settings.SettingOr[bool]("workspace.fetchBase") {
 		if remote := remoteOf(pl.repo, pl.Base); remote != "" {
 			pl.Fetch, pl.fetchRef = remote, strings.TrimPrefix(strings.TrimPrefix(pl.Base, "refs/remotes/"), remote+"/")
 		}
@@ -481,7 +483,7 @@ func findProjectPull(ctx context.Context, dir, text string) (pp *projectPull, ok
 		_, pp.remote = findPRRemote(dir, target.Owner, target.Repo)
 	}
 	pp.provider, pp.target = provider, target
-	pp.token, _ = provider.ResolveToken(readSettings(), target)
+	pp.token, _ = provider.ResolveToken(settings.Read(), target)
 	if pp.meta, err = provider.FetchPR(ctx, target, pp.token); err != nil {
 		return nil, true, fmt.Errorf("cannot read pull request #%d: %w", target.Number, err)
 	}

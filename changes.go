@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"px0/internal/render"
 )
 
 // Caps for /api/changes, which highlights every changed file at once: a file
@@ -22,14 +24,14 @@ const (
 // ChangedFile is one file of the working tree's diff against diffBase: its
 // hunks ready to draw, or why there are none (binary, large, a pure rename).
 type ChangedFile struct {
-	Path   string     `json:"path"`
-	From   string     `json:"from,omitempty"` // previous path, for R only
-	Status string     `json:"status"`         // A, M, D, R, or U for untracked
-	Add    int        `json:"add"`
-	Del    int        `json:"del"`
-	Binary bool       `json:"binary,omitempty"`
-	Large  bool       `json:"large,omitempty"`
-	Hunks  []DiffHunk `json:"hunks"`
+	Path   string            `json:"path"`
+	From   string            `json:"from,omitempty"` // previous path, for R only
+	Status string            `json:"status"`         // A, M, D, R, or U for untracked
+	Add    int               `json:"add"`
+	Del    int               `json:"del"`
+	Binary bool              `json:"binary,omitempty"`
+	Large  bool              `json:"large,omitempty"`
+	Hunks  []render.DiffHunk `json:"hunks"`
 }
 
 // handleChanges returns every changed file of the served folder with its
@@ -109,7 +111,7 @@ func splitDiffFiles(diff string) []string {
 // diffFileHead reads one file's chunk of a git diff up to its hunks: its
 // path and status from the extended header.
 func diffFileHead(chunk string) ChangedFile {
-	f := ChangedFile{Status: "M", Hunks: []DiffHunk{}}
+	f := ChangedFile{Status: "M", Hunks: []render.DiffHunk{}}
 	head, _, _ := strings.Cut(chunk, "\n@@")
 	for i, line := range strings.Split(head, "\n") {
 		switch {
@@ -139,7 +141,7 @@ func diffFileBody(f ChangedFile, chunk string) ChangedFile {
 		f.Add, f.Del = countDiffLines(chunk)
 		return f
 	}
-	if hunks := highlightDiff(f.Path, chunk); len(hunks) > 0 {
+	if hunks := render.HighlightDiff(f.Path, chunk); len(hunks) > 0 {
 		f.Hunks = hunks
 	}
 	f.Add, f.Del = countRows(f.Hunks)
@@ -174,7 +176,7 @@ func gitUnquote(p string) string {
 	return p
 }
 
-func countRows(hunks []DiffHunk) (add, del int) {
+func countRows(hunks []render.DiffHunk) (add, del int) {
 	for _, h := range hunks {
 		for _, r := range h.Rows {
 			switch r.Type {
@@ -205,7 +207,7 @@ func countDiffLines(chunk string) (add, del int) {
 
 // untrackedChange shows an untracked file as one hunk adding all of it.
 func untrackedChange(root, rel string) ChangedFile {
-	f := ChangedFile{Path: rel, Status: "U", Hunks: []DiffHunk{}}
+	f := ChangedFile{Path: rel, Status: "U", Hunks: []render.DiffHunk{}}
 	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 	if err != nil || !info.Mode().IsRegular() {
 		return f
@@ -231,7 +233,7 @@ func untrackedChange(root, rel string) ChangedFile {
 	for _, l := range lines {
 		b.WriteString("+" + l + "\n")
 	}
-	f.Hunks = highlightDiff(rel, b.String())
+	f.Hunks = render.HighlightDiff(rel, b.String())
 	f.Add = len(lines)
 	return f
 }

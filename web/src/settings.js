@@ -28,6 +28,23 @@ export function isAutoRevealEnabled() {
   return true;
 }
 
+// The four typography keys share one applyEditorTypography, which relays the
+// editor out: a batch of applied values (the first load, a save) puts them
+// into effect once, after the other keys, rather than once per key.
+let typographyQueued = false;
+function queueTypography() {
+  if (typographyQueued) return;
+  typographyQueued = true;
+  queueMicrotask(() => {
+    typographyQueued = false;
+    const fs = parseFloat(S.settings['editor.fontSize']) || 13.5;
+    const ff = S.settings['editor.fontFamily'] || '';
+    const lh = parseFloat(S.settings['editor.lineHeight']) || 21.0;
+    const ts = parseInt(S.settings['editor.tabSize'], 10) || 4;
+    applyEditorTypography(fs, ff, lh, ts);
+  });
+}
+
 // S.settings mirrors every applied value for readers elsewhere in the editor
 // (hover.js, tree.js, ...).
 function applySettingLive(key, val) {
@@ -38,14 +55,9 @@ function applySettingLive(key, val) {
     case 'editor.fontSize':
     case 'editor.fontFamily':
     case 'editor.lineHeight':
-    case 'editor.tabSize': {
-      const fs = parseFloat(S.settings['editor.fontSize']) || 13.5;
-      const ff = S.settings['editor.fontFamily'] || '';
-      const lh = parseFloat(S.settings['editor.lineHeight']) || 21.0;
-      const ts = parseInt(S.settings['editor.tabSize'], 10) || 4;
-      applyEditorTypography(fs, ff, lh, ts);
+    case 'editor.tabSize':
+      queueTypography();
       break;
-    }
     case 'editor.wordWrap': {
       const on = val === 'on' || val === true;
       toggleWordWrap(on);
@@ -127,6 +139,7 @@ function applySettingLive(key, val) {
     }
   }
 }
+
 
 export function initSettings() {
   initSettingsModal({

@@ -72,7 +72,7 @@ punk0 [passed-on flags] -workbench-host <host> -workbench-child -host 127.0.0.1 
 - **Children.** The proxy counts requests in flight per child and records when the last one ended. A running child with none in flight for `workspace.idleStop` minutes (default 5) is stopped.
 - **Terminals.** A tab whose PTY has carried nothing for `terminal.idleStop` minutes (default 30) is closed if `stopIdleTab` allows it: a shell only when the PTY's foreground process group is the shell itself (`TIOCGPGRP`; never on Windows), a claude tab only when its hook status is `idle`.
 
-## PR clones (`workbench_clone.go`)
+## PR clones ([`workbench.go`](../../workbench.go))
 
 Every PR is a worktree of one local clone per repository; nothing is cloned per PR.
 

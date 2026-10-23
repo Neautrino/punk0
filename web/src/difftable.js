@@ -6,14 +6,55 @@
 // (orch/changes.js), which style them alike (style.css .diff-*).
 //
 // opts: reviewable (a row's line number is a review-comment target; see
-// anchor), and lineActions, the title of the line-actions button each line
-// number carries, which also makes the number open its line; none without it.
+// anchor), lineActions, the title of the line-actions button each line
+// number carries, which also makes the number open its line; none without it;
+// and diagnostics, a Map of new-file line to message shown on that line's
+// code cell (data-diag).
 import { esc } from './state.js';
 
-export function hunkHeader(hunk) {
+/* A hunk's @@ header, keeping the hunk on the element (el._hunk) for the
+   buttons' handlers. opts: index (the hunk's place in its list), expand (an
+   Expand context button) and actions (Stage / Unstage / Discard buttons);
+   neither without them. */
+export function hunkHeader(hunk, { index = 0, expand = false, actions = false } = {}) {
   const el = document.createElement('div');
   el.className = 'diff-hunk-head';
-  el.textContent = '@@ -' + hunk.oldStart + ' +' + hunk.newStart + ' @@';
+  el._hunk = hunk;
+
+  const label = document.createElement('span');
+  label.className = 'diff-hunk-label';
+  label.textContent = '@@ -' + hunk.oldStart + ' +' + hunk.newStart + ' @@' + (hunk.section ? ' ' + hunk.section : '');
+  el.append(label);
+
+  const grow = document.createElement('span');
+  grow.className = 'grow';
+  el.append(grow);
+
+  if (expand) {
+    const expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'diff-hunk-btn diff-hunk-expand';
+    expandBtn.dataset.hunkExpand = String(index);
+    expandBtn.title = 'Expand surrounding context lines';
+    expandBtn.textContent = '↕ Expand';
+    el.append(expandBtn);
+  }
+
+  if (actions) {
+    for (const [act, text, title, extraCls] of [
+      ['stage', 'Stage', 'Stage this hunk (git apply --cached)', ''],
+      ['unstage', 'Unstage', 'Unstage this hunk (git apply --cached -R)', ''],
+      ['discard', 'Discard', 'Discard this hunk in working tree', ' diff-hunk-discard'],
+    ]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'diff-hunk-btn' + extraCls;
+      btn.dataset.hunkAct = act;
+      btn.title = title;
+      btn.textContent = text;
+      el.append(btn);
+    }
+  }
   return el;
 }
 
@@ -33,7 +74,7 @@ export function unifiedTable(hunk, opts = {}) {
     while (i < hunk.rows.length && hunk.rows[i].type === 'add') adds.push(hunk.rows[i++]);
     const n = Math.min(dels.length, adds.length);
     for (let k = 0; k < n; k++) {
-      const diff = diffLine(dels[k].text, adds[k].text);
+      const diff = diffLine(dels[k].text, adds[k].text, dels[k].html, adds[k].html);
       rowHtml.set(dels[k], diff.oldHtml);
       rowHtml.set(adds[k], diff.newHtml);
     }
@@ -47,7 +88,7 @@ export function unifiedTable(hunk, opts = {}) {
       lineCell(row.type === 'add' ? '' : row.oldLine, opts),
       lineCell(row.type === 'del' ? '' : row.newLine, opts),
       markerCell(row.type),
-      codeCell(rowHtml.has(row) ? { ...row, html: rowHtml.get(row) } : row),
+      codeCell(rowHtml.has(row) ? { ...row, html: rowHtml.get(row) } : row, opts.diagnostics),
     );
     table.append(r);
   }
@@ -63,7 +104,7 @@ export function splitTable(hunk, opts = {}) {
     let leftRow = pair.left;
     let rightRow = pair.right;
     if (leftRow && rightRow && leftRow.type === 'del' && rightRow.type === 'add') {
-      const diff = diffLine(leftRow.text, rightRow.text);
+      const diff = diffLine(leftRow.text, rightRow.text, leftRow.html, rightRow.html);
       leftRow = { ...leftRow, html: diff.oldHtml };
       rightRow = { ...rightRow, html: diff.newHtml };
     }
@@ -99,7 +140,7 @@ function splitSide(row, side, opts) {
   if (!row) { el.append(lineCell('', opts), markerCell(''), codeCell(null)); return el; }
   const ln = side === 'left' ? row.oldLine : row.newLine;
   anchor(el, row, opts);
-  el.append(lineCell(ln, opts), markerCell(row.type), codeCell(row));
+  el.append(lineCell(ln, opts), markerCell(row.type), codeCell(row, side === 'right' ? opts.diagnostics : null));
   return el;
 }
 
@@ -146,7 +187,7 @@ function markerCell(type) {
   return el;
 }
 
-function codeCell(arg) {
+function codeCell(arg, diagnostics = null) {
   const el = document.createElement('div');
   el.className = 'diff-code';
   if (!arg) {
@@ -156,6 +197,9 @@ function codeCell(arg) {
   if (typeof arg === 'string') {
     el.innerHTML = esc(arg) || '&nbsp;';
     return el;
+  }
+  if (diagnostics && arg.newLine !== undefined && diagnostics.has(arg.newLine)) {
+    el.dataset.diag = diagnostics.get(arg.newLine);
   }
   el.innerHTML = arg.html || esc(arg.text || '') || '&nbsp;';
   return el;
@@ -178,7 +222,7 @@ function myersDiff(aTokens, bTokens) {
   const trace = [];
 
   for (let d = 0; d <= max; d++) {
-    trace.push(new Int32Array(v));
+    trace.push(v.slice(max - d, max + d + 1));
     for (let k = -d; k <= d; k += 2) {
       let x;
       if (k === -d || (k !== d && v[k - 1 + max] < v[k + 1 + max])) {
@@ -198,52 +242,123 @@ function myersDiff(aTokens, bTokens) {
         for (let step = d; step > 0; step--) {
           const prevV = trace[step];
           const curK = curX - curY;
-          let prevK = (curK === -step || (curK !== step && prevV[curK - 1 + max] < prevV[curK + 1 + max]))
+          let prevK = (curK === -step || (curK !== step && prevV[curK - 1 + step] < prevV[curK + 1 + step]))
             ? curK + 1
             : curK - 1;
-          const prevX = prevV[prevK + max];
+          const prevX = prevV[prevK + step];
           const prevY = prevX - prevK;
 
           while (curX > prevX && curY > prevY && aTokens[curX - 1] === bTokens[curY - 1]) {
-            script.unshift({ type: 'eq', val: aTokens[curX - 1] });
+            script.push({ type: 'eq', val: aTokens[curX - 1] });
             curX--; curY--;
           }
           if (curX > prevX) {
-            script.unshift({ type: 'del', val: aTokens[curX - 1] });
+            script.push({ type: 'del', val: aTokens[curX - 1] });
             curX--;
           } else if (curY > prevY) {
-            script.unshift({ type: 'add', val: bTokens[curY - 1] });
+            script.push({ type: 'add', val: bTokens[curY - 1] });
             curY--;
           }
         }
         while (curX > 0 && curY > 0) {
-          script.unshift({ type: 'eq', val: aTokens[curX - 1] });
+          script.push({ type: 'eq', val: aTokens[curX - 1] });
           curX--; curY--;
         }
-        return script;
+        return script.reverse();
       }
     }
   }
   return null;
 }
 
-// Computes an intra-line diff using token Myers algorithm with sub-character refinement.
-function diffLine(oldStr = '', newStr = '') {
-  if (oldStr === newStr) {
-    return { oldHtml: esc(oldStr), newHtml: esc(newStr) };
+// Overlays intra-line character change spans onto Chroma syntax-highlighted HTML
+// (`<i class=...>`) without breaking tag nesting.
+function overlayCharMask(syntaxHtml, expectedLen, mask, spanClass, bars, barClass) {
+  if (!syntaxHtml) return null;
+  let out = '';
+  let charIdx = 0;
+  let inSpan = false;
+  let i = 0;
+  const n = syntaxHtml.length;
+
+  while (i < n) {
+    if (syntaxHtml[i] === '<') {
+      const close = syntaxHtml.indexOf('>', i);
+      if (close < 0) return null;
+      if (inSpan) {
+        out += '</span>';
+        inSpan = false;
+      }
+      out += syntaxHtml.slice(i, close + 1);
+      i = close + 1;
+      continue;
+    }
+
+    if (bars && bars.has(charIdx)) {
+      if (inSpan) { out += '</span>'; inSpan = false; }
+      out += '<span class="' + barClass + '"></span>';
+    }
+
+    const wantSpan = charIdx < expectedLen && mask[charIdx] === 1;
+    if (wantSpan && !inSpan) {
+      out += '<span class="' + spanClass + '">';
+      inSpan = true;
+    } else if (!wantSpan && inSpan) {
+      out += '</span>';
+      inSpan = false;
+    }
+
+    if (syntaxHtml[i] === '&') {
+      const semi = syntaxHtml.indexOf(';', i);
+      if (semi > i && semi - i <= 10) {
+        out += syntaxHtml.slice(i, semi + 1);
+        i = semi + 1;
+        charIdx++;
+        continue;
+      }
+    }
+    out += syntaxHtml[i++];
+    charIdx++;
   }
+
+  if (inSpan) out += '</span>';
+  if (bars && bars.has(charIdx)) {
+    out += '<span class="' + barClass + '"></span>';
+  }
+  if (charIdx !== expectedLen) return null;
+  return out;
+}
+
+// Computes an intra-line diff using token Myers algorithm with sub-character refinement,
+// preserving Chroma syntax highlighting tokens (`oldSyntaxHtml`, `newSyntaxHtml`) when available.
+function diffLine(oldStr = '', newStr = '', oldSyntaxHtml = '', newSyntaxHtml = '') {
+  if (oldStr === newStr) {
+    return {
+      oldHtml: oldSyntaxHtml || esc(oldStr),
+      newHtml: newSyntaxHtml || esc(newStr),
+    };
+  }
+
+  const oldMask = new Uint8Array(oldStr.length);
+  const newMask = new Uint8Array(newStr.length);
+  const oldBars = new Set();
+  const newBars = new Set();
 
   const script = myersDiff(tokenize(oldStr), tokenize(newStr));
   if (!script) {
-    return diffLinePrefixSuffix(oldStr, newStr);
+    return diffLinePrefixSuffix(oldStr, newStr, oldSyntaxHtml, newSyntaxHtml);
   }
 
   let oldHtml = '', newHtml = '';
+  let oldPos = 0, newPos = 0;
   let i = 0;
   while (i < script.length) {
     if (script[i].type === 'eq') {
-      oldHtml += esc(script[i].val);
-      newHtml += esc(script[i].val);
+      const val = script[i].val;
+      oldHtml += esc(val);
+      newHtml += esc(val);
+      oldPos += val.length;
+      newPos += val.length;
       i++;
       continue;
     }
@@ -263,6 +378,11 @@ function diffLine(oldStr = '', newStr = '') {
       const dMid = dels.slice(start, delEnd + 1);
       const aMid = adds.slice(start, addEnd + 1);
 
+      for (let k = start; k <= delEnd; k++) oldMask[oldPos + k] = 1;
+      for (let k = start; k <= addEnd; k++) newMask[newPos + k] = 1;
+      if (!dMid && aMid) oldBars.add(oldPos + start);
+      if (!aMid && dMid) newBars.add(newPos + start);
+
       const dSpan = dMid
         ? '<span class="diff-char-del">' + esc(dMid) + '</span>'
         : (aMid ? '<span class="diff-char-bar-del"></span>' : '');
@@ -273,18 +393,27 @@ function diffLine(oldStr = '', newStr = '') {
       oldHtml += esc(dels.slice(0, start)) + dSpan + esc(dels.slice(delEnd + 1));
       newHtml += esc(adds.slice(0, start)) + aSpan + esc(adds.slice(addEnd + 1));
     } else if (dels) {
+      for (let k = 0; k < dels.length; k++) oldMask[oldPos + k] = 1;
+      newBars.add(newPos);
       oldHtml += '<span class="diff-char-del">' + esc(dels) + '</span>';
       newHtml += '<span class="diff-char-bar-add"></span>';
     } else if (adds) {
+      for (let k = 0; k < adds.length; k++) newMask[newPos + k] = 1;
+      oldBars.add(oldPos);
       oldHtml += '<span class="diff-char-bar-del"></span>';
       newHtml += '<span class="diff-char-add">' + esc(adds) + '</span>';
     }
+    oldPos += dels.length;
+    newPos += adds.length;
   }
 
-  return { oldHtml, newHtml };
+  return {
+    oldHtml: overlayCharMask(oldSyntaxHtml, oldStr.length, oldMask, 'diff-char-del', oldBars, 'diff-char-bar-del') || oldHtml,
+    newHtml: overlayCharMask(newSyntaxHtml, newStr.length, newMask, 'diff-char-add', newBars, 'diff-char-bar-add') || newHtml,
+  };
 }
 
-function diffLinePrefixSuffix(oldStr, newStr) {
+function diffLinePrefixSuffix(oldStr, newStr, oldSyntaxHtml = '', newSyntaxHtml = '') {
   const oldLen = oldStr.length, newLen = newStr.length;
   let start = 0;
   while (start < oldLen && start < newLen && oldStr[start] === newStr[start]) start++;
@@ -294,15 +423,27 @@ function diffLinePrefixSuffix(oldStr, newStr) {
   }
   const oldMid = oldStr.slice(start, oldEnd + 1);
   const newMid = newStr.slice(start, newEnd + 1);
+
+  const oldMask = new Uint8Array(oldLen);
+  const newMask = new Uint8Array(newLen);
+  const oldBars = new Set();
+  const newBars = new Set();
+  for (let k = start; k <= oldEnd; k++) oldMask[k] = 1;
+  for (let k = start; k <= newEnd; k++) newMask[k] = 1;
+  if (!oldMid && newMid) oldBars.add(start);
+  if (!newMid && oldMid) newBars.add(start);
+
   const dSpan = oldMid
     ? '<span class="diff-char-del">' + esc(oldMid) + '</span>'
     : (newMid ? '<span class="diff-char-bar-del"></span>' : '');
   const aSpan = newMid
     ? '<span class="diff-char-add">' + esc(newMid) + '</span>'
     : (oldMid ? '<span class="diff-char-bar-add"></span>' : '');
+  const plainOld = esc(oldStr.slice(0, start)) + dSpan + esc(oldStr.slice(oldEnd + 1));
+  const plainNew = esc(newStr.slice(0, start)) + aSpan + esc(newStr.slice(newEnd + 1));
   return {
-    oldHtml: esc(oldStr.slice(0, start)) + dSpan + esc(oldStr.slice(oldEnd + 1)),
-    newHtml: esc(newStr.slice(0, start)) + aSpan + esc(newStr.slice(newEnd + 1)),
+    oldHtml: overlayCharMask(oldSyntaxHtml, oldLen, oldMask, 'diff-char-del', oldBars, 'diff-char-bar-del') || plainOld,
+    newHtml: overlayCharMask(newSyntaxHtml, newLen, newMask, 'diff-char-add', newBars, 'diff-char-bar-add') || plainNew,
   };
 }
 

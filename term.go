@@ -16,6 +16,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"px0/internal/settings"
+	"px0/internal/ui"
 )
 
 // maxTermFrame bounds one browser->PTY frame; a paste arrives as a single
@@ -62,7 +65,7 @@ type Shell struct {
 // variables (hook URL, tab id) still win over the user's. A terminal.env that
 // does not parse is ignored rather than failing the tab; saving one is refused.
 func tabProcess(command string, env []string) (shell string, args []string, cmdEnv []string) {
-	shell = settingOr[string]("terminal.shell")
+	shell = settings.SettingOr[string]("terminal.shell")
 	if shell == "" {
 		shell = os.Getenv("SHELL")
 	}
@@ -73,7 +76,7 @@ func tabProcess(command string, env []string) (shell string, args []string, cmdE
 		args = []string{"-i", "-c", command + `; exec "$SHELL"`}
 	}
 	cmdEnv = append(os.Environ(), "SHELL="+shell, "TERM=xterm-256color", "COLORTERM=truecolor")
-	if user, err := parseEnvLines(settingOr[string]("terminal.env")); err == nil {
+	if user, err := settings.ParseEnvLines(settings.SettingOr[string]("terminal.env")); err == nil {
 		cmdEnv = append(cmdEnv, user...)
 	}
 	return shell, args, append(cmdEnv, env...)
@@ -299,7 +302,7 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 	defer conn.CloseNow()
 	sh, err := tab.Shell()
 	if err != nil {
-		uiStatus("warn", "terminal "+tab.ID, err.Error(), 0, os.Stderr)
+		ui.Status("warn", "terminal "+tab.ID, err.Error(), 0, os.Stderr)
 		conn.Close(websocket.StatusInternalError, err.Error())
 		return
 	}
