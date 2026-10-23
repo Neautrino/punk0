@@ -257,9 +257,10 @@ func (ix *Index) listIgnored(dir string) ([]Node, bool) {
 	return kids, true
 }
 
-// HasDiffAvailable reports in O(1) whether rel has a tracked git diff according
-// to the in-memory index maps (excluding untracked "U" files), or whether the
-// caller should fall back when diffBase differs from the index's diffBase.
+// HasDiffAvailable reports in O(1) whether rel has a git diff according to
+// the in-memory index maps -- untracked "U" files included, which the server
+// shows as all added (untrackedDiff) -- or whether the caller should fall back
+// when diffBase differs from the index's diffBase.
 func (ix *Index) HasDiffAvailable(rel, serverDiffBase string, isPR bool) (avail, authoritative bool) {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
@@ -274,18 +275,27 @@ func (ix *Index) HasDiffAvailable(rel, serverDiffBase string, isPR bool) (avail,
 	if ixBase != srvBase || (ix.gitStatusMap == nil && ix.builtAt.IsZero()) {
 		return false, false
 	}
-	if st := ix.gitStatusMap[rel]; st != "" && st != "U" {
+	if ix.gitStatusMap[rel] != "" {
 		return true, true
 	}
-	if isPR {
-		if st := ix.prFiles[rel]; st != "" && st != "U" {
-			return true, true
-		}
-		if st := ix.gitYourStatusMap[rel]; st != "" && st != "U" {
-			return true, true
-		}
+	if isPR && (ix.prFiles[rel] != "" || ix.gitYourStatusMap[rel] != "") {
+		return true, true
 	}
 	return false, true
+}
+
+// IsUntracked reports whether git status last saw rel as untracked.
+func (ix *Index) IsUntracked(rel string) bool {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	return ix.gitStatusMap[rel] == "U"
+}
+
+// IsStaged reports whether git status last saw staged changes to rel.
+func (ix *Index) IsStaged(rel string) bool {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	return ix.gitStagedMap[rel]
 }
 
 func toLowerIfNeeded(s string) string {

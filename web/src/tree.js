@@ -21,13 +21,45 @@ export function setAutoRevealSuppressed(suppressed) {
   autoRevealSuppressed = !!suppressed;
 }
 
-function setExpandBusy(busy) {
-  const button = $('#btn-expand-tree');
+/* The explorer header's one fold button: Collapse all while any folder is
+   open or Expand all is running (clicking then stops it), else Expand all. */
+const ICON_TREE_UNFOLD = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
+const ICON_TREE_FOLD = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';
+let expandBusy = false;
+let foldSyncQueued = false;
+
+function foldWillCollapse() {
+  return expandBusy || !!treeEl.querySelector('.tr.dir.open');
+}
+
+function syncFoldButton() {
+  foldSyncQueued = false;
+  const button = $('#btn-fold-tree');
   if (!button) return;
-  button.classList.toggle('busy', busy);
-  button.setAttribute('aria-busy', String(busy));
-  button.setAttribute('aria-label', busy ? 'Expanding project folders' : 'Expand all project folders');
-  button.title = busy ? 'Expanding project folders (Collapse all to stop)' : 'Expand all project folders (ignored folders stay closed)';
+  const act = foldWillCollapse() ? 'collapse' : 'expand';
+  button.classList.toggle('busy', expandBusy);
+  button.setAttribute('aria-busy', String(expandBusy));
+  const label = expandBusy ? 'Expanding project folders' : act === 'collapse' ? 'Collapse all folders' : 'Expand all project folders';
+  button.setAttribute('aria-label', label);
+  button.title = expandBusy ? 'Expanding project folders (click to stop)'
+    : act === 'collapse' ? 'Collapse all folders' : 'Expand all project folders (ignored folders stay closed)';
+  if (button.dataset.act !== act) {
+    button.dataset.act = act;
+    button.innerHTML = act === 'collapse' ? ICON_TREE_FOLD : ICON_TREE_UNFOLD;
+  }
+}
+
+// Folders open and close from many places (clicks, reveal, refresh, git
+// view); the button follows the tree itself rather than each of them.
+function queueFoldSync() {
+  if (foldSyncQueued) return;
+  foldSyncQueued = true;
+  requestAnimationFrame(syncFoldButton);
+}
+
+function setExpandBusy(busy) {
+  expandBusy = busy;
+  syncFoldButton();
 }
 
 /* git status letter -> CSS class + label. Empty/absent = clean, no badge. */
@@ -176,7 +208,7 @@ export function collapseAllDirs() {
 }
 
 export async function expandAllDirs() {
-  if ($('#btn-expand-tree')?.classList.contains('busy')) return;
+  if (expandBusy) return;
   if (treeEl.classList.contains('changed-only')) {
     await expandDirtyDirs();
     return;
@@ -490,16 +522,12 @@ export function updateSidebarToggleState() {
 export async function setSidebarMode(mode, { expandDirty = true } = {}) {
   const btnChanged = $('#btn-changed');
   const btnFiles = $('#btn-files');
-  const btnCollapse = $('#btn-collapse-tree');
-  const btnExpand = $('#btn-expand-tree');
   updateSidebarToggleState();
 
   if (mode === 'git' && hasGitView()) {
     treeEl.classList.add('changed-only');
     btnChanged?.classList.add('active');
     btnFiles?.classList.remove('active');
-    if (btnCollapse) btnCollapse.hidden = false;
-    if (btnExpand) btnExpand.hidden = false;
     expansionVersion++;
     setExpandBusy(false);
     if (expandDirty) await expandDirtyDirs();
@@ -507,8 +535,6 @@ export async function setSidebarMode(mode, { expandDirty = true } = {}) {
     treeEl.classList.remove('changed-only');
     btnFiles?.classList.add('active');
     btnChanged?.classList.remove('active');
-    if (btnCollapse) btnCollapse.hidden = false;
-    if (btnExpand) btnExpand.hidden = false;
   }
   markTreeCleanState();
   // unpushed.js hangs its section off this; tree.js doesn't import it.
@@ -599,13 +625,12 @@ export function initTree() {
     document.addEventListener('scroll', closeTreeMenu, true);
   }
 
-  $('#btn-collapse-tree')?.addEventListener('click', () => {
-    collapseAllDirs();
+  $('#btn-fold-tree')?.addEventListener('click', () => {
+    if (foldWillCollapse()) collapseAllDirs();
+    else expandAllDirs();
   });
-
-  $('#btn-expand-tree')?.addEventListener('click', () => {
-    expandAllDirs();
-  });
+  new MutationObserver(queueFoldSync).observe(treeEl, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  syncFoldButton();
 
   $('#btn-changed')?.addEventListener('click', async () => {
     if (!hasGitView()) return;

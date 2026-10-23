@@ -332,10 +332,12 @@ func TestGitGutter(t *testing.T) {
 		}
 	}
 
-	// An untracked file has no diff against HEAD -> available:false, never 500.
+	// An untracked file is shown as all added, as git would once it's added.
 	code, body = get(t, s, "/api/gutter?path=untr.go")
-	if code != 200 || body["available"] != false {
-		t.Errorf("untracked: status=%d available=%v, want 200/false", code, body["available"])
+	if code != 200 || body["available"] != true {
+		t.Errorf("untracked: status=%d available=%v, want 200/true", code, body["available"])
+	} else if got := ints(body, "added"); !reflect.DeepEqual(got, []int{1}) {
+		t.Errorf("untracked added = %v, want [1]", got)
 	}
 
 	// Verify /api/file also reports diffAvailable immediately on file load.
@@ -2261,5 +2263,118 @@ func TestGitCommitAutoStage(t *testing.T) {
 	}
 	if strings.TrimSpace(string(out)) != "auto staged commit" {
 		t.Fatalf("expected commit subject 'auto staged commit', got %q", strings.TrimSpace(string(out)))
+	}
+}
+
+// A diff that is one whole file says so, with the whole-file actions that
+// would change something: an untracked file (shown as one hunk adding all of
+// it, which git diff leaves out), a staged new one, a deleted one; an
+// ordinary edit gets none.
+func TestDiffWholeFiles(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	ix := NewIndex(root)
+	ix.Build()
+	s := NewServer(ix, nil)
+	whole := func(body map[string]any) string {
+		w, _ := body["wholeFile"].(map[string]any)
+		if w == nil {
+			return ""
+		}
+		return fmt.Sprintf("%v %v", w["kind"], w["actions"])
+	}
+
+	_, body := get(t, s, "/api/diff?path=untr.go")
+	if body["available"] != true || whole(body) != "untracked [stage discard]" {
+		t.Fatalf("untracked diff available=%v wholeFile=%q", body["available"], whole(body))
+	}
+	hunks, _ := body["hunks"].([]any)
+	if len(hunks) != 1 {
+		t.Fatalf("untracked hunks = %v, want one", body["hunks"])
+	}
+	h := hunks[0].(map[string]any)
+	rows := h["rows"].([]any)
+	r := rows[0].(map[string]any)
+	if h["oldStart"] != 0.0 || h["newStart"] != 1.0 || len(rows) != 1 || r["type"] != "add" || r["text"] != "untracked" {
+		t.Errorf("untracked hunk = %v, want @@ -0,0 +1,1 @@ adding 'untracked'", h)
+	}
+	if _, file := get(t, s, "/api/file?path=untr.go"); file["diffAvailable"] != true || file["added"] != 1.0 {
+		t.Errorf("untracked /api/file diffAvailable=%v added=%v, want true/1", file["diffAvailable"], file["added"])
+	}
+
+	if _, body = get(t, s, "/api/diff?path=add.go"); whole(body) != "added [unstage discard]" {
+		t.Errorf("staged new wholeFile = %q", whole(body))
+	}
+	if _, body = get(t, s, "/api/diff?path=del.go"); whole(body) != "deleted [stage discard]" {
+		t.Errorf("unstaged deletion wholeFile = %q", whole(body))
+	}
+	if _, body = get(t, s, "/api/diff?path=sub/mod.go"); body["available"] != true || whole(body) != "" {
+		t.Errorf("modified diff available=%v wholeFile=%q, want true and none", body["available"], whole(body))
+	}
+
+	// Edited after staging: stage is back on offer. Deletion staged: unstage, not stage.
+	if err := os.WriteFile(filepath.Join(root, "add.go"), []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", root, "rm", "-q", "--cached", "del.go").CombinedOutput(); err != nil {
+		t.Fatalf("git rm --cached: %v %s", err, out)
+	}
+	ix.UpdateGitStatus()
+	if _, body = get(t, s, "/api/diff?path=add.go"); whole(body) != "added [stage unstage discard]" {
+		t.Errorf("edited staged new wholeFile = %q", whole(body))
+	}
+	if _, body = get(t, s, "/api/diff?path=del.go"); whole(body) != "deleted [unstage discard]" {
+		t.Errorf("staged deletion wholeFile = %q", whole(body))
+	}
+}
+
+// Discard on a whole-file diff deletes a new file and drops it from the index,
+// or restores a deleted one from HEAD; a file in HEAD and on disk is refused
+// and left alone.
+func TestGitDiscardFile(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	ix := NewIndex(root)
+	ix.Build()
+	s := NewServer(ix, nil)
+	post := func(path string) int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/git/discard-file", strings.NewReader(`{"path":"`+path+`"}`))
+		req.Host = "127.0.0.1:7777"
+		req.Header.Set("Origin", "http://127.0.0.1:7777")
+		s.handleGitDiscardFile(w, req)
+		return w.Code
+	}
+	exists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(root, rel))
+		return err == nil
+	}
+	status := func(rel string) string {
+		out, _ := exec.Command("git", "-C", root, "status", "--porcelain", "--", rel).Output()
+		return strings.TrimSpace(string(out))
+	}
+
+	if code := post("keep.go"); code != http.StatusConflict || !exists("keep.go") {
+		t.Errorf("tracked keep.go: status %d exists=%v, want 409 and kept", code, exists("keep.go"))
+	}
+	if code := post("sub/mod.go"); code != http.StatusConflict || !exists("sub/mod.go") || status("sub/mod.go") == "" {
+		t.Errorf("modified sub/mod.go: status %d, git %q, want 409 and still modified", code, status("sub/mod.go"))
+	}
+	if code := post("untr.go"); code != http.StatusOK || exists("untr.go") {
+		t.Errorf("untracked untr.go: status %d exists=%v, want 200 and deleted", code, exists("untr.go"))
+	}
+	// Staged, then edited: index content matches neither HEAD nor disk.
+	if err := os.WriteFile(filepath.Join(root, "add.go"), []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := post("add.go"); code != http.StatusOK || exists("add.go") || status("add.go") != "" {
+		t.Errorf("staged new add.go: status %d exists=%v git %q, want 200, deleted, gone from index", code, exists("add.go"), status("add.go"))
+	}
+	if code := post("del.go"); code != http.StatusOK || !exists("del.go") || status("del.go") != "" {
+		t.Errorf("deleted del.go: status %d exists=%v git %q, want 200, restored and clean", code, exists("del.go"), status("del.go"))
 	}
 }

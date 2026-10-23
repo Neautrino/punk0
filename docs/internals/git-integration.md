@@ -98,7 +98,7 @@ When viewing a file, the editor displays green, blue, and red markers in the lin
 
 ### File Diff (`/api/diff?path=...`)
 
-`handleDiff` (`server.go`) returns `{ path, diff, available }` — the same raw text `gitDiff` produced, with `available` set whenever it's non-empty (clean or untracked files get `""`). No hunk parsing happens on the server for this endpoint; the client owns that, because it needs two different reshapes of the same hunks (split and unified) and re-parsing client-side avoids two server round trips or two response shapes for one diff.
+`handleDiff` (`server.go`) returns `{ path, diff, hunks, available, wholeFile, large }` — the raw text `gitDiff` produced plus the server-highlighted hunks, with `available` set whenever it's non-empty (clean files get `""`). Git diff leaves untracked files out, so for one of those (`ix.IsUntracked`) `untrackedDiff` (`changes.go`, shared with the agents page's Changes view) builds the diff git would show once the file is added: one `@@ -0,0 +1,N @@` hunk adding every line, or nothing for an empty, binary or over-256 KB file (`large: true`). `/api/file`'s `diffAvailable`, `/api/gutter` and the PR session's `yourDiff` go through the same `worktreeDiff`, so an untracked file opens in the diff view with every line marked added. `wholeFile` (`wholeFileState`) is `null` for an ordinary diff and `{kind, actions}` for one that is a whole file: kind `"untracked"`, `"added"` (git's diff against `HEAD` carries `new file mode`) or `"deleted"` (`deleted file mode`), actions the ones among `stage` / `unstage` / `discard` that would change something — `stage` on a staged new file only once it has been edited since (`git diff --quiet`), on a deleted one only while the index still has it (`git ls-files`); `unstage` on a deleted one only with a staged change (`ix.IsStaged`). Added and deleted aren't reported in a PR session, whose base isn't `HEAD`.
 
 ### Split & Unified Views (`web/src/diff.js`)
 
@@ -287,6 +287,8 @@ Beyond whole-file staging, px0 allows staging, unstaging, or discarding individu
 - **`stage`**: Runs `git apply --cached --unidiff-zero -` to stage only the selected hunk.
 - **`unstage`**: Runs `git apply --reverse --cached --unidiff-zero -` to unstage that specific hunk from the index while keeping working-tree modifications.
 - **`discard`**: Runs `git apply --reverse --unidiff-zero -` to discard that hunk's changes from the working tree.
+
+A whole-file hunk (a new file, or one deleted from disk) can't go through `git apply`: reversing a new file's all-added hunk leaves an empty file in the index rather than no file, and staging a deletion's all-removed hunk leaves an empty file staged (`MD`) rather than the deletion. So when `wholeFile` is set the diff view swaps the per-hunk buttons for its whole-file `actions` (`FILE_ACTION_TITLES` in `web/src/difftable.js`): **Stage** (`/api/git/stage`, `git add -A`), **Unstage** (`/api/git/unstage`, `git reset`) and **Discard** (`/api/git/discard-file`). `gitDiscardFile` (`git.go`) deletes a file `HEAD` lacks after `git rm --cached -f --ignore-unmatch` — the client confirms first, as git keeps no copy — restores a file `HEAD` has that is gone from disk with `git checkout HEAD --`, and refuses with 409 a file in `HEAD` and on disk (`gitInHead`: `git ls-tree HEAD`; an unborn `HEAD` has nothing). Expand is hidden on a hunk at old or new line 0, which is the whole file: there is no context to add.
 
 ### Safe Repositories & Unborn HEAD Resilience
 

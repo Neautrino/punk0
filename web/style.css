@@ -799,9 +799,12 @@ body.right-hidden.md-tab.diff-tab #tabs { padding-right: 328px; }
 
 /* Diff dropdown & view-mode menu */
 .diff-seg { position: relative; display: flex; }
+.diff-dropdown #diff-source,
 .diff-dropdown #diff-btn {
   display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 7px;
 }
+.diff-dropdown #diff-source { padding-right: 9px; }
+.diff-dropdown #diff-source svg { flex: none; }
 .diff-dropdown #diff-btn .diff-btn-icon { flex: none; }
 .diff-dropdown #diff-btn .diff-caret { flex: none; opacity: .7; transition: transform .15s ease; }
 .diff-seg:hover #diff-btn .diff-caret { transform: rotate(180deg); }
@@ -1140,12 +1143,15 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
    modified file's git diff against HEAD, in its own overlay like the
    Markdown preview -- not virtualized, since a single file's diff is small. */
 #diffview { position: absolute; inset: 0; overflow: auto; background: var(--bg); }
-#diffcontent { font: var(--fs)/var(--lh) var(--mono); padding-bottom: 40vh; }
+#diffcontent { font: var(--fs)/var(--lh) var(--mono); padding-bottom: 40vh; --dcs-h: 0px; }
 .diff-empty { padding: 24px 16px; color: var(--faint); font: 12px/1.4 var(--ui); }
-/* A pinned tab's place in its commit, with ‹ › to step through the files. */
+/* The file's strip: its path, hunk ˄ ˅, expand-all and file ‹ ›. Pinned above
+   the hunks, whose sticky headers stack under it (--dcs-h, its fixed height). */
+#diffcontent:has(> .diff-commit-strip:not(:empty)) { --dcs-h: 33px; }
 .diff-commit-strip {
-  display: flex; align-items: center; gap: 8px; min-height: 32px;
-  padding: 5px 12px; background: var(--bg2); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 3; box-sizing: border-box; height: var(--dcs-h);
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px; background: var(--bg2); border-bottom: 1px solid var(--line);
   font: 11.5px/1.4 var(--mono);
 }
 .diff-commit-strip:empty { display: none; }
@@ -1155,16 +1161,18 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
 .diff-commit-strip .gs.git-D { color: var(--gd); }
 .dcs-path { min-width: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .diff-commit-strip .grow { flex: 1; }
-.dcs-pos { flex: none; color: var(--faint); font: 11px var(--ui); font-variant-numeric: tabular-nums; }
 .dcs-step {
   flex: none; width: 22px; height: 20px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid var(--line); border-radius: var(--r);
-  background: var(--bg); color: var(--fg); font: 14px/1 var(--ui); cursor: pointer;
+  background: var(--bg); color: var(--fg); cursor: pointer;
 }
+.dcs-step[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.dcs-sep { flex: none; width: 1px; height: 14px; margin: 0 2px; background: var(--line); }
 .dcs-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .dcs-step:disabled { opacity: .4; cursor: default; }
 .diff-hunk-head {
-  position: sticky; top: 0; z-index: 1; padding: 4px 12px;
+  position: sticky; top: var(--dcs-h, 0px); z-index: 1; padding: 4px 12px;
   color: var(--accent-fg); background: var(--bg3);
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
   font-size: 12px; white-space: pre;
@@ -1175,7 +1183,7 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
    drawDiff/renderDiff. Distinct from .diff-hunk-head so the two never read
    as "just another hunk". */
 .diff-section-head {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  position: sticky; top: var(--dcs-h, 0px); z-index: 2; display: flex; align-items: center; gap: 8px;
   padding: 6px 12px; background: var(--bg2); border-bottom: 1px solid var(--line);
   font: 600 11px/1.4 var(--ui); text-transform: uppercase; letter-spacing: .04em;
   cursor: pointer; user-select: none;
@@ -3737,36 +3745,10 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   border-color: var(--red, #f85149);
 }
 
-.dcs-viewed {
-  font: 11px var(--sans);
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  background: var(--bg3);
-  color: var(--dim);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.dcs-viewed:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-
-.dcs-viewed.active {
-  background: rgba(46, 160, 67, 0.16);
-  color: var(--green, #3fb950);
-  border-color: rgba(46, 160, 67, 0.45);
-}
-
-.dcs-hunk-btn {
-  width: auto;
-  padding: 0 6px;
-  font-size: 11px;
-}
-
-#tree .ti.file-viewed .name {
-  opacity: 0.55;
+.diff-hunk-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .c[data-diag]::after,

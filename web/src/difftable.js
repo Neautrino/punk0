@@ -12,11 +12,44 @@
 // code cell (data-diag).
 import { esc } from './state.js';
 
+// Lucide chevrons-up-down / chevrons-down-up: open out vs fold in. diff.js
+// uses the same pair on its expand-all toggle.
+export const ICON_UNFOLD = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>';
+export const ICON_FOLD = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>';
+
+/* The hunk header's action buttons: per hunk (data-hunk-act, applied as a
+   patch), or, on a diff that is one whole file -- new or deleted, which git
+   apply can't stage or reverse into the right state -- whole-file ones
+   (data-file-act), titled by the file's kind. */
+const HUNK_ACTIONS = [
+  ['hunkAct', 'stage', 'Stage', 'Stage this hunk (git apply --cached)'],
+  ['hunkAct', 'unstage', 'Unstage', 'Unstage this hunk (git apply --cached -R)'],
+  ['hunkAct', 'discard', 'Discard', 'Discard this hunk in working tree'],
+];
+const FILE_ACTION_TITLES = {
+  untracked: {
+    stage: 'Stage this new file (git add)',
+    discard: 'Delete this new file; git has no copy of it',
+  },
+  added: {
+    stage: 'Stage the edits made since this new file was staged (git add)',
+    unstage: 'Unstage this new file; it stays on disk, untracked',
+    discard: 'Delete this new file and drop it from the index; HEAD has no copy of it',
+  },
+  deleted: {
+    stage: 'Stage this deletion (git rm)',
+    unstage: 'Unstage this deletion; the file stays deleted on disk',
+    discard: 'Restore this file from HEAD',
+  },
+};
+const LABELS = { stage: 'Stage', unstage: 'Unstage', discard: 'Discard' };
+
 /* A hunk's @@ header, keeping the hunk on the element (el._hunk) for the
    buttons' handlers. opts: index (the hunk's place in its list), expand (an
-   Expand context button) and actions (Stage / Unstage / Discard buttons);
-   neither without them. */
-export function hunkHeader(hunk, { index = 0, expand = false, actions = false } = {}) {
+   Expand / Collapse context toggle; a hunk with extra context carries its
+   git rows in hunk.unexpanded) and actions: 'hunk' for the per-hunk set, a
+   server wholeFile ({kind, actions}) for whole-file ones, null for none. */
+export function hunkHeader(hunk, { index = 0, expand = false, actions = null } = {}) {
   const el = document.createElement('div');
   el.className = 'diff-hunk-head';
   el._hunk = hunk;
@@ -31,29 +64,28 @@ export function hunkHeader(hunk, { index = 0, expand = false, actions = false } 
   el.append(grow);
 
   if (expand) {
+    const expanded = !!hunk.unexpanded;
     const expandBtn = document.createElement('button');
     expandBtn.type = 'button';
     expandBtn.className = 'diff-hunk-btn diff-hunk-expand';
     expandBtn.dataset.hunkExpand = String(index);
-    expandBtn.title = 'Expand surrounding context lines';
-    expandBtn.textContent = '↕ Expand';
+    expandBtn.title = expanded ? 'Back to the diff\'s own context lines' : 'Show surrounding context lines';
+    expandBtn.setAttribute('aria-pressed', String(expanded));
+    expandBtn.innerHTML = (expanded ? ICON_FOLD + 'Collapse' : ICON_UNFOLD + 'Expand');
     el.append(expandBtn);
   }
 
-  if (actions) {
-    for (const [act, text, title, extraCls] of [
-      ['stage', 'Stage', 'Stage this hunk (git apply --cached)', ''],
-      ['unstage', 'Unstage', 'Unstage this hunk (git apply --cached -R)', ''],
-      ['discard', 'Discard', 'Discard this hunk in working tree', ' diff-hunk-discard'],
-    ]) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'diff-hunk-btn' + extraCls;
-      btn.dataset.hunkAct = act;
-      btn.title = title;
-      btn.textContent = text;
-      el.append(btn);
-    }
+  const buttons = actions === 'hunk' ? HUNK_ACTIONS
+    : actions ? actions.actions.map(act => ['fileAct', act, LABELS[act], FILE_ACTION_TITLES[actions.kind]?.[act] || LABELS[act]])
+    : [];
+  for (const [attr, act, text, title] of buttons) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'diff-hunk-btn' + (act === 'discard' ? ' diff-hunk-discard' : '');
+    btn.dataset[attr] = act;
+    btn.title = title;
+    btn.textContent = text;
+    el.append(btn);
   }
   return el;
 }

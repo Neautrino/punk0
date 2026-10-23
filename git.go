@@ -462,6 +462,75 @@ func gitUnstage(root, relpath string) error {
 	return nil
 }
 
+var errTrackedInHead = errors.New("file is in HEAD and on disk")
+
+// gitDiscardFile undoes a change the diff view shows as one whole file. A file
+// HEAD lacks (untracked, or staged as new) is dropped from the index and
+// deleted; a file HEAD has that is gone from disk is restored from HEAD to the
+// index and disk. A file in HEAD and on disk is refused with errTrackedInHead:
+// its changes are discarded by hunk, and deleting it would lose committed work.
+func gitDiscardFile(root, relpath string) error {
+	if !gitProbe(root).ok {
+		return errors.New("git repository not available")
+	}
+	abs := filepath.Join(root, filepath.FromSlash(relpath))
+	st, err := os.Lstat(abs)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	onDisk := err == nil
+	if onDisk && st.IsDir() {
+		return errors.New("not a file: " + relpath)
+	}
+	inHead, err := gitInHead(root, relpath)
+	if err != nil {
+		return err
+	}
+	switch {
+	case inHead && onDisk:
+		return fmt.Errorf("%w: %s; discard its changes by hunk", errTrackedInHead, relpath)
+	case inHead:
+		if out, err := exec.Command("git", "-C", root, "checkout", "HEAD", "--", relpath).CombinedOutput(); err != nil {
+			return fmt.Errorf("git checkout HEAD: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	case onDisk:
+		// -f: a staged new file edited since has index content matching neither
+		// HEAD nor the disk, which plain rm --cached refuses to drop.
+		if out, err := exec.Command("git", "-C", root, "rm", "--cached", "-f", "--quiet", "--ignore-unmatch", "--", relpath).CombinedOutput(); err != nil {
+			return fmt.Errorf("git rm --cached: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return os.Remove(abs)
+	default:
+		return errors.New("nothing to discard: " + relpath + " is neither in HEAD nor on disk")
+	}
+}
+
+// gitInHead reports whether HEAD's tree has relpath (never, while unborn).
+func gitInHead(root, relpath string) (bool, error) {
+	if exec.Command("git", "-C", root, "rev-parse", "--verify", "-q", "HEAD").Run() != nil {
+		return false, nil
+	}
+	out, err := exec.Command("git", "-C", root, "ls-tree", "--name-only", "HEAD", "--", relpath).Output()
+	if err != nil {
+		return false, fmt.Errorf("git ls-tree: %w", err)
+	}
+	return len(bytes.TrimSpace(out)) > 0, nil
+}
+
+// gitInIndex reports whether the index has relpath.
+func gitInIndex(root, relpath string) bool {
+	out, err := exec.Command("git", "-C", root, "ls-files", "--", relpath).Output()
+	return err == nil && len(bytes.TrimSpace(out)) > 0
+}
+
+// gitWorktreeDiffers reports whether relpath on disk differs from the index.
+func gitWorktreeDiffers(root, relpath string) bool {
+	err := exec.Command("git", "-C", root, "diff", "--quiet", "--", relpath).Run()
+	var exit *exec.ExitError
+	return errors.As(err, &exit) && exit.ExitCode() == 1
+}
+
 // gitApplyHunk applies a single unified diff hunk for relpath to the index
 // ("stage" / "unstage") or working tree ("discard" reverses the hunk in place).
 func gitApplyHunk(root, relpath, hunk, action string) error {
@@ -909,19 +978,10 @@ func gitMergeBase(root, a, b string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// gitHunksAgainst parses the unified diff of relpath against base into
-// 1-based NEW-FILE line numbers for a change gutter: added lines, modified
-// (replaced) lines, and one marker per pure-deletion run (the new-file line
-// immediately preceding the removed run; 0 means "before the first line").
-// Fails quiet: empty when git is off/unavailable or the file has no diff
-// against base (clean/untracked). base is "HEAD" for the working-tree
-// gutter, or a PR's merge-base in review mode (server.go's diffBase).
-func gitHunksAgainst(root, relpath, base string) (added, modified, deleted []int) {
-	return parseDiffHunks(gitDiffAgainst(root, relpath, base))
-}
-
-// parseDiffHunks is gitHunksAgainst's body, split out so a commit's own diff
-// (gitDiffCommit) can feed the same gutter parser as a diff against a ref.
+// parseDiffHunks parses a unified diff into 1-based NEW-FILE line numbers for
+// a change gutter: added lines, modified (replaced) lines, and one marker per
+// pure-deletion run (the new-file line immediately preceding the removed run;
+// 0 means "before the first line"). Empty for an empty diff.
 func parseDiffHunks(diff string) (added, modified, deleted []int) {
 	if diff == "" {
 		return nil, nil, nil
@@ -1365,7 +1425,7 @@ func gitDiffCommit(root, relpath, sha string) string {
 	return string(out)
 }
 
-// gitHunksCommit is gitHunksAgainst for a single commit's own diff.
+// gitHunksCommit is parseDiffHunks for a single commit's own diff.
 func gitHunksCommit(root, relpath, sha string) (added, modified, deleted []int) {
 	return parseDiffHunks(gitDiffCommit(root, relpath, sha))
 }

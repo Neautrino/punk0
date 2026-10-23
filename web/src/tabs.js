@@ -219,7 +219,7 @@ export async function openFile(path, opts = {}) {
 // doc and caches on it (each tab keeps its own; switching tabs needs no clear).
 // Fetches on any open in a git repo rather than threading per-file status
 // through every open path — the backend returns available:false for
-// clean/untracked files, so the extra request is cheap and self-limiting.
+// clean files, so the extra request is cheap and self-limiting.
 export async function loadGutter(d) {
   if (!S.meta?.git) return;
   // Same stale-answer guard as drawDiff: the doc may be pointed at a different
@@ -520,15 +520,17 @@ export async function reopenClosedTab() {
 
 // Registered with diff.js: the commit strip's ‹ › open the next file of the
 // commit and close the one stepped away from, so stepping swaps a tab in place
-// rather than leaving one open per file.
+// rather than leaving one open per file. True when the file opened.
 async function stepCommitFile(from, file) {
   const ref = from.diffRef || '';
   const base = from.diffBase || '';
   const turnFiles = from.turnFiles || null;
   const turnLabel = from.turnLabel || '';
   await openFile(file.path, { ref, base, turnFiles, turnLabel, view: 'diff' });
+  if (doc_()?.path !== file.path) return false;
   const i = S.tabs.indexOf(from);
   if (i >= 0 && from !== doc_() && (from.diffRef || '') === ref) closeTab(i);
+  return true;
 }
 
 export function drawTabs() {

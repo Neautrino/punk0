@@ -4,7 +4,7 @@
 // side-by-side split layout (default) or a single-column unified layout.
 // Unlike the code viewport this is not virtualized -- a file's own diff is
 // bounded in size, so a plain DOM render is simple and fast enough.
-import { $, $$, S, doc_, esc, api, apiPostJson, MOD } from './state.js';
+import { $, S, doc_, esc, api, apiPostJson, MOD } from './state.js';
 import { on } from './bus.js';
 import { showToast } from './ui.js';
 import { syncPreview } from './markdown.js';
@@ -14,7 +14,8 @@ import { gotoDefinition } from './lsp.js';
 import { hoverAt } from './hover.js';
 import { pushHistory } from './history.js';
 import { COMMIT_STATUS, loadCommitFiles, cachedCommitFiles } from './commitfiles.js';
-import { hunkHeader, unifiedTable, splitTable } from './difftable.js';
+import { hunkHeader, unifiedTable, splitTable, ICON_FOLD, ICON_UNFOLD } from './difftable.js';
+import { handleGitStatus, triggerRefresh } from './gitstream.js';
 
 export const diffview = $('#diffview');
 const diffContent = $('#diffcontent');
@@ -71,7 +72,7 @@ export async function toggleDiff() {
   const d = doc_();
   if (!d) return;
   if (!d.diffMode && !d.diffAvailable) {
-    setStatusNote(S.meta?.git ? 'No diff — clean or untracked file' : 'No diff — clean file or not a git repo', 4000);
+    setStatusNote(S.meta?.git ? 'No diff — clean file' : 'No diff — clean file or not a git repo', 4000);
     return;
   }
   setDiffMode(d.diffMode ? 'source' : (layoutPref() || 'split'));
@@ -81,7 +82,7 @@ export async function setDiffMode(mode) {
   const d = doc_();
   if (!d) return;
   if (mode !== 'source' && !d.diffAvailable) {
-    setStatusNote(S.meta?.git ? 'No diff — clean or untracked file' : 'No diff — clean file or not a git repo', 4000);
+    setStatusNote(S.meta?.git ? 'No diff — clean file' : 'No diff — clean file or not a git repo', 4000);
     return;
   }
   if (mode === 'source') {
@@ -112,7 +113,14 @@ async function drawDiff(d, force = false) {
       const j = await d.diffReq;
       if ((d.diffRef || '') !== ref || (d.diffBase || '') !== base) return;
       d.diffText = j.diff || '';
+      // A fresh diff may follow an edit: expanded context must re-read the file.
+      d.fullFileLines = d.fullFileRaw = undefined;
       d.diffHunks = j.hunks || parseDiff(d.diffText);
+      // A diff that is one whole file (new or deleted: server wholeFile,
+      // {kind, actions}) gets whole-file actions; large: an untracked file too
+      // big to show as a diff.
+      d.diffWholeFile = j.wholeFile || null;
+      d.diffLarge = !!j.large;
       // In a PR review session the server also splits the diff at the PR's
       // checked-out head commit: prDiff is the PR's own change (frozen since
       // checkout/last Pull), yourDiff is whatever the reviewer has edited or
@@ -125,6 +133,8 @@ async function drawDiff(d, force = false) {
       d.diffHunks = [];
       d.prDiffHunks = undefined;
       d.yourDiffHunks = undefined;
+      d.diffWholeFile = null;
+      d.diffLarge = false;
       setStatusNote('No diff: ' + e.message, 4000);
     } finally {
       d.diffReq = null;
@@ -152,7 +162,8 @@ export function scrollDiffToLine(line) {
   }
 }
 
-function appendHunks(frag, hunks, mode, reviewable, canActOnHunk = false) {
+// actions: the hunk headers' button set (difftable.js ACTIONS), null for none.
+function appendHunks(frag, hunks, mode, reviewable, actions = null) {
   const opts = {
     reviewable,
     lineActions: S.meta?.pr && reviewable ? 'Thread, review comment and line actions' : 'Thread and line actions',
@@ -160,7 +171,7 @@ function appendHunks(frag, hunks, mode, reviewable, canActOnHunk = false) {
   };
   for (let idx = 0; idx < hunks.length; idx++) {
     const hunk = hunks[idx];
-    frag.append(hunkHeader(hunk, { index: idx, expand: true, actions: canActOnHunk }));
+    frag.append(hunkHeader(hunk, { index: idx, expand: expandable(hunk), actions }));
     frag.append(mode === 'unified' ? unifiedTable(hunk, opts) : splitTable(hunk, opts));
   }
 }
@@ -185,7 +196,7 @@ function renderDiff(d) {
     const title = d.turnLabel ? d.turnLabel : ('In commit ' + d.diffRef.slice(0, 7));
     const sub = d.turnLabel ? 'snapshot diff for this agent turn' : 'this commit only, not the working tree';
     frag.append(createDiffSection(d, 'commit', title, sub,
-      (bodyEl) => appendHunks(bodyEl, hunks, d.diffMode, false, false)));
+      (bodyEl) => appendHunks(bodyEl, hunks, d.diffMode, false)));
     diffContent.append(frag);
     syncDiffAgentTargets();
     if (prSyncHandler) prSyncHandler();
@@ -215,23 +226,24 @@ function renderDiff(d) {
     }
     frag.append(createDiffSection(d, 'pr', 'PR changes', 'from ' + (S.meta.pr.base || 'base'), (body) => {
       if (!prHunks.length) body.append(sectionNote('The PR itself makes no change to this file.'));
-      else appendHunks(body, prHunks, d.diffMode, true, false);
+      else appendHunks(body, prHunks, d.diffMode, true);
     }));
 
     const since = S.meta.pr.headSHA ? 'since ' + S.meta.pr.headSHA.slice(0, 7) : 'since checkout';
     frag.append(createDiffSection(d, 'you', 'Your changes', since, (body) => {
       if (!yourHunks.length) body.append(sectionNote('Nothing edited or committed yet — changes you make will show up here.'));
-      else appendHunks(body, yourHunks, d.diffMode, false, true);
+      else appendHunks(body, yourHunks, d.diffMode, false, d.diffWholeFile || 'hunk');
     }));
   } else {
     if (!d.diffHunks || !d.diffHunks.length) {
       const p = document.createElement('div');
       p.className = 'diff-empty';
-      p.textContent = 'No changes against HEAD.';
-      diffContent.append(p);
+      p.textContent = d.diffLarge ? 'New file over 256 KB: too large to show as a diff. Use Source to read it.' : 'No changes against HEAD.';
+      frag.append(p);
+      diffContent.append(frag); // the strip's ‹ › still step on from here
       return;
     }
-    appendHunks(frag, d.diffHunks, d.diffMode, true, true);
+    appendHunks(frag, d.diffHunks, d.diffMode, true, d.diffWholeFile || 'hunk');
   }
   diffContent.append(frag);
   syncDiffAgentTargets();
@@ -345,9 +357,9 @@ function commitStrip(d) {
       '<span class="dcs-path" title="' + path + '">' + path + '</span>' +
       (f.binary ? '' : (f.add ? '<span class="up-file-add">+' + f.add + '</span>' : '') + (f.del ? '<span class="up-file-del">&minus;' + f.del + '</span>' : '')) +
       '<span class="grow"></span>' +
-      '<span class="dcs-pos">' + (i + 1) + ' / ' + files.length + '</span>' +
-      '<button type="button" class="dcs-step" data-commit-step="-1" title="Previous file in this commit"' + (commitStepTarget(files, i, -1) < 0 ? ' disabled' : '') + '>‹</button>' +
-      '<button type="button" class="dcs-step" data-commit-step="1" title="Next file in this commit"' + (commitStepTarget(files, i, 1) < 0 ? ' disabled' : '') + '>›</button>';
+      hunkControls(d) +
+      fileStepButtons('data-commit-step', 'file in this commit', i, files.length,
+        commitStepTarget(files, i, -1) < 0, commitStepTarget(files, i, 1) < 0);
     el.dataset.i = i;
   };
   const have = cachedCommitFiles(d.diffRef);
@@ -385,25 +397,16 @@ export function syncDiffAgentTargets() {
   }
 }
 
-/* ---------- code review state: viewed files, hunk/file stepping, hunk actions ---------- */
+/* ---------- code review: hunk/file stepping, context expansion, hunk actions ---------- */
 
-const viewedFiles = new Set();
+const svg = path => '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + path + '"/></svg>';
+const ICON_HUNK_PREV = svg('m18 15-6-6-6 6');
+const ICON_HUNK_NEXT = svg('m6 9 6 6 6-6');
+const ICON_FILE_PREV = svg('m15 18-6-6 6-6');
+const ICON_FILE_NEXT = svg('m9 18 6-6-6-6');
 
-export function isFileViewed(path) {
-  return viewedFiles.has(path);
-}
-
-export function toggleFileViewed(path) {
-  if (!path) return false;
-  if (viewedFiles.has(path)) viewedFiles.delete(path);
-  else viewedFiles.add(path);
-  const viewed = viewedFiles.has(path);
-  for (const ti of $$('#tree .ti[data-path]')) {
-    if (ti.dataset.path === path) ti.classList.toggle('file-viewed', viewed);
-  }
-  return viewed;
-}
-
+/* The files ‹ › and [f / ]f step through: the turn's or commit's files, else
+   the working tree's changes in the order the file tree lists them. */
 function currentChangedFiles(d = doc_()) {
   if (d?.turnFiles?.length) {
     return d.turnFiles.map(p => (typeof p === 'string' ? { path: p, status: 'M' } : p));
@@ -411,19 +414,58 @@ function currentChangedFiles(d = doc_()) {
   if (d?.diffRef) {
     return cachedCommitFiles(d.diffRef) || [];
   }
-  const list = [];
-  const seen = new Set();
-  for (const el of $$('#tree .ti[data-git]:not([data-dir="1"])')) {
-    const p = el.dataset.path;
-    if (p && !seen.has(p)) {
-      seen.add(p);
-      list.push({ path: p, status: el.dataset.git || 'M' });
-    }
+  const paths = [...(S.meta?.gitFiles || [])];
+  if (d?.path && d.diffAvailable && !paths.includes(d.path)) paths.push(d.path);
+  return paths.sort(treeOrder).map(path => ({ path }));
+}
+
+/* The file tree's order (index.go sortNodes): segment by segment, folders
+   before files, then names case-insensitively. The server lists gitFiles
+   tracked first, untracked after, which stepping must not follow: from an
+   untracked file it would only ever reach other untracked ones. */
+function treeOrder(a, b) {
+  const pa = a.split('/'), pb = b.split('/');
+  for (let i = 0; i < pa.length && i < pb.length; i++) {
+    if (pa[i] === pb[i]) continue;
+    const fileA = i === pa.length - 1, fileB = i === pb.length - 1;
+    if (fileA !== fileB) return fileA ? 1 : -1;
+    const x = pa[i].toLowerCase(), y = pb[i].toLowerCase();
+    return x < y ? -1 : x > y ? 1 : 0;
   }
-  if (d?.path && d.diffAvailable && !seen.has(d.path)) {
-    list.push({ path: d.path, status: 'M' });
+  return pa.length - pb.length;
+}
+
+/* The hunk lists renderDiff draws for d, each numbered against its own new
+   side: the PR's change and your change since checkout in a PR review, else
+   the one diff. */
+function hunkLists(d) {
+  if (!d.diffRef && S.meta?.pr && d.prDiffHunks !== undefined) {
+    return [d.prDiffHunks || [], d.yourDiffHunks || []];
   }
-  return list;
+  return [d.diffHunks || []];
+}
+
+/* ↑ ↓ through the hunks, and one toggle widening every hunk's context or,
+   once any is widened, putting them all back. */
+function hunkControls(d) {
+  const lists = hunkLists(d);
+  const expanded = lists.some(l => l.some(h => h.unexpanded));
+  const none = !expanded && !lists.some(l => l.some(expandable));
+  const expandTitle = none ? 'Whole file shown: no context to add'
+    : expanded ? 'Collapse all hunks to the diff\'s own context' : 'Expand context around all hunks';
+  return '<button type="button" class="dcs-step" data-hunk-step="-1" title="Previous hunk ([c)" aria-label="Previous hunk">' + ICON_HUNK_PREV + '</button>' +
+    '<button type="button" class="dcs-step" data-hunk-step="1" title="Next hunk (]c)" aria-label="Next hunk">' + ICON_HUNK_NEXT + '</button>' +
+    '<button type="button" class="dcs-step" data-hunk-expand-all="1" aria-pressed="' + expanded + '" title="' + expandTitle + '" aria-label="' + expandTitle + '"' + (none ? ' disabled' : '') + '>' + (expanded ? ICON_FOLD : ICON_UNFOLD) + '</button>' +
+    '<span class="dcs-sep" aria-hidden="true"></span>';
+}
+
+/* ‹ › to the previous / next file; where the file sits among them is in the
+   titles. attr is the data attribute the click handler keys on, keys the
+   [prev, next] shortcuts if any. */
+function fileStepButtons(attr, noun, i, n, prevOff, nextOff, keys = null) {
+  const title = (dir, k) => dir + ' ' + noun + (keys ? ' (' + keys[k] + ')' : '') + ' · ' + (i + 1) + ' of ' + n;
+  return '<button type="button" class="dcs-step" ' + attr + '="-1" title="' + title('Previous', 0) + '" aria-label="Previous ' + noun + '"' + (prevOff ? ' disabled' : '') + '>' + ICON_FILE_PREV + '</button>' +
+    '<button type="button" class="dcs-step" ' + attr + '="1" title="' + title('Next', 1) + '" aria-label="Next ' + noun + '"' + (nextOff ? ' disabled' : '') + '>' + ICON_FILE_NEXT + '</button>';
 }
 
 function reviewStrip(d) {
@@ -431,20 +473,12 @@ function reviewStrip(d) {
   const i = files.findIndex(f => f.path === d.path);
   const el = document.createElement('div');
   el.className = 'diff-commit-strip diff-review-strip';
-  const viewed = isFileViewed(d.path);
-  const posHtml = files.length > 0 && i >= 0
-    ? '<span class="dcs-pos">' + (i + 1) + ' / ' + files.length + '</span>' +
-      '<button type="button" class="dcs-step" data-review-step="-1" title="Previous changed file ([f)"' + (i <= 0 ? ' disabled' : '') + '>‹</button>' +
-      '<button type="button" class="dcs-step" data-review-step="1" title="Next changed file (]f)"' + (i >= files.length - 1 ? ' disabled' : '') + '>›</button>'
-    : '';
   el.innerHTML =
     (d.turnLabel ? '<span class="gs git-M">' + esc(d.turnLabel) + '</span>' : '') +
     '<span class="dcs-path" title="' + esc(d.path) + '">' + esc(d.path) + '</span>' +
     '<span class="grow"></span>' +
-    '<button type="button" class="dcs-step dcs-hunk-btn" data-hunk-step="-1" title="Previous diff hunk ([c)">↑ Hunk</button>' +
-    '<button type="button" class="dcs-step dcs-hunk-btn" data-hunk-step="1" title="Next diff hunk (]c)">↓ Hunk</button>' +
-    '<button type="button" class="dcs-viewed' + (viewed ? ' active' : '') + '" data-toggle-viewed="1" title="Mark file as viewed and advance to next unviewed file">✓ Viewed</button>' +
-    posHtml;
+    hunkControls(d) +
+    (i >= 0 ? fileStepButtons('data-review-step', 'changed file', i, files.length, i <= 0, i >= files.length - 1, ['[f', ']f']) : '');
   return el;
 }
 
@@ -460,35 +494,36 @@ export function stepChangedFile(dir = 1) {
     return;
   }
   const files = currentChangedFiles(d);
-  if (!files.length) return;
+  if (!files.length || !commitStepHandler) return;
   const i = files.findIndex(f => f.path === d.path);
-  const nextIdx = i < 0 ? 0 : i + dir;
-  if (nextIdx >= 0 && nextIdx < files.length && commitStepHandler) {
-    commitStepHandler(d, files[nextIdx]);
+  stepTo(d, files, i < 0 ? 0 : i + dir, dir);
+}
+
+/* Opens files[i], else the next file in direction dir that opens. Unlike a
+   commit's list, the working tree's carries no binary flag, and /api/file
+   refuses a binary file, so a failed open is the cue to pass it by. */
+async function stepTo(d, files, i, dir) {
+  for (; i >= 0 && i < files.length; i += dir) {
+    if (await commitStepHandler(d, files[i])) return;
   }
 }
 
+/* Scrolls the next / previous hunk to just under the sticky strip. Passed hunk
+   headers stay stuck at the top, so a hunk's place is read off its body (the
+   header's next sibling), and diffview alone is scrolled: scrollIntoView
+   would move the page's other scroll containers too. */
 export function stepDiffHunk(dir = 1) {
   if (!diffview || diffview.hidden) return;
-  const heads = [...diffview.querySelectorAll('.diff-hunk-head')];
+  // offsetParent is null inside a folded section.
+  const heads = [...diffview.querySelectorAll('.diff-hunk-head')].filter(h => h.nextElementSibling && h.offsetParent);
   if (!heads.length) return;
-  const viewTop = diffview.getBoundingClientRect().top;
-  const threshold = 24;
-  let target = null;
-  if (dir > 0) {
-    target = heads.find(h => h.getBoundingClientRect().top - viewTop > threshold) || heads[0];
-  } else {
-    for (let i = heads.length - 1; i >= 0; i--) {
-      if (heads[i].getBoundingClientRect().top - viewTop < -threshold) {
-        target = heads[i];
-        break;
-      }
-    }
-    if (!target) target = heads[heads.length - 1];
-  }
-  if (target) {
-    target.scrollIntoView({ block: 'start', behavior: 'auto' });
-  }
+  const strip = diffContent.querySelector(':scope > .diff-commit-strip');
+  const top = diffview.getBoundingClientRect().top + (strip?.offsetHeight || 0);
+  const pos = heads.map(h => h.nextElementSibling.getBoundingClientRect().top - h.offsetHeight - top);
+  const slack = 4;
+  let i = dir > 0 ? pos.findIndex(p => p > slack) : pos.findLastIndex(p => p < -slack);
+  if (i < 0) i = dir > 0 ? 0 : heads.length - 1;
+  diffview.scrollTop += pos[i];
 }
 
 function serializeHunk(hunk) {
@@ -532,72 +567,154 @@ async function applyHunkAction(d, hunk, action) {
   }
 }
 
-async function expandHunkContext(d, hunk) {
-  if (!d || !hunk || !hunk.rows?.length) return;
+/* A whole-file diff's buttons (difftable.js FILE_ACTION_TITLES): the same
+   stage / unstage the tree's tick does, and discard, which deletes a new file
+   -- git holds no copy, hence the confirm -- or restores a deleted one. */
+const FILE_ACTIONS = {
+  stage: ['/api/git/stage', 'Staged'],
+  unstage: ['/api/git/unstage', 'Unstaged'],
+  discard: ['/api/git/discard-file', 'Discarded'],
+};
+
+async function applyFileAction(d, action) {
+  const [url, done] = FILE_ACTIONS[action] || [];
+  if (!d || !url) return;
+  const restoring = d.diffWholeFile?.kind === 'deleted';
+  if (action === 'discard' && !restoring && !confirm(`Delete "${d.path}"? It is a new file, so git has no copy to bring back.`)) return;
   try {
-    if (!d.fullFileLines || !d.fullFileRaw) {
-      const j = await api('/api/file', { path: d.path, raw: '1', ref: d.diffRef || '' });
-      d.fullFileLines = j.lines || [];
-      d.fullFileRaw = j.raw || [];
-    }
-    const raw = d.fullFileRaw;
-    const html = d.fullFileLines;
-    if (!raw.length && !html.length) return;
+    const res = await apiPostJson(url, { path: d.path });
+    showToast(action === 'discard' ? (restoring ? 'Restored ' : 'Deleted ') + d.name : done + ' ' + d.name, 'success', 2000);
+    if (res && res.git !== undefined) await handleGitStatus(res);
+    else await triggerRefresh();
+    // A file left changed shows its new state; a clean one's tab has closed.
+    if (doc_() === d) syncDiffView(true);
+  } catch (e) {
+    showToast(action[0].toUpperCase() + action.slice(1) + ' failed: ' + e.message, 'error', 4000);
+  }
+}
 
-    const first = hunk.rows[0];
-    const last = hunk.rows[hunk.rows.length - 1];
-    let firstOld = first.oldLine ?? hunk.oldStart ?? 1;
-    let firstNew = first.newLine ?? first.at ?? hunk.newStart ?? 1;
-    let lastOld = last.oldLine ?? firstOld;
-    let lastNew = last.newLine ?? last.at ?? firstNew;
-    for (const r of hunk.rows) {
-      if (r.oldLine !== undefined) lastOld = r.oldLine;
-      if (r.newLine !== undefined) lastNew = r.newLine;
-    }
+// A hunk at old line 0 adds a whole file, one at new line 0 removes one
+// (with git's default 3 lines of context, nothing else lands there): either
+// way the hunk is the whole file, with no context to add.
+function expandable(hunk) {
+  return hunk.oldStart !== 0 && hunk.newStart !== 0;
+}
 
-    const step = 15;
-    const preCount = Math.min(step, Math.max(0, Math.min(firstOld - 1, firstNew - 1)));
-    const preRows = [];
-    for (let k = preCount; k >= 1; k--) {
-      const nl = firstNew - k;
-      const ol = firstOld - k;
-      preRows.push({
-        type: 'ctx',
-        oldLine: ol,
-        newLine: nl,
-        text: raw[nl - 1] ?? '',
-        html: html[nl - 1] ?? '',
-      });
-    }
+const CONTEXT_STEP = 15;
 
-    const maxNew = Math.max(raw.length, html.length);
-    const postCount = Math.min(step, Math.max(0, maxNew - lastNew));
-    const postRows = [];
-    for (let k = 1; k <= postCount; k++) {
-      const nl = lastNew + k;
-      const ol = lastOld + k;
-      postRows.push({
-        type: 'ctx',
-        oldLine: ol,
-        newLine: nl,
-        text: raw[nl - 1] ?? '',
-        html: html[nl - 1] ?? '',
-      });
-    }
+// The new-side line a hunk starts at / ends on. A leading deletion has no
+// new line; at is the line it sat before.
+function hunkFirstNew(hunk) {
+  const first = hunk.rows[0];
+  return first.newLine ?? first.at ?? hunk.newStart ?? 1;
+}
 
-    if (!preRows.length && !postRows.length) {
-      setStatusNote('Full file context already visible for this hunk', 2500);
-      return;
-    }
-    hunk.rows = [...preRows, ...hunk.rows, ...postRows];
-    hunk.oldStart = Math.max(1, firstOld - preCount);
-    hunk.newStart = Math.max(1, firstNew - preCount);
-    const savedScroll = diffview.scrollTop;
-    renderDiff(d);
-    diffview.scrollTop = savedScroll;
+function hunkLastNew(hunk) {
+  let last = hunkFirstNew(hunk);
+  for (const r of hunk.rows) if (r.newLine !== undefined) last = r.newLine;
+  return last;
+}
+
+async function loadFullFile(d) {
+  if (d.fullFileLines && d.fullFileRaw) return;
+  const j = await api('/api/file', { path: d.path, raw: '1', ref: d.diffRef || '' });
+  d.fullFileLines = j.lines || [];
+  d.fullFileRaw = j.raw || [];
+}
+
+/* Adds up to CONTEXT_STEP file lines of context on each side of hunks[idx],
+   stopping short of its neighbours so no line shows twice, and keeps the git
+   rows in hunk.unexpanded for collapseHunk. False when there was nothing
+   more to show. Needs loadFullFile first. */
+function widenHunk(d, hunks, idx) {
+  const hunk = hunks[idx];
+  const raw = d.fullFileRaw;
+  const html = d.fullFileLines;
+  if (!hunk?.rows?.length || (!raw.length && !html.length)) return false;
+
+  const first = hunk.rows[0];
+  const firstOld = first.oldLine ?? hunk.oldStart ?? 1;
+  const firstNew = hunkFirstNew(hunk);
+  let lastOld = firstOld;
+  for (const r of hunk.rows) if (r.oldLine !== undefined) lastOld = r.oldLine;
+  const lastNew = hunkLastNew(hunk);
+  const floor = idx > 0 ? hunkLastNew(hunks[idx - 1]) : 0;
+  const ceil = idx < hunks.length - 1 ? hunkFirstNew(hunks[idx + 1]) - 1 : Math.max(raw.length, html.length);
+
+  const row = (ol, nl) => ({ type: 'ctx', oldLine: ol, newLine: nl, text: raw[nl - 1] ?? '', html: html[nl - 1] ?? '' });
+  const preCount = Math.min(CONTEXT_STEP, Math.max(0, Math.min(firstOld - 1, firstNew - 1 - floor)));
+  const preRows = [];
+  for (let k = preCount; k >= 1; k--) preRows.push(row(firstOld - k, firstNew - k));
+  const postCount = Math.min(CONTEXT_STEP, Math.max(0, ceil - lastNew));
+  const postRows = [];
+  for (let k = 1; k <= postCount; k++) postRows.push(row(lastOld + k, lastNew + k));
+  if (!preRows.length && !postRows.length) return false;
+
+  hunk.unexpanded ??= { rows: hunk.rows, oldStart: hunk.oldStart, newStart: hunk.newStart };
+  hunk.rows = [...preRows, ...hunk.rows, ...postRows];
+  hunk.oldStart = Math.max(1, firstOld - preCount);
+  hunk.newStart = Math.max(1, firstNew - preCount);
+  return true;
+}
+
+function collapseHunk(hunk) {
+  if (!hunk.unexpanded) return;
+  Object.assign(hunk, hunk.unexpanded);
+  delete hunk.unexpanded;
+}
+
+function redrawKeepingScroll(d) {
+  const savedScroll = diffview.scrollTop;
+  renderDiff(d);
+  diffview.scrollTop = savedScroll;
+}
+
+// One hunk's Expand / Collapse button.
+async function toggleHunkContext(d, hunk) {
+  if (!d || !hunk) return;
+  if (hunk.unexpanded) {
+    collapseHunk(hunk);
+    redrawKeepingScroll(d);
+    return;
+  }
+  const hunks = hunkLists(d).find(l => l.includes(hunk));
+  if (!hunks) return;
+  try {
+    await loadFullFile(d);
   } catch (e) {
     setStatusNote('Cannot expand context: ' + e.message, 3000);
+    return;
   }
+  if (!widenHunk(d, hunks, hunks.indexOf(hunk))) {
+    setStatusNote('Full file context already visible for this hunk', 2500);
+    return;
+  }
+  redrawKeepingScroll(d);
+}
+
+// The strip's toggle: collapse every widened hunk, or widen them all.
+async function toggleAllHunkContext(d) {
+  if (!d) return;
+  const lists = hunkLists(d);
+  if (lists.some(l => l.some(h => h.unexpanded))) {
+    for (const l of lists) l.forEach(collapseHunk);
+    redrawKeepingScroll(d);
+    return;
+  }
+  if (!lists.some(l => l.length)) return;
+  try {
+    await loadFullFile(d);
+  } catch (e) {
+    setStatusNote('Cannot expand context: ' + e.message, 3000);
+    return;
+  }
+  let widened = false;
+  for (const l of lists) for (let i = 0; i < l.length; i++) widened = widenHunk(d, l, i) || widened;
+  if (!widened) {
+    setStatusNote('Full file context already visible', 2500);
+    return;
+  }
+  redrawKeepingScroll(d);
 }
 
 /* ---------- unified diff parsing ---------- */
@@ -684,6 +801,12 @@ export function initDiff() {
   // the diff shows what changed, but reading it usually means seeing it in
   // context, not just the hunk. Clicking a symbol highlights and opens hover actions.
   diffContent.addEventListener('click', e => {
+    const fileActBtn = e.target.closest('[data-file-act]');
+    if (fileActBtn) {
+      e.stopPropagation();
+      applyFileAction(doc_(), fileActBtn.dataset.fileAct);
+      return;
+    }
     const hunkActBtn = e.target.closest('[data-hunk-act]');
     if (hunkActBtn) {
       e.stopPropagation();
@@ -697,7 +820,7 @@ export function initDiff() {
       e.stopPropagation();
       const head = expandBtn.closest('.diff-hunk-head');
       const d = doc_();
-      if (head?._hunk && d) expandHunkContext(d, head._hunk);
+      if (head?._hunk && d) toggleHunkContext(d, head._hunk);
       return;
     }
     const hunkStepBtn = e.target.closest('[data-hunk-step]');
@@ -706,20 +829,9 @@ export function initDiff() {
       stepDiffHunk(+hunkStepBtn.dataset.hunkStep);
       return;
     }
-    const viewedBtn = e.target.closest('[data-toggle-viewed]');
-    if (viewedBtn) {
+    if (e.target.closest('[data-hunk-expand-all]')) {
       e.stopPropagation();
-      const d = doc_();
-      if (!d) return;
-      const nowViewed = toggleFileViewed(d.path);
-      viewedBtn.classList.toggle('active', nowViewed);
-      if (nowViewed) {
-        const files = currentChangedFiles(d);
-        const curIdx = files.findIndex(f => f.path === d.path);
-        const nextUnviewed = files.slice(curIdx + 1).find(f => !isFileViewed(f.path)) ||
-                             files.slice(0, Math.max(0, curIdx)).find(f => !isFileViewed(f.path));
-        if (nextUnviewed && commitStepHandler) commitStepHandler(d, nextUnviewed);
-      }
+      toggleAllHunkContext(doc_());
       return;
     }
     const reviewStep = e.target.closest('[data-review-step]');

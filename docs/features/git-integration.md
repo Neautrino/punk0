@@ -126,12 +126,13 @@ A rebase or merge left half-done from a terminal is shown the same way when px0 
 | Double-click a commit / `Enter` | Recent Commits | Open the commit's first changed file |
 | Hash chip | Recent Commits | Copy the short SHA |
 | `↑` / `↓`, `→` / `←` | Recent Commits | Move between commits and files; expand / collapse |
-| ‹ › | Pinned tab's diff strip | Previous / next file in the commit |
-| `[c` / `]c` | Diff View | Jump to previous / next diff hunk |
+| ‹ › | Diff strip | Previous / next changed file, in the file tree's order (in a pinned tab: the commit's files); binary files are passed over; the tooltip shows the file's position |
+| `[c` / `]c`, ˄ ˅ | Diff View / diff strip | Jump to previous / next diff hunk |
 | `[f` / `]f` | Diff View / Editor | Step to previous / next changed file |
-| **✓ Viewed** | Diff Review Strip | Mark file as reviewed and auto-advance to next unviewed changed file |
-| **↕ Expand** | Diff Hunk Header (`@@ ... @@`) | Expand 15 lines of surrounding file context inline without leaving diff view |
+| Expand all / Collapse all | Diff strip | Add up to 15 lines of file context around every hunk, or put them all back |
+| **Expand / Collapse** | Diff Hunk Header (`@@ ... @@`) | Add up to 15 lines of surrounding file context to that hunk inline, or put it back (not on a new or deleted file: the hunk is already the whole file) |
 | **Stage / Unstage / Discard** | Diff Hunk Header (`@@ ... @@`) | Stage, unstage, or discard a single diff hunk via `git apply --unidiff-zero` |
+| **Stage / Unstage / Discard** | New or deleted file's hunk header | Whole-file actions, each shown only when it would change something: Stage (`git add` / the deletion), Unstage (a new file stays on disk, untracked; a deletion stays on disk), Discard (deletes a new file after a confirm, since git has no copy of it; restores a deleted one from `HEAD`) |
 
 ---
 

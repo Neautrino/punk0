@@ -166,6 +166,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/git/stage"), s.handleGitStage)
 	s.mux.HandleFunc(s.routePath("/api/git/unstage"), s.handleGitUnstage)
 	s.mux.HandleFunc(s.routePath("/api/git/hunk"), s.handleGitHunk)
+	s.mux.HandleFunc(s.routePath("/api/git/discard-file"), s.handleGitDiscardFile)
 	s.mux.HandleFunc(s.routePath("/api/git/commit"), s.handleGitCommit)
 	s.mux.HandleFunc(s.routePath("/api/git/commit-message"), s.handleGitCommitMessage)
 	s.mux.HandleFunc(s.routePath("/api/git/push"), s.handleGitPush)
@@ -1339,12 +1340,12 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// The working tree against the base: its +/- lines are what the
 			// agents page's status bar shows for the file.
-			wt := gitDiffAgainst(s.ix.Root(), rel, s.diffBase)
+			wt := s.worktreeDiff(rel, s.diffBase)
 			add, del = diffLineCounts(wt)
 			diffAvail = wt != ""
 			if !diffAvail && s.pr != nil {
 				diffAvail = gitDiffBetween(s.ix.Root(), rel, s.diffBase, s.prHeadSHA) != "" ||
-					gitDiffAgainst(s.ix.Root(), rel, s.prHeadSHA) != ""
+					s.worktreeDiff(rel, s.prHeadSHA) != ""
 			}
 		}
 	}
@@ -1639,7 +1640,12 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	untracked := s.ix.IsUntracked(rel)
 	diff := gitDiffAgainst(s.ix.Root(), rel, s.diffBase)
+	large := false
+	if diff == "" && untracked {
+		diff, _, large, _ = untrackedDiff(s.ix.Root(), rel)
+	}
 	if ui.Verbose {
 		status := "clean"
 		if diff != "" {
@@ -1648,15 +1654,18 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		}
 		ui.Status("info", "diff", fmt.Sprintf("%s · %s", rel, status), 0, os.Stdout)
 	}
+	whole := s.wholeFileState(rel, diff, untracked)
 	avail := diff != ""
 	resp := map[string]any{
-		"path":  rel,
-		"diff":  diff,
-		"hunks": render.HighlightDiff(rel, diff),
+		"path":      rel,
+		"diff":      diff,
+		"hunks":     render.HighlightDiff(rel, diff),
+		"wholeFile": whole,
+		"large":     large,
 	}
 	if s.pr != nil {
 		prDiff := gitDiffBetween(s.ix.Root(), rel, s.diffBase, s.prHeadSHA)
-		yourDiff := gitDiffAgainst(s.ix.Root(), rel, s.prHeadSHA)
+		yourDiff := s.worktreeDiff(rel, s.prHeadSHA)
 		resp["prDiff"] = prDiff
 		resp["yourDiff"] = yourDiff
 		resp["prHunks"] = render.HighlightDiff(rel, prDiff)
@@ -1667,9 +1676,58 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
+// wholeFile marks a diff that is one whole file -- new (Kind "untracked" or
+// "added") or deleted from disk ("deleted") -- whose one hunk git apply can't
+// stage or reverse into the right state, so the diff view offers whole-file
+// Actions instead: the ones among stage / unstage / discard that would change
+// something.
+type wholeFile struct {
+	Kind    string   `json:"kind"`
+	Actions []string `json:"actions"`
+}
+
+// wholeFileState is rel's wholeFile, nil for an ordinary diff. Staged-new and
+// deleted files are read off git's own diff against HEAD, so not in a PR
+// session, whose base isn't HEAD.
+func (s *Server) wholeFileState(rel, diff string, untracked bool) *wholeFile {
+	root := s.ix.Root()
+	switch {
+	case untracked:
+		return &wholeFile{"untracked", []string{"stage", "discard"}}
+	case s.pr != nil:
+		return nil
+	case strings.Contains(diff, "\nnew file mode "):
+		acts := []string{"unstage", "discard"}
+		if gitWorktreeDiffers(root, rel) { // edited since it was staged
+			acts = append([]string{"stage"}, acts...)
+		}
+		return &wholeFile{"added", acts}
+	case strings.Contains(diff, "\ndeleted file mode "):
+		var acts []string
+		if gitInIndex(root, rel) { // deletion not staged yet
+			acts = append(acts, "stage")
+		}
+		if s.ix.IsStaged(rel) {
+			acts = append(acts, "unstage")
+		}
+		return &wholeFile{"deleted", append(acts, "discard")}
+	}
+	return nil
+}
+
+// worktreeDiff is the working tree's diff of rel against base, with an
+// untracked file, which git diff leaves out, shown as all added.
+func (s *Server) worktreeDiff(rel, base string) string {
+	if diff := gitDiffAgainst(s.ix.Root(), rel, base); diff != "" || !s.ix.IsUntracked(rel) {
+		return diff
+	}
+	diff, _, _, _ := untrackedDiff(s.ix.Root(), rel)
+	return diff
+}
+
 // handleGutter returns per-file changed-line ranges (new-file line numbers) for
 // a VS Code-style change gutter. available is false (200, empty arrays) when
-// git is off/absent or the file is unchanged/untracked; never 500 for those.
+// git is off/absent or the file is unchanged; an untracked file is all added.
 func (s *Server) handleGutter(w http.ResponseWriter, r *http.Request) {
 	_, rel, ok := s.resolvePath(r.URL.Query().Get("path"))
 	if !ok {
@@ -1680,7 +1738,7 @@ func (s *Server) handleGutter(w http.ResponseWriter, r *http.Request) {
 	if ref := r.URL.Query().Get("ref"); ref != "" {
 		added, modified, deleted = gitHunksCommit(s.ix.Root(), rel, ref)
 	} else {
-		added, modified, deleted = gitHunksAgainst(s.ix.Root(), rel, s.diffBase)
+		added, modified, deleted = parseDiffHunks(s.worktreeDiff(rel, s.diffBase))
 	}
 	nz := func(v []int) []int { // marshal as [] not null
 		if v == nil {
@@ -1892,6 +1950,42 @@ func (s *Server) handleGitHunk(w http.ResponseWriter, r *http.Request) {
 		s.gitWatcher.Trigger()
 	}
 	writeJSON(w, map[string]any{"ok": true, "path": rel, "action": body.Action})
+}
+
+// handleGitDiscardFile undoes a whole-file change (POST {path}): deletes a
+// file HEAD lacks, untracked or staged as new, or restores from HEAD one
+// deleted from disk -- the diff view's Discard for a file whose one hunk is
+// the whole file, which git apply can't reverse into "no file" or back into a
+// file. A file in HEAD and on disk is refused (409); its changes go by hunk.
+func (s *Server) handleGitDiscardFile(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	rel, ok := s.decodeGitPath(w, r)
+	if !ok {
+		return
+	}
+	if err := gitDiscardFile(s.ix.Root(), rel); err != nil {
+		code := http.StatusBadGateway
+		if errors.Is(err, errTrackedInHead) {
+			code = http.StatusConflict
+		}
+		fail(w, code, err.Error())
+		return
+	}
+	abs := filepath.Join(s.ix.Root(), filepath.FromSlash(rel))
+	render.Evict(abs)
+	if s.lsp != nil {
+		s.lsp.CloseDoc(abs, rel)
+		s.lsp.RefreshOpenDocs()
+	}
+	s.ix.TouchPath(rel)
+	if s.gitWatcher != nil {
+		writeJSON(w, s.gitWatcher.Refresh())
+		return
+	}
+	s.ix.UpdateGitStatus()
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 // handleGitCommit commits whatever is currently staged (POST {message}).

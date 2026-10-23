@@ -218,7 +218,7 @@ export async function handleGitStatus(data) {
       // clean is exactly when you want to still be reading it.
       if (t.diffRef) continue;
       const code = statuses[t.path];
-      const isDiff = !!code && code !== 'U';
+      const isDiff = !!code; // untracked included: shown as all added
       const wasDiff = !!(t.diffMode || t.openedInDiffView);
       if (wasDiff && (t.diffAvailable || t.diffMode) && !isDiff) {
         closeTab(i);
@@ -230,7 +230,7 @@ export async function handleGitStatus(data) {
   const anyTabModified = S.tabs.some(t => {
     if (t.diffRef) return false; // frozen at a commit; the working tree can't move it
     const code = statuses[t.path];
-    return code && code !== 'U';
+    return !!code;
   });
 
   if (anyTabModified) {
@@ -242,7 +242,7 @@ export async function handleGitStatus(data) {
     for (const t of S.tabs) {
       if (t.diffRef) continue;
       const code = statuses[t.path];
-      const isDiff = !!code && code !== 'U';
+      const isDiff = !!code;
       if (t.diffAvailable !== isDiff) {
         t.diffAvailable = isDiff;
         tabsChanged = true;
@@ -256,7 +256,7 @@ export async function handleGitStatus(data) {
     const curDoc = doc_();
     if (curDoc && !curDoc.diffRef) {
       const curCode = statuses[curDoc.path];
-      const hasDiff = !!curCode && curCode !== 'U';
+      const hasDiff = !!curCode;
 
       if (curDoc.diffAvailable !== hasDiff || curCode) {
         curDoc.diffAvailable = hasDiff;

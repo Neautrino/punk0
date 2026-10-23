@@ -208,24 +208,38 @@ func countDiffLines(chunk string) (add, del int) {
 // untrackedChange shows an untracked file as one hunk adding all of it.
 func untrackedChange(root, rel string) ChangedFile {
 	f := ChangedFile{Path: rel, Status: "U", Hunks: []render.DiffHunk{}}
-	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+	diff, add, large, binary := untrackedDiff(root, rel)
+	f.Large, f.Binary = large, binary
+	if diff != "" {
+		f.Hunks = render.HighlightDiff(rel, diff)
+		f.Add = add
+	}
+	return f
+}
+
+// untrackedDiff is the diff git would show for an untracked file once added:
+// one hunk adding every line (add of them). Git diff leaves untracked files
+// out, so the agents page's Changes view and the editor's diff view build it
+// here. Empty for an empty, unreadable, binary (binary) or over-changeFileMax
+// (large) file.
+func untrackedDiff(root, rel string) (diff string, add int, large, binary bool) {
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Stat(abs)
 	if err != nil || !info.Mode().IsRegular() {
-		return f
+		return "", 0, false, false
 	}
 	if info.Size() > changeFileMax {
-		f.Large = true
-		return f
+		return "", 0, true, false
 	}
-	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	src, err := os.ReadFile(abs)
 	if err != nil {
-		return f
+		return "", 0, false, false
 	}
 	if bytes.IndexByte(src[:min(len(src), 8000)], 0) >= 0 {
-		f.Binary = true
-		return f
+		return "", 0, false, true
 	}
 	if len(src) == 0 {
-		return f
+		return "", 0, false, false
 	}
 	lines := strings.Split(strings.TrimSuffix(string(src), "\n"), "\n")
 	var b strings.Builder
@@ -233,7 +247,5 @@ func untrackedChange(root, rel string) ChangedFile {
 	for _, l := range lines {
 		b.WriteString("+" + l + "\n")
 	}
-	f.Hunks = render.HighlightDiff(rel, b.String())
-	f.Add = len(lines)
-	return f
+	return b.String(), len(lines), false, false
 }
