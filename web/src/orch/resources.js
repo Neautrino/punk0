@@ -1,8 +1,9 @@
 // web/src/orch/resources.js
 // The resource panel the status bar's terminals · agents · RAM button opens:
-// CPU and RAM per workspace, its editor and each terminal, pull request
-// reviews, and punk0 itself, from GET /api/resources (wbresources.go). The
-// server sends ids and figures; names and terminal states come from the store.
+// CPU and RAM per workspace, its editor, its language servers and each
+// terminal, pull request reviews, and punk0 itself, from GET /api/resources
+// (wbresources.go). The server sends ids and figures; names and terminal
+// states come from the store.
 import { $, esc } from '../state.js';
 import { fmtBytes } from '../metricsview.js';
 import { call } from './api.js';
@@ -24,6 +25,7 @@ const fmtCPU = p => p.toFixed(1) + '%';
 const ICON_TERM = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
 const ICON_AGENT = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>';
 const ICON_EDITOR = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>';
+const ICON_LSP = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>';
 const ICON_PR = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>';
 const CHEVRON = '<svg viewBox="0 0 10 10" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2l3 3-3 3"/></svg>';
 
@@ -68,9 +70,14 @@ function render() {
       ${sparkline('ws:' + ws.id)}${figures(ws)}</div>`);
     if (!open) continue;
     if (ws.editor) {
-      out.push(`<div class="wb-res-row wb-res-sub" title="The folder's editor and its language servers">
+      out.push(`<div class="wb-res-row wb-res-sub" title="The folder's editor, without its language servers">
         <span class="wb-res-name"><span class="wb-res-ic">${ICON_EDITOR}</span><span class="wb-res-label">Editor</span></span>
         <span></span>${figures(ws.editor)}</div>`);
+    }
+    if (ws.lsp?.rss > 0) {
+      out.push(`<div class="wb-res-row wb-res-sub" title="The folder's language servers (and a git command now and then)">
+        <span class="wb-res-name"><span class="wb-res-ic">${ICON_LSP}</span><span class="wb-res-label">Language servers</span></span>
+        <span></span>${figures(ws.lsp)}</div>`);
     }
     for (const r of ws.tabs) {
       const t = tabs.find(x => x.id === r.id);

@@ -59,19 +59,19 @@ export function initLsp() {
   // where its language servers are on.
   on('resources', r => {
     const all = r.workspaces || [];
-    usage = all.map(x => ({ w: workspace(x.id), bytes: x.lsp }))
+    usage = all.map(x => ({ w: workspace(x.id), bytes: x.lsp?.rss || 0 }))
       .filter(x => x.w?.lsp && x.bytes > 0);
     // The file's server stopped after being idle: its memory went to nothing
     // while the dot said running. Shown off without a warm, which would
     // start it again and defeat the idle stop; re-showing the file warms.
     const w = workspace();
     const now = all.find(x => x.id === w?.id);
-    if (now && file?.ws === w.id && lastBytes[w.id] > 0 && !(now.lsp > 0) &&
+    if (now && file?.ws === w.id && lastBytes[w.id] > 0 && !(now.lsp?.rss > 0) &&
         (fileServer?.state === 'ready' || fileServer?.state === 'indexing')) {
       warmSeq++;
       fileServer = { state: 'idle', server: fileServer.server };
     }
-    lastBytes = Object.fromEntries(all.map(x => [x.id, x.lsp || 0]));
+    lastBytes = Object.fromEntries(all.map(x => [x.id, x.lsp?.rss || 0]));
     draw();
     drawFolders();
   });

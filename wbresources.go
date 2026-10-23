@@ -3,9 +3,10 @@ package main
 // GET /api/resources: what punk0 costs right now, for the status bar's
 // total and the resource panel it opens. Every figure is a process tree from
 // one process-table snapshot: a terminal is its shell and everything running
-// in it (an agent and the tools it starts), an editor is its punk0 child and
-// its language servers. "self" is the parent plus anything below it that no
-// row claims (git, a child still starting), so the rows add up to the total.
+// in it (an agent and the tools it starts), an editor is its punk0 child
+// alone, and its language servers are everything below that child. "self" is
+// the parent plus anything below it that no row claims (git, a child still
+// starting), so the rows add up to the total.
 
 import (
 	"net/http"
@@ -28,14 +29,14 @@ type resTab struct {
 }
 
 // resWorkspace is a workspace with an editor or a terminal running; usage is
-// their sum. Editor is nil when its folder has no running child. LSP is the
-// memory of everything below its editor's own process: its language
+// their sum. Editor is its folder's child process alone, nil when the folder
+// has no running child. LSP is everything below that child: its language
 // servers, plus a git command now and then (short-lived, so a poll rarely
-// catches one).
+// catches one); nil with Editor.
 type resWorkspace struct {
 	ID     string   `json:"id"`
 	Editor *usage   `json:"editor"`
-	LSP    uint64   `json:"lsp"`
+	LSP    *usage   `json:"lsp"`
 	Tabs   []resTab `json:"tabs"`
 	usage
 }
@@ -90,7 +91,14 @@ func (wb *workbench) resources() resources {
 		p := table.Tree(pid)
 		cpuTimes[key], rss[key] = p.CPU, p.RSS
 	}
-	below := map[string]uint64{} // editor child id -> RSS under its process
+	// An editor's tree splits in two rows: its own process, and everything
+	// below it (its language servers). Together they are the tree, so the
+	// claimed sum below stays a sum of disjoint trees.
+	measureEditor := func(id string, pid int) {
+		tree, own := table.Tree(pid), table[pid]
+		cpuTimes["editor:"+id], rss["editor:"+id] = own.CPU, own.RSS
+		cpuTimes["lsp:"+id], rss["lsp:"+id] = tree.CPU-own.CPU, tree.RSS-own.RSS
+	}
 	all := table.Tree(os.Getpid())
 	cpuTimes["total"], rss["total"] = all.CPU, all.RSS
 
@@ -109,8 +117,7 @@ func (wb *workbench) resources() resources {
 		if pid, ok := editorOf[id]; ok {
 			delete(editorOf, id) // local workspaces of a project share one child
 			editor = id
-			measure("editor:"+id, pid)
-			below[id] = rss["editor:"+id] - table[pid].RSS
+			measureEditor(id, pid)
 		}
 		for _, t := range rw.tabs {
 			measure("tab:"+t.id, t.pid)
@@ -148,10 +155,9 @@ func (wb *workbench) resources() resources {
 	for _, s := range shown {
 		ws := resWorkspace{ID: s.ws.id, Tabs: []resTab{}}
 		if s.editor != "" {
-			e := row("editor:" + s.editor)
-			ws.Editor = &e
-			ws.LSP = below[s.editor]
-			ws.CPU, ws.RSS = e.CPU, e.RSS
+			e, l := row("editor:"+s.editor), row("lsp:"+s.editor)
+			ws.Editor, ws.LSP = &e, &l
+			ws.CPU, ws.RSS = e.CPU+l.CPU, e.RSS+l.RSS
 		}
 		for _, t := range s.ws.tabs {
 			u := row("tab:" + t.id)
