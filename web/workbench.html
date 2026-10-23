@@ -297,11 +297,20 @@
         </button>
       </header>
       <main id="o-viewer" hidden>
-        <!-- The second row: the file's path; for the Changes tab
-             (changes.js) its summary, layout switch and refresh. -->
+        <!-- The second row: the file's path and, in a git checkout, whether
+             it shows the text or the diff; for a diff (changes.js) its
+             summary, layout switch and refresh. -->
         <header id="o-view-head">
           <span id="o-file-title"></span>
           <span id="o-file-meta"></span>
+          <span id="o-file-mode" class="o-acts sidebar-toggle" role="group" aria-label="Show" hidden>
+            <button type="button" class="toggle-btn" data-mode="source" title="The file" aria-label="The file">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+            </button>
+            <button type="button" class="toggle-btn" data-mode="diff" title="Its changes" aria-label="Its changes">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8M8 8h8M8 18h8"/></svg>
+            </button>
+          </span>
           <span id="o-changes-acts" class="o-acts" hidden>
             <span id="o-diff-layout" class="sidebar-toggle" role="group" aria-label="Diff layout" hidden>
               <button type="button" class="toggle-btn" data-layout="unified" title="One column" aria-label="One column">

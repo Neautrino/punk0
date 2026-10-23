@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,34 @@ func TestChanges(t *testing.T) {
 		if f.Hunks[0].NewStart != 1 || r.Type != "add" || r.NewLine != 1 || r.Text != "untracked" || r.HTML == "" {
 			t.Errorf("untracked hunk = %+v, want one added line 1 'untracked' with HTML", f.Hunks[0])
 		}
+	}
+
+	// ?path= keeps just that file: a rename still with its old side, an
+	// untracked file, and nothing for an unchanged one.
+	for _, c := range []struct{ path, status, from string }{
+		{"sub/ren2.go", "R", "sub/ren.go"},
+		{"untr.go", "U", ""},
+		{"sub/ren.go", "", ""},
+	} {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, httptest.NewRequest("GET", "/api/changes?path="+url.QueryEscape(c.path), nil))
+		var one struct {
+			Files []ChangedFile `json:"files"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil || rec.Code != 200 {
+			t.Fatalf("path %s: status %d: %s", c.path, rec.Code, rec.Body)
+		}
+		switch {
+		case c.status == "" && len(one.Files) != 0:
+			t.Errorf("path %s: files %+v, want none", c.path, one.Files)
+		case c.status != "" && (len(one.Files) != 1 || one.Files[0].Path != c.path || one.Files[0].Status != c.status || one.Files[0].From != c.from):
+			t.Errorf("path %s: files %+v, want one, status %s from %q", c.path, one.Files, c.status, c.from)
+		}
+	}
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest("GET", "/api/changes?path=../x", nil))
+	if rec.Code != 400 {
+		t.Errorf("path ../x: status %d, want 400", rec.Code)
 	}
 }
 

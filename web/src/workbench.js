@@ -77,17 +77,19 @@ subscribe(() => {
   viewerPane.hidden = !v.file;
   emptyPane.hidden = !v.welcome;
 
-  const fileKey = v.file ? `${w.id}\n${v.file.id}` : null;
+  // A file tab shows its text, or its diff as the Changes tab shows all of
+  // them; switching between the two is a different key.
+  const diff = !!(v.file?.changes || v.file?.diff);
+  const fileKey = v.file ? `${w.id}\n${v.file.id}\n${diff}` : null;
   if (fileKey !== shownFile) {
     shownFile = fileKey;
-    const changes = !!v.file?.changes;
-    codeVp.hidden = changes;
-    changesVp.hidden = !changes;
-    if (v.file && !changes) showFile(w, v.file.path);
+    codeVp.hidden = diff;
+    changesVp.hidden = !diff;
+    if (v.file && !diff) showFile(w, v.file.path);
     else hideFile();
-    if (!changes) hideChanges();
+    if (!diff) hideChanges();
   }
-  if (v.file?.changes) showChanges(w, v.collapsed === 'term');
+  if (diff) showChanges(w, v.collapsed === 'term', v.file.changes ? '' : v.file.path);
 
   const was = front;
   front = activeTab()?.id || null;

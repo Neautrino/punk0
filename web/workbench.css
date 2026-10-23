@@ -549,6 +549,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-chg-head .mini { margin-left: 0; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .o-chg-head .mini:hover { background: var(--bg4); }
 #o-diff-vp .diff-hunk-head { top: 28px; }
+#o-diff-vp.o-diff-one .diff-hunk-head { top: 0; }
 #o-diff-vp .o-note { font-family: var(--ui); }
 
 /* Files pane: changed files only. Folders carry the backend's dirty flag,

@@ -35,30 +35,46 @@ type ChangedFile struct {
 // handleChanges returns every changed file of the served folder with its
 // hunks, for the agents page's Diff view: one request instead of one
 // /api/diff per file, and untracked files, which git diff leaves out, as
-// wholly added.
+// wholly added. ?path= narrows it to that one file, for a file tab showing
+// its diff; an unchanged file comes back as no files.
 func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request) {
 	root := s.ix.Root()
+	only := ""
+	if p := r.URL.Query().Get("path"); p != "" {
+		_, rel, ok := s.safePath(p)
+		if !ok {
+			fail(w, 400, "bad path")
+			return
+		}
+		only = rel
+	}
 	if !gitAvailable(root) {
 		writeJSON(w, map[string]any{"git": false, "files": []ChangedFile{}})
 		return
 	}
-	files, truncated := gitChanges(root, s.diffBase)
+	files, truncated := gitChanges(root, s.diffBase, only)
 	writeJSON(w, map[string]any{"git": true, "files": files, "truncated": truncated})
 }
 
 // gitChanges diffs the working tree under root against base, renames
 // detected, and adds the untracked files, sorted by path. Paths are relative
-// to root; changes outside it are left out.
-func gitChanges(root, base string) ([]ChangedFile, bool) {
+// to root; changes outside it are left out. A non-empty only keeps just that
+// path; the whole tree is still diffed, so a renamed file keeps its old side.
+func gitChanges(root, base, only string) ([]ChangedFile, bool) {
 	files := []ChangedFile{}
 	out, err := exec.Command("git", "-C", root, "diff", "--no-color", "--no-ext-diff", "-M", "--relative", base).Output()
 	if err == nil {
 		for _, chunk := range splitDiffFiles(string(out)) {
-			files = append(files, parseDiffFile(chunk))
+			f := diffFileHead(chunk)
+			if only == "" || f.Path == only {
+				files = append(files, diffFileBody(f, chunk))
+			}
 		}
 	}
 	for _, rel := range gitUntracked(root) {
-		files = append(files, untrackedChange(root, rel))
+		if only == "" || rel == only {
+			files = append(files, untrackedChange(root, rel))
+		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	if len(files) > changesMax {
@@ -90,9 +106,9 @@ func splitDiffFiles(diff string) []string {
 	return chunks
 }
 
-// parseDiffFile reads one file's chunk of a git diff: its path and status
-// from the extended header, then its hunks.
-func parseDiffFile(chunk string) ChangedFile {
+// diffFileHead reads one file's chunk of a git diff up to its hunks: its
+// path and status from the extended header.
+func diffFileHead(chunk string) ChangedFile {
 	f := ChangedFile{Status: "M", Hunks: []DiffHunk{}}
 	head, _, _ := strings.Cut(chunk, "\n@@")
 	for i, line := range strings.Split(head, "\n") {
@@ -112,6 +128,12 @@ func parseDiffFile(chunk string) ChangedFile {
 			f.Binary = true
 		}
 	}
+	return f
+}
+
+// diffFileBody adds the chunk's hunks, highlighted, and their line counts to
+// f, its header read by diffFileHead.
+func diffFileBody(f ChangedFile, chunk string) ChangedFile {
 	if len(chunk) > changeFileMax {
 		f.Large = true
 		f.Add, f.Del = countDiffLines(chunk)

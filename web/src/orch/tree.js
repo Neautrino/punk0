@@ -4,8 +4,11 @@
 // tab; the active file tab's row stays highlighted. Rows use the app's tree
 // classes (style.css), so both views look alike. In a git checkout the
 // pane shows only the changed files, their folders opened, until the
-// head's switch asks for all of them (punk0.treeMode).
+// head's switch asks for all of them (punk0.treeMode). The tree follows
+// git through the editor's git-status stream (w/<id>/api/stream), as the
+// editor's own tree does (gitstream.js).
 import { $, esc } from '../state.js';
+import { on } from '../bus.js';
 import { call } from './api.js';
 import { subscribe, workspace, projectOf, openFile, hasGit } from './store.js';
 import { view } from './split.js';
@@ -43,6 +46,15 @@ let treeEl, footEl, branchEl, modeEl;
 let treeWs = ''; // workspace id the tree shows
 let treeHref = ''; // its folder's backend, "w/<id>/"
 let activePath = null;
+// The git-status stream of the folder the tree shows, open only while the
+// page is in view and the files pane shown: an open request counts as using
+// the folder's editor, and would keep a hidden pane's or a backgrounded
+// page's editor from its idle stop (workbench.go's reapChildren).
+let stream = null;
+let streamFor = '';
+let retryTimer = 0;
+let gitSig = ''; // the last statuses the tree was redrawn for
+let refreshing = null, refreshAgain = false;
 
 export function initTree() {
   treeEl = $('#o-tree');
@@ -59,6 +71,48 @@ export function initTree() {
     renderTree();
   });
   subscribe(renderTree);
+  on('pane:toggled', () => syncStream());
+  document.addEventListener('visibilitychange', () => syncStream());
+}
+
+// syncStream opens the stream for the tree's folder when it should be open,
+// and closes it otherwise. fresh: the tree is being drawn right now, so the
+// stream's first snapshot is what it shows; otherwise (the pane or the page
+// back in view) the tree may be stale and a changed snapshot redraws it.
+function syncStream(fresh = false) {
+  const want = treeWs && !workspace()?.missing && document.visibilityState === 'visible' &&
+    !$('#wb-app').classList.contains('hide-right') ? treeWs : '';
+  if (want === streamFor && (stream || retryTimer)) return;
+  closeStream();
+  if (!want) return;
+  streamFor = want;
+  let skip = fresh;
+  const es = stream = new EventSource(treeHref + 'api/stream');
+  es.addEventListener('git-status', e => {
+    if (stream !== es) return;
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    const sig = JSON.stringify([d.statuses || {}, d.dirtyDirs || {}]);
+    const quiet = skip;
+    skip = false;
+    if (sig === gitSig) return;
+    gitSig = sig;
+    if (!quiet) refreshTree();
+  });
+  es.onerror = () => {
+    if (stream !== es) return;
+    closeStream();
+    streamFor = want;
+    retryTimer = setTimeout(() => { retryTimer = 0; streamFor = ''; syncStream(); }, 1500);
+  };
+}
+
+function closeStream() {
+  clearTimeout(retryTimer);
+  retryTimer = 0;
+  stream?.close();
+  stream = null;
+  streamFor = '';
 }
 
 // changesOnly says whether the tree shows only changed files: the switch's
@@ -82,8 +136,10 @@ function renderTree() {
     treeWs = w?.id || '';
     treeHref = w?.href || '';
     treeEl.innerHTML = '';
+    gitSig = '';
     if (w?.missing) treeEl.innerHTML = '<p class="o-note">The folder of this workspace is gone.</p>';
     else if (w) drawDir('', treeEl, 0);
+    syncStream(true);
   } else if (only && !was) {
     expandDirty(treeEl);
   }
@@ -153,8 +209,10 @@ function onTreeClick(e) {
     if (open && !kids.hasChildNodes()) drawDir(dirRow.dataset.dir, kids, +dirRow.dataset.depth + 1);
     return;
   }
+  // In the changed-files view a file opens as its diff, as in the editor;
+  // in all files, its tab keeps showing what it showed.
   const fileRow = e.target.closest('.tr.file');
-  if (fileRow) openFile(fileRow.dataset.file);
+  if (fileRow) openFile(fileRow.dataset.file, treeEl.classList.contains('changed-only') ? 'diff' : undefined);
 }
 
 function collapseTree() {
@@ -162,8 +220,24 @@ function collapseTree() {
 }
 
 // refreshTree redraws the tree, reopening the folders that were open, outer
-// ones first so their rows exist when the inner ones are looked up.
-async function refreshTree() {
+// ones first so their rows exist when the inner ones are looked up. A call
+// while one runs is folded into one more run after it.
+function refreshTree() {
+  if (refreshing) {
+    refreshAgain = true;
+    return refreshing;
+  }
+  refreshing = redraw().finally(() => {
+    refreshing = null;
+    if (refreshAgain) {
+      refreshAgain = false;
+      refreshTree();
+    }
+  });
+  return refreshing;
+}
+
+async function redraw() {
   if (!treeWs || workspace()?.missing) return;
   const from = treeWs;
   const open = [...treeEl.querySelectorAll('.tr.dir.open')].map(r => r.dataset.dir);

@@ -33,9 +33,11 @@ Settings → Appearance → **File View** (`layout.fileView`): `beside` (the def
 
 ### Changed files and the diff
 
-In a git checkout the files pane lists only the files changed against `HEAD`, untracked ones included, with their folders opened. The switch in its head (folder | branch) shows all files instead; the choice is remembered in this browser. Refresh re-reads the changes.
+In a git checkout the files pane lists only the files changed against `HEAD`, untracked ones included, with their folders opened. The switch in its head (folder | branch) shows all files instead; the choice is remembered in this browser. The pane follows git as files change, while the page is in view and the pane shown; Refresh re-reads it at any time.
 
-**Diff** opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals the diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. The tab re-reads the changes each time it comes into view, and with the refresh button in the path row.
+Clicking a file in the changed-files view opens it as its diff: one tab per file, as in the editor. In a git checkout the path row of a file tab has a switch between the file's text and its diff; a file opened from all files keeps what its tab showed, the text at first.
+
+**Diff** opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals a diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. A diff re-reads the changes each time it comes into view, and with the refresh button in the path row.
 
 ## Sidebar
 

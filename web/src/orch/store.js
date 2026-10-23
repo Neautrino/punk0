@@ -28,6 +28,7 @@ export const state = {
   // file tab, and which of the two was used last.
   tabs: loadJSON('punk0.tabs', {}),
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
+  diffs: loadJSON('punk0.fileDiff', {}), // workspace id -> open file paths shown as their diff
   changes: loadJSON('punk0.changes', {}), // workspace id -> true while its Changes tab is open
   // The split layout's collapsed group: '', 'term' (files maximized) or
   // 'file' (file panel hidden). Selecting a tab of that group shows it again.
@@ -77,12 +78,12 @@ export function reload() {
   return reloading;
 }
 
-// pruneFiles forgets the open files and Changes tabs of workspaces that no
-// longer exist.
+// pruneFiles forgets the open files, diffs and Changes tabs of workspaces
+// that no longer exist.
 function pruneFiles() {
   if (!state.projects.length) return; // not loaded yet: keep what is stored
   const ids = new Set(state.projects.flatMap(p => p.workspaces.map(w => w.id)));
-  for (const [key, map] of [['punk0.files', state.files], ['punk0.changes', state.changes]]) {
+  for (const [key, map] of [['punk0.files', state.files], ['punk0.fileDiff', state.diffs], ['punk0.changes', state.changes]]) {
     const stale = Object.keys(map).filter(id => !ids.has(id));
     if (!stale.length) continue;
     for (const id of stale) delete map[id];
@@ -126,13 +127,15 @@ export function tabsOf(w) {
 }
 
 // fileTabsOf lists the file group's tabs. The Changes tab is one of them,
-// with changes set and no path.
+// with changes set and no path; a file shown as its diff has diff set.
 export function fileTabsOf(w) {
+  const diffs = state.diffs[w?.id] || [];
   const files = (state.files[w?.id] || []).map(path => ({
     id: fileTabId(path),
     kind: 'file',
     path,
     name: path.slice(path.lastIndexOf('/') + 1),
+    diff: diffs.includes(path),
   }));
   return state.changes[w?.id] ? [{ id: CHANGES_TAB, kind: 'file', changes: true, name: 'Changes' }, ...files] : files;
 }
@@ -189,12 +192,19 @@ export function setCollapsed(kind) {
 }
 
 // openFile shows path in a tab of the selected workspace, reusing its tab
-// if it is already open.
-export function openFile(path) {
+// if it is already open. mode 'diff' shows the file's diff, 'source' its
+// text; without one, an open tab keeps what it shows and a new one shows
+// the text.
+export function openFile(path, mode) {
   const open = (state.files[state.ws] ||= []);
   if (!open.includes(path)) {
     open.push(path);
     saveJSON('punk0.files', state.files);
+  }
+  const diffs = state.diffs[state.ws] || [];
+  if (mode && (mode === 'diff') !== diffs.includes(path)) {
+    state.diffs[state.ws] = mode === 'diff' ? [...diffs, path] : diffs.filter(p => p !== path);
+    saveJSON('punk0.fileDiff', state.diffs);
   }
   selectTab(fileTabId(path));
 }
@@ -214,6 +224,10 @@ export function openChanges() {
 export function closeFile(path) {
   state.files[state.ws] = (state.files[state.ws] || []).filter(p => p !== path);
   saveJSON('punk0.files', state.files);
+  if (state.diffs[state.ws]?.includes(path)) {
+    state.diffs[state.ws] = state.diffs[state.ws].filter(p => p !== path);
+    saveJSON('punk0.fileDiff', state.diffs);
+  }
   closedFileTab();
 }
 
