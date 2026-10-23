@@ -78,14 +78,15 @@ subscribe(() => {
   emptyPane.hidden = !v.welcome;
 
   // A file tab shows its text, or its diff as the Changes tab shows all of
-  // them; switching between the two is a different key.
+  // them; switching between the two is a different key. A file's diff keeps
+  // its details in the status bar; the Changes tab is no one file.
   const diff = !!(v.file?.changes || v.file?.diff);
   const fileKey = v.file ? `${w.id}\n${v.file.id}\n${diff}` : null;
   if (fileKey !== shownFile) {
     shownFile = fileKey;
     codeVp.hidden = diff;
     changesVp.hidden = !diff;
-    if (v.file && !diff) showFile(w, v.file.path);
+    if (v.file && !v.file.changes) showFile(w, v.file.path, diff);
     else hideFile();
     if (!diff) hideChanges();
   }

@@ -75,7 +75,7 @@
   border: 0; border-radius: var(--r); background: none; cursor: pointer;
   font: 11px var(--mono); color: var(--dim);
 }
-.wb-agent-state[hidden] { display: none; }
+.wb-agent-state[hidden], .wb-st-btn[hidden] { display: none; }
 .wb-agent-state:hover, .wb-st-btn:hover, .wb-st-btn[aria-expanded="true"] { color: var(--fg); background: var(--bg4); }
 .wb-agent-state:focus-visible, .wb-st-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .wb-agent-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }

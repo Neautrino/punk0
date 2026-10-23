@@ -8,7 +8,7 @@
 // shows its cursor (a click places it; clicking Ln / Col or Mod+G opens Go
 // to line), its line count, +/- lines against HEAD, tab size, encoding and
 // line endings, and the LSP item (lsp.js) takes the file's language as its
-// name.
+// name. A file tab switched to its diff keeps all of that but the cursor.
 import { $, esc, MOD, withKeys } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, pageURL } from './api.js';
@@ -24,6 +24,7 @@ let tabSize = 4; // editor.tabSize: how wide a tab renders and counts in Col
 let viewWs = ''; // workspace id of the open files below
 let viewHref = ''; // its folder's backend, "w/<id>/"
 let current = null; // { path, doc, top, cur, image, error } shown now
+let diffView = false; // current is shown as its diff (changes.js), not its text
 const opened = new Map(); // path -> the same, for the workspace viewWs
 
 export function initViewer() {
@@ -73,14 +74,15 @@ export function initViewer() {
   // Mod+G only while a file is in front; in a terminal the key is the shell's.
   addEventListener('keydown', e => {
     if (e.key.toLowerCase() !== 'g' || !e[MOD] || e.shiftKey || e.altKey) return;
-    if (!current?.doc || e.target.closest?.('#o-term')) return;
+    if (!current?.doc || diffView || e.target.closest?.('#o-term')) return;
     e.preventDefault();
     openGoto();
   });
 }
 
-// showFile displays path of workspace w, loading it on first view.
-export function showFile(w, path) {
+// showFile displays path of workspace w, loading it on first view. With
+// diff, the tab shows the file's diff instead: only the status bar is ours.
+export function showFile(w, path, diff = false) {
   if (w.id !== viewWs) {
     viewWs = w.id;
     viewHref = w.href;
@@ -93,6 +95,7 @@ export function showFile(w, path) {
     loadFile(f);
   }
   current = f;
+  diffView = diff;
   fileTitle.textContent = path;
   paint();
 }
@@ -153,12 +156,13 @@ function takeChunk(d, c, j) {
 
 function paint() {
   const f = current;
+  drawStatus();
+  announce();
+  if (diffView) return;
   codeRows.innerHTML = '';
   codeRows.style.transform = '';
   codeSizer.style.height = '0px';
   codeVp.classList.toggle('o-image', f.image);
-  drawStatus();
-  announce();
   if (f.error) {
     fileMeta.textContent = '';
     codeRows.innerHTML = `<p class="o-note o-err">${esc(f.error)}</p>`;
@@ -182,11 +186,14 @@ function paint() {
 }
 
 // drawStatus fills #st-file for a text file in front, and hides it for
-// anything else: an image, an error, a file still loading, a terminal.
+// anything else: an image, an error, a file still loading, a terminal. A
+// diff has no cursor, so no Ln / Col.
 function drawStatus() {
   const d = current?.doc;
   stFile.hidden = !d;
-  if (!d) return closeGoto();
+  stPos.hidden = diffView;
+  if (!d || diffView) closeGoto();
+  if (!d) return;
   const { line, col } = current.cur || { line: 1, col: 1 };
   stPos.textContent = `Ln ${line}, Col ${col}`;
   stLines.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
@@ -226,7 +233,7 @@ function setCursor(line, col) {
 
 // Go to line: a box above Ln / Col taking "line" or "line:column".
 function openGoto() {
-  if (!current?.doc) return;
+  if (!current?.doc || diffView) return;
   gotoIn.value = '';
   gotoIn.placeholder = `Line 1–${current.doc.total}, or line:column`;
   gotoEl.hidden = false;
