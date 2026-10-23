@@ -1503,6 +1503,7 @@ type GitStatusPayload struct {
 	Branch        string            `json:"branch,omitempty"`        // Active branch name
 	RecentCommits []GitCommit       `json:"recentCommits,omitempty"` // Recent git commits for commit list UI
 	CommitsURL    string            `json:"commitsUrl,omitempty"`    // Web URL to view commits on GitHub/forge
+	Upstream      string            `json:"upstream,omitempty"`      // Tracking branch ("origin/feat"), "" when none is configured
 	Ahead         int               `json:"ahead"`                   // Commits ahead of upstream tracking branch
 	Behind        int               `json:"behind"`                  // Commits behind upstream tracking branch
 	Rewritten     bool              `json:"rewritten,omitempty"`     // PR mode: HEAD no longer contains the PR head (an unpushed rebase); only a force-push updates the PR
@@ -1539,6 +1540,7 @@ type GitWatcher struct {
 	lastBranch     string
 	lastCommits    []GitCommit
 	lastCommitsURL string
+	lastUpstream   string
 	hasMetaCache   bool
 	lastReady      bool
 	lastInGit      bool
@@ -1754,7 +1756,7 @@ func (gw *GitWatcher) refreshInternal(worktreeOnly bool) (GitStatusPayload, bool
 	var recentCommits []GitCommit
 	var ahead, behind int
 	var rewritten bool
-	var branch, commitsURL string
+	var branch, commitsURL, upstream string
 	if inGit {
 		pushedHead := gw.ix.PushedHead()
 		gw.mu.Lock()
@@ -1766,6 +1768,7 @@ func (gw *GitWatcher) refreshInternal(worktreeOnly bool) (GitStatusPayload, bool
 			rewritten = gw.lastRewritten
 			branch = gw.lastBranch
 			commitsURL = gw.lastCommitsURL
+			upstream = gw.lastUpstream
 		}
 		gw.mu.Unlock()
 
@@ -1781,9 +1784,10 @@ func (gw *GitWatcher) refreshInternal(worktreeOnly bool) (GitStatusPayload, bool
 			}
 			branch = gitCurrentBranch(gw.root)
 			commitsURL = gitCommitsWebURL(gw.root, branch)
+			upstream = gitUpstreamRef(gw.root)
 
 			gw.mu.Lock()
-			if headCommit != gw.lastHeadCommit || branch != gw.lastBranch || ahead != gw.lastAhead || behind != gw.lastBehind || rewritten != gw.lastRewritten {
+			if headCommit != gw.lastHeadCommit || branch != gw.lastBranch || ahead != gw.lastAhead || behind != gw.lastBehind || rewritten != gw.lastRewritten || upstream != gw.lastUpstream {
 				gw.lastHeadCommit = headCommit
 				gw.lastAhead = ahead
 				gw.lastBehind = behind
@@ -1794,6 +1798,7 @@ func (gw *GitWatcher) refreshInternal(worktreeOnly bool) (GitStatusPayload, bool
 			gw.lastBranch = branch
 			gw.lastCommits = recentCommits
 			gw.lastCommitsURL = commitsURL
+			gw.lastUpstream = upstream
 			if ready {
 				gw.hasMetaCache = true
 			}
@@ -1813,6 +1818,7 @@ func (gw *GitWatcher) refreshInternal(worktreeOnly bool) (GitStatusPayload, bool
 		Branch:        branch,
 		RecentCommits: recentCommits,
 		CommitsURL:    commitsURL,
+		Upstream:      upstream,
 		Ahead:         ahead,
 		Behind:        behind,
 		Rewritten:     rewritten,

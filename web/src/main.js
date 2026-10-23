@@ -24,7 +24,7 @@ import { initSettings } from './settings.js';
 import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
 import { initGitStream, triggerRefresh } from './gitstream.js';
-import { initGitPanel, syncGitPanelMeta } from './gitpanel.js';
+import { initGitPanel, syncGitPanelMeta, revealGitPanel } from './gitpanel.js';
 import { initPR } from './pr.js';
 import { initLineComment } from './linecomment.js';
 import { initUnpushed, refreshUnpushed } from './unpushed.js';
@@ -159,16 +159,19 @@ initPRScope();
   const initialLine = parseInt(params.get('line'), 10) || undefined;
   if (initialPath) {
     await openFile(initialPath, { line: initialLine });
+  } else {
+    if (hasGitChanges) await selectChangedFileTab();
+  }
+  // ?panel=git: opened from the agents page's branch bar, for its git panel.
+  if (params.get('panel') === 'git') revealGitPanel();
+  if (initialPath || params.has('panel')) {
     try {
       const u = new URL(window.location.href);
-      u.searchParams.delete('path');
-      u.searchParams.delete('line');
+      for (const k of ['path', 'line', 'panel']) u.searchParams.delete(k);
       const cleanSearch = u.searchParams.toString();
       const cleanUrl = u.pathname + (cleanSearch ? '?' + cleanSearch : '') + u.hash;
       window.history.replaceState({}, '', cleanUrl);
     } catch {}
-  } else {
-    if (hasGitChanges) await selectChangedFileTab();
   }
 
   if (inGitMode()) {

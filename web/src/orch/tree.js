@@ -4,13 +4,14 @@
 // tab; the active file tab's row stays highlighted. Rows use the app's tree
 // classes (style.css), so both views look alike. In a git checkout the
 // pane shows only the changed files, their folders opened, until the
-// head's switch asks for all of them (punk0.treeMode). The tree follows
-// git through the editor's git-status stream (w/<id>/api/stream), as the
-// editor's own tree does (gitstream.js).
+// head's switch asks for all of them (punk0.treeMode). The tree follows git
+// through the editor's git-status stream (w/<id>/api/stream), as the
+// editor's own tree does (gitstream.js); each snapshot also goes out as
+// 'git:status' for the git bar and drawer below the tree (git.js).
 import { $, esc } from '../state.js';
-import { on } from '../bus.js';
-import { call } from './api.js';
-import { subscribe, workspace, projectOf, openFile, hasGit } from './store.js';
+import { on, emit } from '../bus.js';
+import { call, failed } from './api.js';
+import { subscribe, workspace, openFile, hasGit } from './store.js';
 import { view } from './split.js';
 
 /* git status letter -> CSS class + label, as in the app's tree. */
@@ -42,7 +43,7 @@ export function fileKind(name) {
 
 const MODE_KEY = 'punk0.treeMode';
 
-let treeEl, footEl, branchEl, modeEl;
+let treeEl, modeEl;
 let treeWs = ''; // workspace id the tree shows
 let treeHref = ''; // its folder's backend, "w/<id>/"
 let activePath = null;
@@ -58,8 +59,6 @@ let refreshing = null, refreshAgain = false;
 
 export function initTree() {
   treeEl = $('#o-tree');
-  footEl = $('#o-files-foot');
-  branchEl = $('#o-files-branch');
   modeEl = $('#o-tree-mode');
   treeEl.addEventListener('click', onTreeClick);
   $('#o-tree-collapse').addEventListener('click', collapseTree);
@@ -92,6 +91,8 @@ function syncStream(fresh = false) {
     if (stream !== es) return;
     let d;
     try { d = JSON.parse(e.data); } catch { return; }
+    emit('git:status', { ws: want, data: d });
+    markStaged(d.staged || {});
     const sig = JSON.stringify([d.statuses || {}, d.dirtyDirs || {}]);
     const quiet = skip;
     skip = false;
@@ -143,11 +144,6 @@ function renderTree() {
   } else if (only && !was) {
     expandDirty(treeEl);
   }
-  const p = w && projectOf(w.id);
-  const branch = w?.kind === 'worktree' ? w.branch : w?.kind === 'local' ? p.branch : '';
-  footEl.hidden = !branch;
-  branchEl.textContent = branch || '';
-
   activePath = view().file?.path ?? null;
   markActive();
 }
@@ -180,12 +176,45 @@ async function drawDir(dir, container, depth) {
     const g = GIT_STATUS[c.status];
     const badge = g ? `<span class="gs" title="git: ${g[1]}">${esc(c.status)}</span>` : '';
     return `<div class="tr file${ig}${g ? ' dirty ' + g[0] : ''}" data-file="${esc(c.path)}" style="padding-left:${pad + 12}px" title="${esc(c.path)}">` +
-      `<span class="ic" data-t="${fileKind(c.name)}"></span><span class="nm">${esc(c.name)}</span>${badge}</div>`;
+      `<span class="ic" data-t="${fileKind(c.name)}"></span><span class="nm">${esc(c.name)}</span>${badge}${g ? tick(c.path, !!c.staged) : ''}</div>`;
   }).join('') || (dir ? '' : '<p class="o-note">No files.</p>');
   if (!dir) treeEl.classList.toggle('no-changes', !treeEl.querySelector('.dirty'));
   if (treeEl.classList.contains('changed-only')) expandDirty(container);
   markActive();
   return true;
+}
+
+// A changed file's stage tick, as the editor's tree has it: empty while
+// unstaged, filled once staged; a click stages or unstages that one file.
+const tick = (path, on) =>
+  `<button type="button" class="stage-tick${on ? ' staged' : ''}" data-stage="${esc(path)}" aria-pressed="${on}" title="${on ? 'Staged: click to unstage' : 'Stage file'}"></button>`;
+
+// markStaged sets the ticks drawn to the index's state: staging leaves a
+// file's status letter as it was, so it does not redraw the tree.
+function markStaged(staged) {
+  for (const el of treeEl.querySelectorAll('.stage-tick')) setTick(el, !!staged[el.dataset.stage]);
+}
+
+function setTick(el, on) {
+  el.classList.toggle('staged', on);
+  el.setAttribute('aria-pressed', String(on));
+  el.title = on ? 'Staged: click to unstage' : 'Stage file';
+}
+
+async function toggleStage(el) {
+  const from = treeWs, path = el.dataset.stage, on = !el.classList.contains('staged');
+  setTick(el, on);
+  const res = await call('POST', `${treeHref}api/git/${on ? 'stage' : 'unstage'}`, { path });
+  if (from !== treeWs) return;
+  if (!res.ok) {
+    setTick(el, !on);
+    return failed(res);
+  }
+  // The answer is the new git status: the branch bar takes it at once.
+  if (res.data && 'statuses' in res.data) {
+    emit('git:status', { ws: from, data: res.data });
+    markStaged(res.data.staged || {});
+  }
 }
 
 // expandDirty opens the changed folders under container, listing the ones
@@ -201,6 +230,8 @@ function expandDirty(container) {
 }
 
 function onTreeClick(e) {
+  const st = e.target.closest('.stage-tick');
+  if (st) return toggleStage(st);
   const dirRow = e.target.closest('.tr.dir');
   if (dirRow) {
     const kids = dirRow.nextElementSibling;

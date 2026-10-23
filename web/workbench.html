@@ -387,9 +387,16 @@
           </span>
         </header>
         <div id="o-tree" class="o-scroll"></div>
+        <!-- The branch bar (git.js): branch, staged count, ahead/behind; a
+             click opens the editor on its git panel. -->
         <footer id="o-files-foot" hidden>
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7"/><path d="M18 10.5c0 4-6 3-11 5.5"/></svg>
-          <span id="o-files-branch"></span>
+          <button id="o-git-bar" type="button" title="Git in the editor: stage, commit, push, history">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7"/><path d="M18 10.5c0 4-6 3-11 5.5"/></svg>
+            <span id="o-files-branch"></span>
+            <span id="o-git-sum"></span>
+            <span id="o-git-track"></span>
+            <svg class="o-git-out" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+          </button>
         </footer>
       </aside>
     </section>

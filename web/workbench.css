@@ -701,11 +701,23 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 
 /* ---------- right: files ---------- */
 #o-tree { padding: 4px 0 16px; }
-#o-files-foot {
-  height: 24px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px;
-  border-top: 1px solid var(--line); color: var(--accent);
+#o-files-foot { height: 26px; flex: none; display: flex; border-top: 1px solid var(--line); }
+/* The branch bar (git.js): one button opening the editor's git panel. */
+#o-git-bar {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
+  border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; text-align: left;
 }
-#o-files-branch { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--mono); color: var(--fg); }
+#o-git-bar:hover { background: var(--bg3); }
+#o-git-bar:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+#o-git-bar svg { flex: none; }
+/* The branch keeps its room longest; the staged count gives way first. */
+#o-files-branch { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--mono); color: var(--fg); }
+#o-git-sum { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
+#o-git-track { margin-left: auto; flex: none; font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
+#o-git-track .o-git-ahead { color: var(--accent-fg); }
+#o-git-track .o-git-behind { color: var(--gd); }
+#o-git-bar .o-git-out { color: var(--faint); }
+#o-git-bar:hover .o-git-out { color: var(--fg); }
 
 /* ---------- holding page ---------- */
 .wb-holding { max-width: 640px; margin: 18vh auto 0; padding: 0 16px; }

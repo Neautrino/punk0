@@ -225,6 +225,13 @@ export const DEFAULT_TIPS = [
     content: "Run `px0` with no arguments to launch the Review Workbench. Quickly reopen recent workspaces, pin favorite projects, or open new PR URLs from a single port."
   },
   {
+    id: "workbench-branch-bar",
+    title: "Stage and Jump to Git",
+    category: "Workbench",
+    tag: "Git",
+    content: "On the agents page, tick a changed file in the files pane to stage it. The branch bar under the tree shows staged files and commits to push; click it to open the editor on its git panel."
+  },
+  {
     id: "remote-dev",
     title: "Zero-Setup Remote & Cloud Workspaces",
     category: "Terminal",

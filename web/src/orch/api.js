@@ -45,6 +45,7 @@ export const failed = res => showToast('!', res.data?.error || 'Request failed',
 export const dirID = href => (href.match(/w\/([^/]+)\/?$/) || [])[1] || href;
 
 // The window is named after the folder, so opening it twice reuses it.
-export function openEditor(href) {
-  window.open(pageURL(href), 'punk0-w-' + dirID(href));
+// query ("panel=git") says what the editor shows first.
+export function openEditor(href, query = '') {
+  window.open(pageURL(href + (query ? '?' + query : '')), 'punk0-w-' + dirID(href));
 }

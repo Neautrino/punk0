@@ -82,6 +82,18 @@ export function initGitPanel() {
   syncGitPanelMeta();
 }
 
+// revealGitPanel unfolds the panel and brings it into view: the editor opened
+// as /w/<id>/?panel=git, from the agents page's branch bar.
+export function revealGitPanel() {
+  const p = panel();
+  if (!p || p.hidden) return;
+  if (p.classList.contains('collapsed')) {
+    p.classList.remove('collapsed');
+    layout(); render();
+  }
+  p.scrollIntoView({ block: 'nearest' });
+}
+
 export function syncGitPanelMeta() {
   updateGitPanelVisibility();
   if (S.meta?.git) {

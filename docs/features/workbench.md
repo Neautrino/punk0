@@ -39,6 +39,12 @@ Clicking a file in the changed-files view opens it as its diff: one tab per file
 
 **Diff** opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals a diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. A diff re-reads the changes each time it comes into view, and with the refresh button in the path row.
 
+### Staging and the branch bar
+
+Each changed file in the tree has a stage tick, as in the editor's tree: empty while unstaged, filled once staged. Click it to stage or unstage that one file.
+
+The bar under the tree shows the workspace's branch, how many of its changed files are staged (`2 / 30 staged`), and how far it is from its upstream: `↑` commits to push and `↓` commits to pull as of the last fetch, nothing when it is even, **unpublished** when it tracks no remote branch. Click the bar to open the workspace in the editor with its git panel unfolded (`/w/<id>/?panel=git`): committing (by hand or with AI), push and pull, staging hunks, and the history are there.
+
 ## Sidebar
 
 The **Projects | Scratch** switch at the top picks what the pane lists. Under it, a search field narrows the list by project, workspace, branch, chat or group name; **Esc** clears it. Each view keeps its own search. Below the search, the list's header has **View options**, then two buttons: in Projects a new-workspace button and **+**, in Scratch a new-group button and **+** for a new chat.
