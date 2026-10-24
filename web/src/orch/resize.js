@@ -3,11 +3,12 @@
 // whether each is shown. Widths live in two CSS variables on #wb-app
 // (--wb-left, --wb-right); the left one also sizes the status bar's left
 // section, so the bar follows the sidebar. A hidden pane is a class on
-// #wb-app (hide-left, hide-right). The center's head at the left edge
-// brings a hidden projects pane back (.o-show); the right side's toggle,
-// which closes the files pane with the open files, is split.js's
-// (isHidden, setHidden, 'pane:toggled'). All of it is remembered in this
-// browser.
+// #wb-app (hide-left, hide-right). A hidden pane's show button (.o-show)
+// takes its place: the center's head at the left edge for the projects pane,
+// the open file's path row (or, with none open, the tab bar) for the files
+// pane. The right side's toggle, which closes the files pane with the open
+// files, is split.js's (isHidden, setHidden, 'pane:toggled'). All of it is
+// remembered in this browser.
 //
 // Smoothness: a drag only records the pointer; one requestAnimationFrame per
 // frame writes the variables, and body.wb-resizing turns off text selection

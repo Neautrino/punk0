@@ -256,6 +256,11 @@
         <button id="o-new-tab" type="button" class="mini" title="New tab" aria-label="New tab" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </button>
+        <!-- Shows a hidden files pane again while no file is open; with a file
+             open it sits at the end of the file's path row instead. -->
+        <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+        </button>
         <!-- Open in editor and the right side's toggle: in the head at the
              center's right edge, after Maximize there (split.js). Open in
              editor shows the selected workspace's folder in the full editor,
@@ -324,6 +329,11 @@
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
           </span>
+          <!-- Shows a hidden files pane again, where its ≡ hide button was
+               (resize.js); only there while the pane is hidden. -->
+          <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+          </button>
         </header>
         <div id="o-code-vp">
           <div id="o-code-sizer">

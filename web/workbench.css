@@ -232,6 +232,15 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-center .o-show { display: none; }
 #wb-app.hide-left #o-center:not(.term-off) #o-tab-head .o-show[data-show="left"],
 #wb-app.hide-left #o-center.term-off #o-file-head .o-show[data-show="left"] { display: inline-flex; }
+/* The files pane's show button: at the end of the open file's path row,
+   where the pane's ≡ hide button was, or in the tab bar while no file is
+   open. */
+#wb-app.hide-right #o-center.file-shown #o-view-head .o-show[data-show="right"],
+#wb-app.hide-right #o-center:not(.file-shown) #o-tab-head .o-show[data-show="right"] { display: inline-flex; }
+#o-view-head .o-show[data-show="right"] {
+  flex: none; width: 22px; height: 22px; margin-right: -8px; padding: 0;
+  align-items: center; justify-content: center; border-radius: var(--r);
+}
 /* Open in editor and the right side's toggle: always there, in the head at
    the center's right edge; aria-pressed says whether anything shows right
    of the terminals. */
