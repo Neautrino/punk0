@@ -1043,19 +1043,22 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
 
 /* ---------- main ---------- */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-/* View-mode switches (Markdown Preview/Source, git Diff), pinned to the right
-   of the tab bar. The bar pads its end so the last tab can scroll clear of them. */
+/* The tab bar row: the file tabs take what room is left and scroll sideways
+   (wheel included, tabwheel.js); the view-mode switches (Markdown
+   Preview/Source, git Diff, Edit) sit after them, never over them. With no
+   tabs open the row takes no space and the switches float top right. */
+#tab-head {
+  flex: none; display: flex; align-items: stretch; height: 28px; position: relative; z-index: 7;
+  background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line);
+}
+#tab-head:has(> #tabs:empty) { position: absolute; top: 0; right: 0; background: none; box-shadow: none; }
 .open-right {
   width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
   color: var(--dim); background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r);
 }
 .open-right:hover { color: var(--accent-fg); border-color: var(--accent); }
 body:not(.right-hidden) .open-right { display: none; }
-body.right-hidden #tabs { padding-right: 38px; }
-body.right-hidden.md-tab #tabs { padding-right: 178px; }
-body.right-hidden.diff-tab #tabs { padding-right: 188px; }
-body.right-hidden.md-tab.diff-tab #tabs { padding-right: 328px; }
-#view-switches { position: absolute; top: 3px; right: 8px; z-index: 7; display: flex; gap: 6px; }
+#view-switches { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; }
 .view-switch {
   height: 22px; display: flex; gap: 1px;
   padding: 1px; background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r);
@@ -1131,12 +1134,7 @@ body.right-hidden.md-tab.diff-tab #tabs { padding-right: 328px; }
 }
 .diff-menu-item.active .diff-item-badge { background: var(--accent); color: var(--on-accent); }
 
-body.md-tab #tabs { padding-right: 140px; }
-body.diff-tab #tabs { padding-right: 150px; }
-body.md-tab.diff-tab #tabs { padding-right: 290px; }
-body.editing-file #tabs { padding-right: 180px; }
-
-#tabs { display: flex; height: 28px; background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#tabs { flex: 1 1 auto; min-width: 0; display: flex; height: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 #tabs::-webkit-scrollbar { display: none; }
 #tabs:empty { display: none; }
 .tab {

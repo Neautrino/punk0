@@ -16,6 +16,7 @@ import { syncPreview, previewing, previewLine } from './markdown.js';
 import { syncDiffView, layoutPref, diffScrollTop, setDiffMode, setSourceJumpHandler, setCommitStepHandler, scrollDiffToLine } from './diff.js';
 import { syncImageView } from './imageview.js';
 import { syncEditUI, editTextarea, updateGutter, centerEditLine } from './editview.js';
+import { scrollTabsOnWheel } from './tabwheel.js';
 
 // Recently closed files, newest last, for Alt+Shift+T.
 const closedTabs = [];
@@ -611,6 +612,7 @@ export function initTabs() {
     closeTabMenu();
     closeTabsForAction(button.dataset.tabAction, index);
   });
+  scrollTabsOnWheel($('#tabs'));
   $('#tabs').addEventListener('click', e => {
     closeTabMenu();
     const x = e.target.closest('[data-close]');

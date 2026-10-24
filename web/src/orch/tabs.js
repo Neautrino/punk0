@@ -15,6 +15,7 @@ import { fileKind } from './tree.js';
 import { openPicker } from './picker.js';
 import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 import { isSplit } from './split.js';
+import { scrollTabsOnWheel } from '../tabwheel.js';
 
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 const ICON_CHANGES = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v8M8 9h8M8 18h8"/></svg>';
@@ -57,22 +58,12 @@ export function initTabs() {
   for (const el of [barEl, fileBarEl]) {
     el.addEventListener('click', onTabClick);
     el.addEventListener('dblclick', onRename);
-    el.addEventListener('wheel', onTabWheel, { passive: false });
+    scrollTabsOnWheel(el);
   }
   $('#o-file-new').addEventListener('click', () => openPicker());
   subscribe(renderTabs);
   on('setting:changed', key => key.startsWith('agents.') && renderAgents());
   loadAgents();
-}
-
-// A mouse wheel scrolls a bar with more tabs than fit sideways. Horizontal
-// deltas (trackpads, Shift+wheel) already scroll it natively.
-function onTabWheel(e) {
-  const el = e.currentTarget;
-  if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
-  e.preventDefault();
-  const step = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 40 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? el.clientWidth : 1;
-  el.scrollLeft += e.deltaY * step;
 }
 
 async function loadAgents() {
