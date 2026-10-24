@@ -84,6 +84,7 @@ type Server struct {
 
 	workbenchURL string // the workbench's base path, when this px0 is one of its workspaces
 	localOnly    bool   // punk0 listens on loopback only: refuse DNS-rebound requests (hostguard.go)
+	workspaceID  string // workspace ID when child of workbench
 
 	lastReq atomic.Int64 // unix nanos of the most recent request
 
@@ -464,6 +465,16 @@ func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
+}
+
+func (s *Server) WorkspaceID() string {
+	if s.workspaceID != "" {
+		return s.workspaceID
+	}
+	if strings.HasPrefix(s.basePath, "/w/") {
+		return strings.Trim(strings.TrimPrefix(s.basePath, "/w/"), "/")
+	}
+	return ""
 }
 
 // safePath resolves a client-supplied relative path inside the root, refusing
@@ -962,6 +973,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		"version":     version,
 		"basePath":    s.BasePath(),
 		"workbench":   s.workbenchURL,
+		"workspace":   s.WorkspaceID(),
 		"agent":       s.agent.Name(),
 		"agentModel":  s.agent.Model(),
 		"agentPinned": s.agent.Pinned(),

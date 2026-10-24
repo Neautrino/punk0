@@ -68,6 +68,7 @@ func main() {
 		basePathFlag = flag.String("base-path", "", "base URL path prefix to serve endpoints and assets from (e.g. /rev-123/)")
 		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the punk0 workbench")
 		wbHost       = flag.String("workbench-host", "", "internal: the address the workbench that started this child listens on")
+		workspaceIDFlag = flag.String("workspace-id", "", "internal: workspace id when run under workbench")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "punk0 %s - an agent orchestrator and code navigator\n\nusage:\n  punk0 [flags]                      open the agents page\n  punk0 [flags] <file or directory>  open its workspace there\n  punk0 [flags] <pr-url>             review a pull request\n\nflags:\n", version)
@@ -223,6 +224,7 @@ func main() {
 	pxSrv.localOnly = loopbackBind(publicHost)
 	if *wbChild {
 		pxSrv.workbenchURL = workbenchBaseOf(configuredBasePath)
+		pxSrv.workspaceID = *workspaceIDFlag
 	} else if pr != nil {
 		it := wbPRItem(prTarget)
 		it.Title = pr.meta.Title

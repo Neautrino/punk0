@@ -875,3 +875,29 @@ func TestWorkbenchLockLifecycle(t *testing.T) {
 		t.Errorf("runningWorkbench after remove = %q, want empty", u)
 	}
 }
+
+func TestWorkspaceTabsList(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+
+	var opened map[string]any
+	w := reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+repo+`"}`)
+	json.Unmarshal(w.Body.Bytes(), &opened)
+	wsID, _ := opened["workspace"].(string)
+
+	// Add a tab to the workspace
+	reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"shell"}`)
+
+	// Get tabs
+	var res struct {
+		Tabs []struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"tabs"`
+	}
+	getJSON(t, wb, "/api/workspaces/"+wsID+"/tabs", &res)
+	if len(res.Tabs) != 1 || res.Tabs[0].Kind != "shell" {
+		t.Fatalf("expected 1 shell tab, got %+v", res.Tabs)
+	}
+}

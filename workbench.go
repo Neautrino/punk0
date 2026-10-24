@@ -449,6 +449,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
+	wb.mux.HandleFunc("GET "+wb.route("/api/workspaces/{id}/tabs"), wb.handleWorkspaceTabs)
 	wb.mux.HandleFunc("POST "+wb.route("/api/chats"), wb.handleChatAdd)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/chats/{id}"), wb.handleChatUpdate)
 	wb.mux.HandleFunc("POST "+wb.route("/api/chat-groups"), wb.handleChatGroupAdd)
@@ -547,7 +548,8 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 
 	args := append([]string{}, wb.childArgs...)
 	args = append(args, "-workbench-child", "-host", "127.0.0.1", "-port", "0",
-		"-no-open", "-no-update", "-no-color", "-base-path", wb.childBase(it.ID))
+		"-no-open", "-no-update", "-no-color", "-base-path", wb.childBase(it.ID),
+		"-workspace-id", it.ID)
 	dir := wb.cwd
 	if it.Kind == "pr" {
 		// checkoutPR makes a worktree of the clone in its working directory,
@@ -1488,6 +1490,22 @@ func (wb *workbench) handleChatGroupRemove(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (wb *workbench) handleWorkspaceTabs(w http.ResponseWriter, r *http.Request) {
+	if !trustedGet(w, r) {
+		return
+	}
+	ws := wb.records.Workspace(r.PathValue("id"))
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	tabs := make([]tabView, len(ws.Tabs))
+	for i, t := range ws.Tabs {
+		tabs[i] = t.view()
+	}
+	writeJSON(w, map[string]any{"tabs": tabs})
 }
 
 func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
