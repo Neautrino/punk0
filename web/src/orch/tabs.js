@@ -28,6 +28,12 @@ export function initTabs() {
   fileBarEl = $('#o-file-tabs');
   addEl = $('#o-new-tab');
   menuEl = $('#o-new-menu');
+  if (addEl) {
+    addEl.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleNewMenu();
+    });
+  }
   for (const b of $$('.o-open-editor')) b.addEventListener('click', () => {
     const w = workspace();
     if (w && !w.missing) openEditor(w.href);
@@ -80,7 +86,7 @@ async function loadAgents() {
 function renderAgents() {
   const visible = visibleAgents(agents);
   const first = defaultAgent(visible);
-  visible.sort((a, b) => (b.id === first) - (a.id === first));
+  visible.sort((a, b) => (b.id === first ? 1 : 0) - (a.id === first ? 1 : 0));
   const icon = a => `<span class="o-menu-kind${a.id === 'claude' ? ' claude' : ''}">${a.id === 'claude' ? '✳' : a.id === 'shell' ? '$' : '◆'}</span>`;
   const what = a => a.id === 'shell' ? 'your own shell, in a real terminal' : `runs <code>${esc(a.id)}</code> in this folder`;
   $('#o-new-agents').innerHTML = visible.map(a =>
@@ -129,7 +135,7 @@ function toggleNewMenu() {
   const btn = addEl.getBoundingClientRect();
   menuEl.style.left = `${Math.max(4, Math.min(btn.left - pane.left, pane.width - menuEl.offsetWidth - 4))}px`;
   menuEl.style.top = `${btn.bottom - pane.top + 4}px`;
-  menuEl.querySelector('button').focus();
+  menuEl.querySelector('button')?.focus();
 }
 
 function closeNewMenu() {
