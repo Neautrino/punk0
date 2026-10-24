@@ -949,4 +949,10 @@ func TestWorkspaceTabsList(t *testing.T) {
 	if len(resDir.Tabs) != 2 {
 		t.Fatalf("expected 2 tabs after deletion, got %d", len(resDir.Tabs))
 	}
+
+	// Only the tab routes take a folder id: a DELETE by it must not remove
+	// the folder's workspace.
+	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+dirID, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("DELETE by folder id = %d, want 404", w.Code)
+	}
 }

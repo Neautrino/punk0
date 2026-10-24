@@ -28,16 +28,29 @@ var (
 	reCodeBlock   = regexp.MustCompile("(?s)```(?:[a-zA-Z0-9_-]+)?\n(.*?)\n```")
 )
 
+// parseQuickEditOutput takes the last <replacement> block, else the last
+// fenced block: the last, since a model may quote the format before using it.
 func parseQuickEditOutput(out string) (string, error) {
-	tagMatches := reReplacement.FindAllStringSubmatch(out, -1)
-	if len(tagMatches) > 0 {
-		return strings.TrimSpace(tagMatches[len(tagMatches)-1][1]), nil
+	if m := reReplacement.FindAllStringSubmatch(out, -1); len(m) > 0 {
+		return trimBlock(m[len(m)-1][1]), nil
 	}
-	blockMatches := reCodeBlock.FindAllStringSubmatch(out, -1)
-	if len(blockMatches) > 0 {
-		return strings.TrimSpace(blockMatches[len(blockMatches)-1][1]), nil
+	if m := reCodeBlock.FindAllStringSubmatch(out, -1); len(m) > 0 {
+		return trimBlock(m[len(m)-1][1]), nil
 	}
 	return "", errors.New("no replacement tags or code block found in agent output")
+}
+
+// trimBlock drops the blank lines a model leaves around a block, but not the
+// first line's indentation: that is part of the code being replaced.
+func trimBlock(s string) string {
+	s = strings.TrimRight(s, " \t\r\n")
+	for {
+		i := strings.IndexByte(s, '\n')
+		if i < 0 || strings.TrimSpace(s[:i]) != "" {
+			return s
+		}
+		s = s[i+1:]
+	}
 }
 
 func (s *Server) handleQuickEdit(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +60,10 @@ func (s *Server) handleQuickEdit(w http.ResponseWriter, r *http.Request) {
 	var req quickEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		fail(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Instruction) == "" {
+		fail(w, http.StatusBadRequest, "instruction is required")
 		return
 	}
 

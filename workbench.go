@@ -644,6 +644,14 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 				// browser's so they still agree with each other.
 				pr.Out.Host = pr.In.Host
 			},
+			// The editor page's terminal connects back here, so its policy
+			// allows this host's websocket as the agents page's does.
+			ModifyResponse: func(res *http.Response) error {
+				if res.Header.Get("Content-Security-Policy") != "" {
+					res.Header.Set("Content-Security-Policy", wbCSP(res.Request.Host))
+				}
+				return nil
+			},
 			FlushInterval: -1, // event streams must not sit in a buffer
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				fail(w, http.StatusBadGateway, "workspace is not responding: "+err.Error())
@@ -1496,16 +1504,12 @@ func (wb *workbench) handleWorkspaceTabs(w http.ResponseWriter, r *http.Request)
 	if !trustedGet(w, r) {
 		return
 	}
-	ws := wb.records.Workspace(r.PathValue("id"))
+	ws := wb.records.WorkspaceAt(r.PathValue("id"))
 	if ws == nil {
 		fail(w, http.StatusNotFound, "workspace not found")
 		return
 	}
-	tabs := make([]tabView, len(ws.Tabs))
-	for i, t := range ws.Tabs {
-		tabs[i] = t.view()
-	}
-	writeJSON(w, map[string]any{"tabs": tabs})
+	writeJSON(w, map[string]any{"tabs": wb.records.View(ws).Tabs})
 }
 
 func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
@@ -1519,7 +1523,12 @@ func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	t, err := wb.records.AddTab(r.PathValue("id"), body.Kind)
+	ws := wb.records.WorkspaceAt(r.PathValue("id"))
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	t, err := wb.records.AddTab(ws.ID, body.Kind)
 	if err != nil {
 		failRecord(w, err)
 		return

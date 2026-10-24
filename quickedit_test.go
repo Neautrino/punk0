@@ -25,8 +25,14 @@ func TestParseQuickEditOutput(t *testing.T) {
 	if err != nil || parsed != "final code" {
 		t.Fatalf("expected last tag: %q, err: %v", parsed, err)
 	}
+	// 4. Indentation of the first line is code, not padding
+	out5 := "<replacement>\n\n    if x {\n        y()\n    }\n\n</replacement>"
+	parsed, err = parseQuickEditOutput(out5)
+	if err != nil || parsed != "    if x {\n        y()\n    }" {
+		t.Fatalf("indentation lost: %q, err: %v", parsed, err)
+	}
 
-	// 4. No tags or code blocks -> error
+	// 5. No tags or code blocks -> error
 	out4 := "I don't know how to do that."
 	_, err = parseQuickEditOutput(out4)
 	if err == nil {

@@ -661,6 +661,23 @@ func (r *Records) Workspace(id string) *Workspace {
 	return nil
 }
 
+// WorkspaceAt is Workspace for an editor's terminal, which knows only its
+// folder's backend id (/w/<id>/): that names the folder's first workspace.
+// Every other route takes a workspace id only.
+func (r *Records) WorkspaceAt(id string) *Workspace {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if p, i := r.workspaceLocked(id); p != nil {
+		return p.Workspaces[i]
+	}
+	for _, p := range r.projects {
+		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return wbItemID("dir", w.Dir) == id }); i >= 0 {
+			return p.Workspaces[i]
+		}
+	}
+	return nil
+}
+
 func (r *Records) Tab(id string) *Satellite {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -900,14 +917,6 @@ func (r *Records) workspaceLocked(id string) (*Project, int) {
 	for _, p := range r.projects {
 		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return w.ID == id }); i >= 0 {
 			return p, i
-		}
-	}
-	for _, p := range r.projects {
-		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return wbItemID("dir", w.Dir) == id }); i >= 0 {
-			return p, i
-		}
-		if wbItemID("dir", p.Dir) == id && len(p.Workspaces) > 0 {
-			return p, 0
 		}
 	}
 	return nil, -1
