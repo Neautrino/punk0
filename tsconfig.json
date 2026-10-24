@@ -11,5 +11,8 @@
   },
   "include": [
     "web/src/**/*.js"
+  ],
+  "exclude": [
+    "web/src/**/*.test.js"
   ]
 }
