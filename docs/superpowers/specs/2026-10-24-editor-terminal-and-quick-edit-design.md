@@ -45,10 +45,12 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * Replace `<button data-itab="threads">` with `<button class="inspector-tab active" data-itab="term">Terminal</button>`.
    * Replace `<section id="pane-right-threads">` with `<section class="inspector-pane active" id="pane-right-term">`.
    * Tab sequence: `Terminal` (default active), `References`, `Symbols`, `Calls`, `Search`, `Tips`.
-2. **Sub-Bar Header, Tab Ownership & State Refresh**:
-   * The editor view is mounted at `/w/<workspace-id>/`. The parent orchestrator owns `/api/tabs/{id}/term`, `/api/tabs/{id}/send`, and `/api/workspaces/{id}/tabs`.
-   * **Workspace Metadata Contract**: The parent passes `-workspace-id <id>` when spawning the child editor process (`workbench.go`). The child's `/api/meta` returns `workspaceId`.
-   * **Tab Query & State Refresh**: The editor frontend queries the parent's `GET /api/workspaces/{workspace-id}/tabs` to discover active terminal tabs:
+2. **Sub-Bar Header, Tab Ownership & Parent-API Transport**:
+   * **Process & Routing Boundary**: The editor is served by a child backend under `/w/<dirID>/`. Parent routes (`/api/tabs/...` and `/api/workspaces/...`) reside on the parent orchestrator at the root origin (`/api/...`).
+   * **Parent-API Resolution**: Editor JavaScript uses root-relative URLs (`/api/...`) for parent workbench routes, distinct from child-relative URLs (`api/...` under `/w/<dirID>/`).
+   * **WebSocket URL Construction**: `ws://${window.location.host}/api/tabs/${id}/term` (or `wss:` when over TLS).
+   * **Workspace ID Mapping**: In punk0's architecture, `dirID` directly identifies the local workspace in records (`records.go`). The editor reads `workspaceId = S.meta.workspace` from `/api/meta`.
+   * **Tab Query & State Refresh**: The editor frontend queries the parent's `GET /api/workspaces/{workspace-id}/tabs`:
      ```json
      {
        "tabs": [
@@ -62,8 +64,9 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
        ]
      }
      ```
-     * Polling rule: Polled every 3 seconds while the Terminal inspector pane is visible, and immediately refreshed after tab creation (`POST /api/workspaces/{id}/tabs`) or tab termination.
-   * Sub-bar displays tab chips: `[ ● Claude Code ]` (or detected agent) and `[ + Shell ]`.
+     * Polling rule: Polled every 3 seconds while the Terminal inspector pane is active, and immediately upon tab creation, exit, or focus change.
+     * Active tab selection: Defaults to the first running agent tab (`kind === "claude"`), falling back to the first running shell tab, or the first available tab. If a tab exits while attached, the PTY displays exit status and offers a click-to-restart button.
+   * Sub-bar displays tab chips: `[ ● Claude Code ]` and `[ + Shell ]`.
    * If the workspace currently has zero terminal tabs, the editor sends `POST /api/workspaces/{workspace-id}/tabs {"kind": "claude"}` (or `"shell"` if no agent CLI is detected) upon first opening the Terminal pane.
    * Clicking `[+ Shell]` calls `POST /api/workspaces/{workspace-id}/tabs {"kind": "shell"}` and switches active terminal focus to the newly spawned tab.
    * Status indicators display live agent state (green dot = `idle`, yellow pulsing dot = `working` or `waiting`).
@@ -72,6 +75,7 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * Establishes WebSocket connection to `/api/tabs/{id}/term`.
    * Handles terminal resizing via JSON text frames `{"cols": N, "rows": N}` and binary PTY streaming.
    * Maintains persistent session in Go backend: switching away to `Symbols` or hiding the inspector detaches the WebSocket; reopening reattaches and replays recent scrollback from the ring buffer.
+   * **Supersedes Prior ADR**: This decision explicitly supersedes Decision 7 in `viking://resources/punk0/decisions/orchestrator-and-editor.md` which had deferred editor-mode terminals.
 
 ### 3.2 Floating Selection Pill
 
@@ -87,7 +91,7 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
      * Note on shortcut: Standard browser address-bar reservation blocks `Cmd/Ctrl+L`. Therefore, **`Alt+L`** (with `Cmd/Ctrl+Shift+L` as alias) is assigned for reliable browser event capture.
      * Activates and focuses the `Terminal` pane in the right inspector.
      * If the active tab is currently busy (`working` or `waiting`), `POST /api/tabs/{id}/send` returns `409 Conflict`. In this case, the editor shows a toast: *"Agent is busy with an in-flight command"*, keeps the code selection preserved, and allows the user to wait or switch to an idle tab.
-     * If the tab is idle, dispatches `POST /api/tabs/{id}/send` with formatted payload:
+     * If the tab is idle, dispatches `POST /api/tabs/{id}/send` with payload:
        ```text
        @<path>:<l1>-<l2>
        ```
@@ -100,12 +104,20 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
      * If there is no active text selection, `Cmd/Ctrl+K` falls through to open the Quick Open file palette (`openPalette()`), preserving existing muscle memory.
      * Keyboard tips, palette hints, and help dialogs are updated to reflect this dual-binding rule.
 4. **Legacy Threads & Agentbox Deprecation Cutover**:
-   * Remove gutter `.agent-btn` ("Edit" badge) and the old popup context menu.
-   * Remove `<div id="agentbox">` and `<section id="pane-right-threads">` from `web/index.html`.
-   * Remove `initThreads()` from `web/src/main.js` and delete `web/src/thread.js`.
-   * Remove `/api/threads/*`, `/api/agent/edit`, and `/api/agent/batch` route registrations from `server.go` and `agent.go`.
-   * In `newAgentManager()`, remove `threadManager` instantiation and remove thread ID coupling from job records.
-   * Update `selbar.js`, `tips-util.js`, and `help.js` to remove deprecated thread and inline-comment actions.
+   * **Frontend Removal**:
+     * Remove gutter `.agent-btn` ("Edit" badge) and the old popup context menu.
+     * Remove `<div id="agentbox">` and `<section id="pane-right-threads">` from `web/index.html`.
+     * Delete `web/src/thread.js` and remove all imports in `web/src/main.js` and `web/src/inspector.js`.
+     * Remove inline comment composer and thread session management from `web/src/agent.js`.
+     * Remove `SEL_MENU_ITEMS` thread and inline-comment actions in `web/src/selbar.js`.
+     * Update shortcut hints in `web/src/tips-util.js` and `web/src/help.js`.
+   * **Backend Removal**:
+     * Remove `/api/threads/*`, `/api/agent/edit`, and `/api/agent/batch` route registrations from `server.go` and `agent.go`.
+     * In `newAgentManager()`, remove `threadManager` instantiation and eliminate thread ID coupling from job structures.
+     * Update tests in `agent_test.go` and `threads_test.go` to test `/api/quick-edit` and `/api/file/replace`.
+   * **Documentation Updates**:
+     * Update `docs/features/threads.md` and `docs/internals/threads.md` with deprecation notices.
+     * Update `docs/features/agent-editing.md`, `docs/features/selection-actions.md`, `README.md`, and `docs/agents/README.md`.
    * Existing thread JSON files in `~/.px0/threads/` are retained passively on disk, but no new thread files are written.
 
 ### 3.3 Quick Edit (`Cmd/Ctrl+K`) Engine & In-Place Diff
@@ -127,16 +139,23 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
        "instruction": "add timeout parameter with 5s fallback"
      }
      ```
-   * **Sandbox & Zero Disk Modification Guarantee**:
-     * Spawns harness CLI in pipe mode with a system prompt instructing the model:
-       `"Given the code snippet below and instruction, output ONLY the replacement code enclosed in <replacement>...</replacement> tags. Do NOT modify any files on disk. Do NOT provide explanation or conversation."`
-     * `cmd.Stdin` is set to `nil` (`/dev/null`) so the process cannot block on interactive input prompts.
+   * **Harness Selection & Validation**:
+     * Resolves harness from `agentManager.current()`.
+     * If no harness is installed or selected, returns HTTP `400 Bad Request` with `{"ok": false, "error": "No coding harness installed or selected in settings"}`.
+   * **Isolated Sandbox & Zero Disk Modification Guarantee**:
+     * To guarantee that the working tree is never modified before user approval, execution runs in an isolated temporary directory (`os.MkdirTemp("", "punk0-quickedit-*")`) with `cmd.Dir = tempDir`.
+     * `cmd.Stdin` is set to `nil` (`/dev/null`) to prevent hanging on interactive prompts.
+     * System prompt instructs:
+       `"Given the code snippet below and instruction, output ONLY the replacement code enclosed in <replacement>...</replacement> tags. Do NOT modify any files on disk. Do NOT provide explanation or conversational filler."`
      * Execution is bounded by a strict 30-second context deadline (`context.WithTimeout(ctx, 30*time.Second)`).
-     * The backend performs a git/file check to confirm zero disk modifications occurred during execution.
-   * **Parsing Protocol**:
-     * The backend parses the stdout looking for `<replacement>(.*?)</replacement>`.
-     * Fallback parser: If tags are absent, matches the first markdown fenced code block (```...```).
-     * If neither is present, returns HTTP `422 Unprocessable Entity` with `{"ok": false, "error": "Model response could not be parsed into replacement code"}`.
+     * If execution exceeds 30s, the process group is terminated and returns HTTP `504 Gateway Timeout` with `{"ok": false, "error": "Quick Edit timed out after 30 seconds"}`.
+     * On non-zero exit, returns HTTP `422 Unprocessable Entity` with `{"ok": false, "error": stderr.String()}`.
+     * `defer os.RemoveAll(tempDir)` cleans up all scratch resources. The workspace working tree remains 100% untouched.
+   * **Deterministic Parsing Protocol**:
+     * The backend extracts the **last** complete `<replacement>(.*?)</replacement>` block from stdout, avoiding any echoed prompt examples.
+     * Fallback parser: If no tags are found, extracts the **last** markdown fenced code block (```...```).
+     * Validation: An empty replacement is accepted only if the instruction contains explicit deletion keywords (e.g. `delete`, `remove`); otherwise, whitespace/empty output returns `422 Unprocessable Entity` with `{"ok": false, "error": "Model produced empty replacement code"}`.
+     * Preserves original file newline convention (`\n` or `\r\n`).
    * Success Response:
      ```json
      {
