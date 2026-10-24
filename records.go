@@ -759,37 +759,57 @@ func (r *Records) Tabs() []*Satellite {
 	return tabs
 }
 
-// runningWorkspace is a workspace and the shell pids of its running tabs,
-// in tab order, for the resource view.
+// runningWorkspace is a workspace and its running tabs, in tab order, for
+// the resource view. name is what the panel calls it: a scratch chat's label,
+// else "project / workspace", or the workspace alone when the two match.
 type runningWorkspace struct {
-	id, dir string
-	tabs    []runningTab
+	id, dir, name string
+	tabs          []runningTab
 }
 
 type runningTab struct {
-	id  string
-	pid int
+	id, name, kind, status string
+	pid                    int
 }
 
 // Running lists every workspace with the pids of its running tabs. Shells
-// are asked outside r.mu, as everywhere else.
+// and statuses are asked outside r.mu, as everywhere else.
 func (r *Records) Running() []runningWorkspace {
+	type tabCopy struct {
+		t          *Satellite
+		name, kind string
+	}
+	type wsCopy struct {
+		rw   runningWorkspace
+		tabs []tabCopy
+	}
 	r.mu.Lock()
-	var all []*Workspace
-	tabs := map[*Workspace][]*Satellite{}
+	var all []wsCopy
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			all = append(all, w)
-			tabs[w] = slices.Clone(w.Tabs)
+			name := w.Name
+			switch {
+			case p.Scratch:
+				if w.Title != "" {
+					name = w.Title
+				}
+			case p.Name != w.Name:
+				name = p.Name + " / " + w.Name
+			}
+			c := wsCopy{rw: runningWorkspace{id: w.ID, dir: w.Dir, name: name}}
+			for _, t := range w.Tabs {
+				c.tabs = append(c.tabs, tabCopy{t, t.Name, t.Kind})
+			}
+			all = append(all, c)
 		}
 	}
 	r.mu.Unlock()
 	out := make([]runningWorkspace, 0, len(all))
-	for _, w := range all {
-		rw := runningWorkspace{id: w.ID, dir: w.Dir}
-		for _, t := range tabs[w] {
-			if sh := t.shell(); sh != nil {
-				rw.tabs = append(rw.tabs, runningTab{t.ID, sh.Pid()})
+	for _, c := range all {
+		rw := c.rw
+		for _, tc := range c.tabs {
+			if sh := tc.t.shell(); sh != nil {
+				rw.tabs = append(rw.tabs, runningTab{id: tc.t.ID, name: tc.name, kind: tc.kind, status: tc.t.Status(), pid: sh.Pid()})
 			}
 		}
 		out = append(out, rw)

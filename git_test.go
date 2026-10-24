@@ -345,10 +345,6 @@ func TestGitGutter(t *testing.T) {
 	if fileBody["diffAvailable"] != true {
 		t.Errorf("f.go diffAvailable = %v, want true", fileBody["diffAvailable"])
 	}
-	// bravo replaced, a line inserted, golf removed: +2 -2, as git --numstat.
-	if fileBody["linesAdded"] != 2.0 || fileBody["linesDeleted"] != 2.0 {
-		t.Errorf("f.go linesAdded/linesDeleted = %v/%v, want 2/2", fileBody["linesAdded"], fileBody["linesDeleted"])
-	}
 	// A file that lost lines still exists: "deleted" means the file is gone.
 	if _, ok := fileBody["deleted"]; ok {
 		t.Errorf("f.go deleted = %v, want absent for a file on disk", fileBody["deleted"])
@@ -356,9 +352,6 @@ func TestGitGutter(t *testing.T) {
 	_, cleanBody := get(t, s, "/api/file?path=clean.go")
 	if cleanBody["diffAvailable"] != false {
 		t.Errorf("clean.go diffAvailable = %v, want false", cleanBody["diffAvailable"])
-	}
-	if cleanBody["linesAdded"] != 0.0 || cleanBody["linesDeleted"] != 0.0 {
-		t.Errorf("clean.go linesAdded/linesDeleted = %v/%v, want 0/0", cleanBody["linesAdded"], cleanBody["linesDeleted"])
 	}
 }
 
@@ -2535,8 +2528,8 @@ func TestDiffWholeFiles(t *testing.T) {
 	if h["oldStart"] != 0.0 || h["newStart"] != 1.0 || len(rows) != 1 || r["type"] != "add" || r["text"] != "untracked" {
 		t.Errorf("untracked hunk = %v, want @@ -0,0 +1,1 @@ adding 'untracked'", h)
 	}
-	if _, file := get(t, s, "/api/file?path=untr.go"); file["diffAvailable"] != true || file["linesAdded"] != 1.0 {
-		t.Errorf("untracked /api/file diffAvailable=%v linesAdded=%v, want true/1", file["diffAvailable"], file["linesAdded"])
+	if _, file := get(t, s, "/api/file?path=untr.go"); file["diffAvailable"] != true {
+		t.Errorf("untracked /api/file diffAvailable=%v, want true", file["diffAvailable"])
 	}
 
 	if _, body = get(t, s, "/api/diff?path=add.go"); whole(body) != "added [unstage discard]" {

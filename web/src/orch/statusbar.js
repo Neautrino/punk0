@@ -2,9 +2,8 @@
 // The status bar under the three panes. Left: version, then help (the
 // keyboard shortcuts sheet), GitHub and settings (settings.js). Middle: the
 // agents needing you and working, each a button to the next such tab; the
-// open file's details are viewer.js's. Right: one button with the running
-// terminals, running agents and total RAM, which opens the resource panel
-// (resources.js).
+// open file's details are viewer.js's. Right: the resource button and panel
+// (resources.js, respanel.js).
 import { $, esc, keyCaps } from '../state.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
 import { state, subscribe, termTab, selectWorkspace, selectTab } from './store.js';
@@ -66,12 +65,6 @@ function renderStatus() {
   const { version } = state.wb;
   $('#o-empty-ver').textContent = version ? 'v' + version : '';
   $('#st-ver').textContent = version ? 'v' + version : '';
-  const running = state.projects.flatMap(p => p.workspaces).flatMap(w => w.tabs).filter(t => t.running);
-  const agents = running.filter(t => t.kind !== 'shell').length;
-  const terms = running.length - agents;
-  $('#st-terms-n').textContent = terms;
-  $('#st-agents-n').textContent = agents;
-  $('#st-res').title = `${terms} terminal${terms === 1 ? '' : 's'} and ${agents} agent${agents === 1 ? '' : 's'} running. Click for what each uses`;
   renderState($('#st-waiting'), agentTabs('waiting').length, ['needs you', 'need you']);
   renderState($('#st-working'), agentTabs('working').length, ['working', 'working']);
 }

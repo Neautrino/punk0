@@ -2,7 +2,7 @@
 import { $, S, doc_, esc } from './state.js';
 import { on } from './bus.js';
 import { updateStatus } from './status.js';
-import { fmtBytes } from './metricsview.js';
+import { fmtBytes } from './format.js';
 
 let ivInit = false;
 let isPanning = false;

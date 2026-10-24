@@ -1,30 +1,42 @@
 package main
 
 // GET /api/resources: what punk0 costs right now, for the status bar's
-// total and the resource panel it opens. Every figure is a process tree from
-// one process-table snapshot: a terminal is its shell and everything running
-// in it (an agent and the tools it starts), an editor is its punk0 child
-// alone, and its language servers are everything below that child. "self" is
-// the parent plus anything below it that no row claims (git, a child still
-// starting), so the rows add up to the total.
+// total and the resource panel it opens (web/src/respanel.js, on the agents
+// page and in every editor). Every figure is a process tree from one
+// process-table snapshot: a terminal is its shell and everything running in
+// it (an agent and the tools it starts), an editor is its punk0 child alone,
+// and its language servers are everything below that child. "self" is the
+// parent plus anything below it that no row claims (git, a child still
+// starting), so the rows add up to the total. Names come along, so a page
+// without the workbench's store (an editor) can draw the panel too.
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
 	"px0/internal/metrics"
 )
 
-// usage is one row: CPU in percent of one core, RSS in bytes.
+// usage is one row: CPU in percent of one core, RSS in bytes, and for a
+// punk0 process (the parent, an editor, a review) its goroutines, as px0's
+// metrics showed them; 0 for anything else, or a child that did not answer.
 type usage struct {
-	CPU float64 `json:"cpu"`
-	RSS uint64  `json:"rss"`
+	CPU        float64 `json:"cpu"`
+	RSS        uint64  `json:"rss"`
+	Goroutines int     `json:"goroutines,omitempty"`
 }
 
+// resTab is a running terminal: kind is the tab's (shell, claude, ...),
+// status its agent status from the hooks.
 type resTab struct {
-	ID string `json:"id"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Status string `json:"status,omitempty"`
 	usage
 }
 
@@ -35,6 +47,7 @@ type resTab struct {
 // catches one); nil with Editor.
 type resWorkspace struct {
 	ID     string   `json:"id"`
+	Name   string   `json:"name"`
 	Editor *usage   `json:"editor"`
 	LSP    *usage   `json:"lsp"`
 	Tabs   []resTab `json:"tabs"`
@@ -48,6 +61,7 @@ type resItem struct {
 	usage
 }
 
+// resources: usage is the total, Goroutines summed over every punk0 process.
 type resources struct {
 	usage
 	Self       usage          `json:"self"`
@@ -59,26 +73,68 @@ func (wb *workbench) handleResources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, wb.resources())
 }
 
+// childGoroutines asks each child's /api/metrics (which does not count as
+// activity, so polling it keeps no editor from its idle stop) for its
+// goroutines, all at once and briefly: a slow child shows none rather than
+// holding up the panel.
+func (wb *workbench) childGoroutines(urls map[string]string) map[string]int {
+	out := make(map[string]int, len(urls))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	client := &http.Client{Timeout: time.Second}
+	for id, u := range urls {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := client.Get(u)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+			var m struct {
+				Goroutines int `json:"goroutines"`
+			}
+			if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&m) != nil {
+				return
+			}
+			mu.Lock()
+			out[id] = m.Goroutines
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
 func (wb *workbench) resources() resources {
 	type child struct {
-		id, title string
-		pid       int
+		id, title, addr string
+		pid             int
 	}
 	var children []child
 	wb.mu.Lock()
 	for id, c := range wb.children {
 		if c.state == "running" && c.cmd != nil && c.cmd.Process != nil {
-			children = append(children, child{id, c.title, c.cmd.Process.Pid})
+			children = append(children, child{id, c.title, c.addr, c.cmd.Process.Pid})
 		}
 	}
 	wb.mu.Unlock()
+	selfGoroutines := runtime.NumGoroutine() // before the askers below add theirs
+	urls := make(map[string]string, len(children))
+	for _, c := range children {
+		urls[c.id] = "http://" + c.addr + wb.childBase(c.id) + "api/metrics"
+	}
+	// The children answer while the process table is read.
+	gorDone := make(chan map[string]int, 1)
+	go func() { gorDone <- wb.childGoroutines(urls) }()
 	running := wb.records.Running()
 
 	out := resources{Workspaces: []resWorkspace{}, Reviews: []resItem{}}
 	table := metrics.Processes()
 	if table == nil { // no process table here: only the parent can be measured
+		<-gorDone
 		m := getProcessMetrics(nil)
-		out.Self = usage{CPU: m.CPUUsage, RSS: m.RSSBytes}
+		out.Self = usage{CPU: m.CPUUsage, RSS: m.RSSBytes, Goroutines: selfGoroutines}
 		out.usage = out.Self
 		return out
 	}
@@ -150,18 +206,25 @@ func (wb *workbench) resources() resources {
 
 	pct := wb.cpu.sample(time.Now(), cpuTimes)
 	row := func(key string) usage { return usage{CPU: pct[key], RSS: rss[key]} }
+	gor := <-gorDone
 
 	out.usage, out.Self = row("total"), row("self")
+	out.Self.Goroutines = selfGoroutines
+	out.Goroutines = selfGoroutines
+	for _, n := range gor {
+		out.Goroutines += n
+	}
 	for _, s := range shown {
-		ws := resWorkspace{ID: s.ws.id, Tabs: []resTab{}}
+		ws := resWorkspace{ID: s.ws.id, Name: s.ws.name, Tabs: []resTab{}}
 		if s.editor != "" {
 			e, l := row("editor:"+s.editor), row("lsp:"+s.editor)
+			e.Goroutines = gor[s.editor]
 			ws.Editor, ws.LSP = &e, &l
 			ws.CPU, ws.RSS = e.CPU+l.CPU, e.RSS+l.RSS
 		}
 		for _, t := range s.ws.tabs {
 			u := row("tab:" + t.id)
-			ws.Tabs = append(ws.Tabs, resTab{t.id, u})
+			ws.Tabs = append(ws.Tabs, resTab{ID: t.id, Name: t.name, Kind: t.kind, Status: t.status, usage: u})
 			ws.CPU += u.CPU
 			ws.RSS += u.RSS
 		}
@@ -169,7 +232,9 @@ func (wb *workbench) resources() resources {
 	}
 	for _, c := range children {
 		if _, ok := editorOf[c.id]; ok {
-			out.Reviews = append(out.Reviews, resItem{c.id, c.title, row("item:" + c.id)})
+			u := row("item:" + c.id)
+			u.Goroutines = gor[c.id]
+			out.Reviews = append(out.Reviews, resItem{c.id, c.title, u})
 		}
 	}
 	return out

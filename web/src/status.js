@@ -2,7 +2,8 @@ import { $, S, doc_, api, apiPost, withKeys } from './state.js';
 import { previewing, previewKind } from './markdown.js';
 import { layoutPref } from './diff.js';
 import { lspServers, lspRows, lspAllButton } from './lspmenu.js';
-import { fmtBytes, showMetrics, initMetricsMenu, closeMetricsMenu } from './metricsview.js';
+import { fmtBytes } from './format.js';
+import { createResPanel } from './respanel.js';
 
 export function updateStatus() {
   const d = doc_();
@@ -178,7 +179,6 @@ export async function refreshLspMenu() {
 
 export async function openLspMenu() {
   if (!lspMenuEl) return;
-  closeMetricsMenu();
   lspMenuEl.hidden = false;
   placeLspMenu();
   try {
@@ -233,28 +233,58 @@ export function initLspMenu() {
   });
 }
 
-export function updateMetricsDisplay(m) {
-  if (!m) return;
-  showMetrics(m);
-  if (m.lspEnabled !== undefined) {
-    if (m.lspMemBytes > 0) {
-      S.lsp.anyRunning = true;
-    } else if (S.lsp.state !== 'indexing' && S.lsp.state !== 'starting') {
-      S.lsp.anyRunning = false;
+// noteMetrics takes this editor's own metrics (/api/meta, the event stream's
+// metrics frames) for what the LSP item shows: whether any server runs.
+export function noteMetrics(m) {
+  if (!m || m.lspEnabled === undefined) return;
+  if (m.lspMemBytes > 0) {
+    S.lsp.anyRunning = true;
+  } else if (S.lsp.state !== 'indexing' && S.lsp.state !== 'starting') {
+    S.lsp.anyRunning = false;
+  }
+  drawLspStatus();
+}
+
+/* The resource button and panel, as on the agents page (respanel.js). Opened
+   from the agents page, the editor reads the workbench's /api/resources, so
+   it shows all of punk0; a PR review run on its own is all of punk0 itself,
+   so it shows its own /api/metrics. */
+let resPanel = null;
+
+async function loadResources() {
+  if (S.meta?.workbench) {
+    try {
+      const r = await fetch(new URL(S.meta.workbench + 'api/resources', location.origin));
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
     }
-    drawLspStatus();
+  }
+  try {
+    const m = await api('/api/metrics');
+    const own = { cpu: m.cpuUsage || 0, rss: m.rssBytes || 0, goroutines: m.goroutines || 0 };
+    const lsp = m.lspMemBytes || 0;
+    return {
+      cpu: own.cpu, rss: own.rss + lsp, goroutines: own.goroutines,
+      self: own, workspaces: [], reviews: [], standalone: true,
+      lsp: lsp ? { cpu: 0, rss: lsp } : null,
+    };
+  } catch {
+    return null;
   }
 }
 
-export async function refreshMetrics() {
-  try {
-    const m = await api('/api/metrics');
-    updateMetricsDisplay(m);
-  } catch {}
+export function refreshResources() {
+  return resPanel?.refresh();
 }
 
-export function initMetrics() {
-  initMetricsMenu(refreshMetrics);
+// initResources polls every 3 s while the page is visible, like the agents page.
+export function initResources() {
+  resPanel = createResPanel($('#st-res'), loadResources);
+  const tick = () => { if (!document.hidden) refreshResources(); };
+  setInterval(tick, 3000);
+  document.addEventListener('visibilitychange', tick);
+  tick();
 }
 
 /* The status bar stays on one line. When its contents outgrow the width, it

@@ -13,12 +13,13 @@ import { $, esc, MOD, withKeys } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, pageURL } from './api.js';
 import { getSetting } from './settings.js';
+import { fmtBytes } from '../format.js';
 
 const VIEW_CHUNK = 1000;
 const VIEW_OVERSCAN = 30;
 
 let codeVp, codeSizer, codeRows, fileTitle, fileMeta;
-let stFile, stPos, stLines, stDiff, stTabSize, stEnc, stEol, gotoEl, gotoIn;
+let stFile, stPos, stLines, stSize, stTabSize, stEnc, stEol, gotoEl, gotoIn;
 let lineH = 21; // --lh, measured at init
 let tabSize = 4; // editor.tabSize: how wide a tab renders and counts in Col
 let viewWs = ''; // workspace id of the open files below
@@ -36,7 +37,7 @@ export function initViewer() {
   stFile = $('#st-file');
   stPos = $('#st-pos');
   stLines = $('#st-lines');
-  stDiff = $('#st-diff');
+  stSize = $('#st-size');
   stTabSize = $('#st-tabsize');
   stEnc = $('#st-enc');
   stEol = $('#st-eol');
@@ -136,7 +137,7 @@ async function loadFile(f) {
     const j = res.data;
     f.doc = {
       lang: j.lang, total: j.total, lines: new Array(j.total), chunks: new Set(), pending: new Set(),
-      eol: j.eol || '', encoding: j.encoding || '', added: j.linesAdded || 0, deleted: j.linesDeleted || 0,
+      eol: j.eol || '', encoding: j.encoding || '', size: j.size || 0,
       lspMissing: j.lsp?.missing || '',
     };
     takeChunk(f.doc, 0, j);
@@ -197,7 +198,7 @@ function drawStatus() {
   const { line, col } = current.cur || { line: 1, col: 1 };
   stPos.textContent = `Ln ${line}, Col ${col}`;
   stLines.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
-  stDiff.innerHTML = d.added || d.deleted ? `<span class="add">+${d.added}</span><span class="del">−${d.deleted}</span>` : '';
+  stSize.textContent = fmtBytes(d.size);
   stTabSize.textContent = `Tab Size: ${tabSize}`;
   stEnc.textContent = d.encoding;
   stEol.textContent = d.eol;

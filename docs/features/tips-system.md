@@ -10,7 +10,7 @@ Unlike heavy IDEs that display large intrusive modals on startup, px0 loads tips
 
 - **Non-Intrusive Floating Widget**: Appears gently in the bottom-right corner after an initial delay (~1.8 seconds), presenting one tip at a time with previous/next navigation and automatic progression.
 - **Dedicated Tips Section in IDE**: An inspector tab labeled **Tips** (`#pane-right-tips`) displays all available tips in a searchable, filterable list directly alongside your code.
-- **Left Bottom Bar Help Button**: The `#btn-help` button in the sidebar footer (`side-foot`) navigates directly to the Tips section in the inspector.
+- **Left Bottom Bar Help Button**: The `#btn-help` button in the status bar's first section (`.status-side`, under the sidebar) navigates directly to the Tips section in the inspector.
 - **Public URL Delivery**: Tips are loaded live from `https://px0.ai/tips.json` (hosted in the `../web` repository) and cached locally, with built-in offline fallbacks (`web/src/tips-util.js`).
 - **Permanent Dismissal**: Users can permanently hide the floating tip popups at any time via the "Don't show tips" button, the inspector checkbox, or the `tips.enabled` preference in Settings (`Cmd/Ctrl+,`).
 

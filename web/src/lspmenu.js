@@ -6,10 +6,10 @@
 // recipes, never a command from the page) and Copy. Each page says how to
 // reach its editor backend and what to do with a fresh list; the menu around
 // the rows, its head and placement, stay the page's. Depends only on
-// state.js, ui.js and metricsview.js, which both bundles already carry.
+// state.js, ui.js and format.js, which both bundles already carry.
 import { esc } from './state.js';
 import { copyToClipboard, showToast } from './ui.js';
-import { fmtBytes } from './metricsview.js';
+import { fmtBytes } from './format.js';
 
 /**
  * lspServers ties the list to one editor backend.

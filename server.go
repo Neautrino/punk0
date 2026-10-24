@@ -1348,7 +1348,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	lines, exact := d.Lines(start, start+count)
 	_, coming := d.Exact()
-	diffAvail, add, del := false, 0, 0
+	diffAvail := false
 	if gitAvailable(s.ix.Root()) {
 		if ref := q.Get("ref"); ref != "" {
 			if base := q.Get("base"); base != "" && validSHA(base) && validSHA(ref) {
@@ -1359,14 +1359,10 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 				diffAvail = gitDiffCommit(s.ix.Root(), rel, ref) != ""
 			}
 		} else if avail, ok := s.ix.HasDiffAvailable(rel, s.diffBase, s.pr != nil); ok && !avail {
-			// The index is sure the file is unchanged: no diff to run, and
-			// nothing to count either.
+			// The index is sure the file is unchanged: no diff to run.
 			diffAvail = false
 		} else {
-			// The working tree against the base: its +/- lines are what the
-			// agents page's status bar shows for the file.
 			wt := s.worktreeDiff(rel, s.diffBase)
-			add, del = diffLineCounts(wt)
 			diffAvail = wt != ""
 			if !diffAvail && s.pr != nil {
 				diffAvail = gitDiffBetween(s.ix.Root(), rel, s.diffBase, s.prHeadSHA) != "" ||
@@ -1379,9 +1375,6 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		"start": start, "lines": lines, "size": st.Size(),
 		"exact": exact, "refine": !exact && coming,
 		"eol": d.EOL, "encoding": d.Encoding,
-		// linesAdded/linesDeleted, not added/deleted: "deleted" is the boolean
-		// the deleted-file response above sets, and a count would read as it.
-		"linesAdded": add, "linesDeleted": del,
 		"markdown":      render.IsMarkdown(rel),
 		"table":         table.IsTable(rel),
 		"diffAvailable": diffAvail,

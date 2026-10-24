@@ -18,7 +18,7 @@ import { initTheme } from './theme.js';
 import { initMarkdown } from './markdown.js';
 import { initDiff } from './diff.js';
 import { initAgent, applyAgentMeta, loadAgentAsync } from './agent.js';
-import { initMetrics, initLspMenu, refreshLspMenu, initStatusFit, updateMetricsDisplay, updateStatus } from './status.js';
+import { initResources, initLspMenu, refreshLspMenu, initStatusFit, noteMetrics, updateStatus } from './status.js';
 import { initSettings } from './settings.js';
 import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
@@ -54,7 +54,6 @@ initShortcuts();
 initMarkdown();
 initDiff();
 initAgent();
-initMetrics();
 initLspMenu();
 initStatusFit();
 initSettings();
@@ -91,7 +90,8 @@ initPRScope();
 
   measure();
   S.meta = await api('/api/meta');
-  if (S.meta.metrics) updateMetricsDisplay(S.meta.metrics);
+  noteMetrics(S.meta.metrics);
+  initResources(); // after /api/meta: it says whether there is a workbench to ask
   refreshLspMenu();
   updateSidebarToggleState();
   syncGitPanelMeta();

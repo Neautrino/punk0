@@ -3,7 +3,7 @@ import { updateSidebarToggleState, patchTreeGitStatus, treeEl, setSidebarMode, h
 import { drawTabs, loadGutter, closeTab, reloadOpenTabs } from './tabs.js';
 import { syncDiffView } from './diff.js';
 import { render } from './renderer.js';
-import { updateStatus, updateMetricsDisplay } from './status.js';
+import { updateStatus, noteMetrics } from './status.js';
 import { updateGitPanel } from './gitpanel.js';
 import { updateGraph } from './gitgraph.js';
 import { updateScopeCounts } from './prscope.js';
@@ -125,7 +125,7 @@ function connect() {
       markTraffic();
       try {
         const data = JSON.parse(e.data);
-        updateMetricsDisplay(data);
+        noteMetrics(data);
       } catch (err) {
         // Drop malformed frame
       }

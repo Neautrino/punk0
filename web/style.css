@@ -31,7 +31,9 @@
    hidden attribute and leave an invisible sheet eating every click. */
 [hidden] { display: none !important; }
 html, body { height: 100%; }
+/* A column: the panes (#app), then the status bar across the full width. */
 body {
+  display: flex; flex-direction: column;
   margin: 0; background: var(--bg); color: var(--fg);
   font: 13px/1.5 var(--ui); overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -42,13 +44,15 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 input { font: inherit; color: inherit; background: none; border: 0; outline: 0; }
 ::selection { background: var(--sel); }
 
-#app { display: flex; height: 100vh; }
+#app { display: flex; flex: 1; min-height: 0; }
 
 
 
 /* ---------- sidebar ---------- */
+/* --side-w: the sidebar's width (panels.js's resizer), shared with the status
+   bar's first section so it sits right under the sidebar. */
 #side {
-  width: 340px; flex: none; background: var(--bg2); border-right: 1px solid var(--line);
+  width: var(--side-w, 340px); flex: none; background: var(--bg2); border-right: 1px solid var(--line);
   display: flex; flex-direction: column; overflow: hidden;
 }
 body.side-hidden #side, body.side-hidden #resizer { display: none; }
@@ -115,12 +119,14 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
   color: var(--dim);
 }
 .panel-body { flex: 1; overflow: auto; padding-bottom: 16px; }
-/* Version and theme, level with the status bar beside it. */
-.side-foot {
-  flex: none; height: 24px; display: flex; align-items: center; gap: 6px;
-  padding: 0 8px; border-top: 1px solid var(--line);
+/* The status bar's first section: logo, version and buttons, as wide as the
+   sidebar above it; just as wide as its contents while the sidebar is hidden. */
+.status-side {
+  width: var(--side-w, 340px); align-self: stretch; display: flex; align-items: center; gap: 6px;
+  padding: 0 8px; border-right: 1px solid var(--line);
 }
-.side-foot .mini svg { display: block; }
+body.side-hidden .status-side { width: auto; border-right: 0; }
+.status-side .mini svg { display: block; }
 /* Project links and the theme button, together at the right edge. */
 .side-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 .side-actions .mini { margin-left: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; }
@@ -305,7 +311,7 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
    why rather than looking like it failed to load. It keeps growing into the
    sidebar's spare height: it is the column's only flex-grow item, and taking
    that away would leave nothing to absorb the slack, stacking the panels from
-   the top and lifting .side-foot off the bottom edge. */
+   the top and leaving a gap at the sidebar's bottom. */
 #tree.changed-only.no-changes::after {
   content: "Working tree clean"; display: block;
   padding: 8px 12px; font: 11.5px var(--ui); color: var(--faint);
@@ -2098,16 +2104,16 @@ kbd {
 }
 
 /* ---------- status ---------- */
-#status { height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 10px; background: var(--bg2); border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--faint); user-select: none; white-space: nowrap; overflow: hidden; }
+#status { height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 0; background: var(--bg2); border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--faint); user-select: none; white-space: nowrap; overflow: hidden; }
 /* Nothing shrinks or wraps: an overflowing bar is what tells fitStatus() to shed detail. */
 #status > * { flex: none; }
 #status > .grow { flex: 1; }
 /* Shed in steps as the bar narrows; the classes accumulate, so each step keeps the ones before. */
 #status.fit-1 .footer-kbd,
 #status.fit-2 #st-size,
-#status.fit-3 .metric-label,
+#status.fit-3 .res-count:not(:last-child), #status.fit-3 .res-btn .metric-divider,
 #status.fit-4 [data-action="wrap"], #status.fit-4 [data-action="help"], #status.fit-4 .sel-chip, #status.fit-4 #sel-stats,
-#status.fit-5 #st-metrics,
+#status.fit-5 #st-res,
 #status.fit-6 #st-lsp { display: none; }
 #footer-actions { display: flex; align-items: center; gap: 3px; }
 .footer-btn {
@@ -2220,44 +2226,69 @@ kbd {
   font: 10.5px/1.45 var(--mono); color: var(--dim);
 }
 #status span:empty:not(.grow) { display: none; }
-.status-metrics {
-  display: inline-flex; align-items: center; gap: 6px;
-  font: 11px var(--mono); color: var(--fg); opacity: 0.88;
-  padding: 1px 6px; border-radius: var(--r); background: var(--bg3);
-  border: 1px solid var(--line); cursor: pointer; user-select: none;
-  transition: border-color .15s ease, opacity .15s ease;
-}
 .metric-divider { color: var(--faint); }
-.status-metrics-group { display: inline-flex; align-items: center; gap: 6px; }
-.status-metrics-group[hidden] { display: none; }
-.status-metrics:hover, .status-metrics:focus-visible { opacity: 1; border-color: var(--accent); }
-
-#metrics-menu {
-  position: fixed; z-index: 70; min-width: 220px;
-  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+/* ---------- resources (respanel.js): status bar button and its panel ----------
+   Running terminals, running agents, total RAM: one button, so hovering any
+   of them lights all three, and a click opens the panel. */
+.res-btn {
+  display: inline-flex; align-items: center; gap: 10px; height: 18px; padding: 0 6px; margin-right: -6px;
+  border: 0; border-radius: var(--r); background: none; cursor: pointer;
+  font: 11px var(--mono); color: var(--dim);
+}
+.res-btn:hover, .res-btn[aria-expanded="true"] { color: var(--fg); background: var(--bg4); }
+.res-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.res-btn .res-count { display: inline-flex; align-items: center; gap: 5px; }
+.res-btn svg { display: block; flex: none; color: var(--faint); }
+.res-btn .metric-divider { margin: 0 -4px; }
+/* The panel over the bar's right end: a table of CPU and RAM. Columns:
+   name, sparkline, CPU, RAM. Above the editor's tip widget (125): it was
+   asked for, the tip was not. */
+.res {
+  position: fixed; z-index: 126; width: 420px; max-width: calc(100vw - 16px); max-height: 70vh;
+  display: flex; flex-direction: column;
   background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
-  user-select: none; animation: toastIn .18s ease-out;
+  font: 12px var(--ui); color: var(--fg);
 }
-#metrics-menu[hidden] { display: none; }
-.metrics-title {
-  font: 600 11px/1.2 var(--ui); color: var(--fg);
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 6px; border-bottom: 1px solid var(--line);
-  letter-spacing: .02em; text-transform: uppercase;
-}
-.metrics-grid {
-  display: flex; flex-direction: column; gap: 5px;
-}
-.metrics-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  font: 11.5px/1.4 var(--ui);
-}
-.metrics-label {
-  color: var(--dim);
-}
-.metrics-val {
-  font: 11.5px/1.4 var(--mono); color: var(--fg); font-weight: 500;
-}
+.res[hidden] { display: none; }
+.res-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 6px 12px; color: var(--dim); }
+.res-head svg { flex: none; }
+.res-title { flex: 1; font-weight: 600; color: var(--fg); }
+.res-head .mini { margin-left: 0; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.res-sum { display: flex; align-items: baseline; gap: 8px; padding: 0 12px 8px; border-bottom: 1px solid var(--line); }
+.res-big { font: 600 12px var(--mono); }
+.res-faint { color: var(--faint); font-size: 11px; }
+.res-cols, .res-row { display: grid; grid-template-columns: minmax(0, 1fr) 56px 52px 72px; align-items: center; column-gap: 10px; padding: 0 12px; }
+.res-cols { height: 24px; border-bottom: 1px solid var(--line); font-size: 11px; color: var(--faint); }
+.res-cols span:first-child { grid-column: 1 / 3; }
+.res-cols span:not(:first-child), .res-num { text-align: right; }
+.res-rows { overflow-y: auto; padding: 4px 0; }
+/* Rows sit 4px in so the hover reads as a pill; their text stays on the header's columns. */
+.res-rows .res-row { margin: 0 4px; padding: 0 8px; min-height: 26px; }
+.res-num { font: 11px var(--mono); color: var(--dim); white-space: nowrap; }
+.res-name { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.res-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-gor { flex: none; font: 10.5px var(--mono); color: var(--faint); white-space: nowrap; }
+.res-group { cursor: pointer; border-radius: var(--r); }
+.res-group:hover { background: var(--bg4); }
+.res-group:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.res-group .res-label { font-weight: 600; }
+.res-chev { flex: none; display: inline-flex; color: var(--faint); transition: transform .12s; }
+.res-chev.open { transform: rotate(90deg); }
+.res-sub .res-name { padding-left: 15px; }
+.res-sub .res-label { color: var(--dim); }
+.res-ic { flex: none; display: inline-flex; color: var(--faint); }
+.res-spark { display: block; color: var(--accent-fg); opacity: .8; }
+/* A running terminal, by agent status, as the agents page's tab dots. */
+.res-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--gi); }
+.res-dot.working { background: var(--accent-fg); }
+.res-dot.waiting { background: var(--mark-active); }
+@media (prefers-reduced-motion: no-preference) { .res-dot.working { animation: pulse-dot 1.2s ease-in-out infinite; } }
+.res-self { margin-top: 4px; border-top: 1px solid var(--line); min-height: 30px; }
+.res-self .res-label { font: 600 12px var(--mono); }
+.res-zero { color: var(--mark-active); }
+.res-note { margin: 6px 12px; font-size: 11.5px; color: var(--faint); }
+@media (prefers-reduced-motion: reduce) { .res-chev { transition: none; } }
+
 .status-ver {
   font: 11px var(--mono); color: var(--dim); cursor: pointer;
   padding: 1px 4px; border-radius: var(--r);

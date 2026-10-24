@@ -415,12 +415,12 @@
   <!-- The status bar, in the panes' columns: under the projects, logo,
        version and the help / GitHub / settings buttons; in the middle, the
        agents working and needing you (statusbar.js), then, while a file tab
-       is in front, its cursor, +/- lines, tab size, encoding and line endings
-       (viewer.js; all but the cursor while it shows its diff), and at the
-       right corner the selected folder's language servers (lsp.js, like
-       px0's LSP item); under the files, one button
-       holding the running terminals, running agents and total RAM, which
-       opens the resource panel (web/src/orch/resources.js, /api/resources in
+       is in front, its cursor, line count, size, tab size, encoding and line
+       endings (viewer.js; all but the cursor while it shows its diff), and at
+       the right corner the selected folder's language servers (lsp.js, like
+       px0's LSP item); under the files, one button holding the running
+       terminals, running agents and total RAM, which opens the resource
+       panel (web/src/respanel.js via orch/resources.js, /api/resources in
        wbresources.go). -->
   <footer id="status" class="wb-status">
     <span class="wb-status-side">
@@ -446,7 +446,7 @@
       <span id="st-file" hidden>
         <button type="button" id="st-pos" class="wb-st-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="o-goto"></button>
         <span id="st-lines" title="Lines in the file"></span>
-        <span id="st-diff" title="Lines added and removed since the last commit"></span>
+        <span id="st-size" title="File size on disk"></span>
         <span id="st-tabsize" title="Tab width (Settings, Tab Size)"></span>
         <span id="st-enc" title="Encoding"></span>
         <span id="st-eol" title="Line endings"></span>
@@ -454,22 +454,8 @@
       <span id="st-lsp" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" hidden>LSP</span>
     </span>
     <span class="wb-status-end">
-    <button type="button" id="st-res" class="wb-res-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-res">
-      <span id="st-terms" class="wb-count">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        <span id="st-terms-n">0</span>
-      </span>
-      <span class="metric-divider">·</span>
-      <span id="st-agents" class="wb-count">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg>
-        <span id="st-agents-n">0</span>
-      </span>
-      <span class="metric-divider">·</span>
-      <span class="wb-count">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M12 11V9M16 11V9M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
-        <span id="st-mem">-- MB</span>
-      </span>
-    </button>
+    <!-- The resource button; respanel.js fills it and adds its panel -->
+    <span id="st-res"></span>
     </span>
   </footer>
   <div id="lsp-menu" role="menu" aria-label="Language servers" hidden></div>
@@ -477,18 +463,6 @@
     <input id="o-goto-in" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Line, or line:column">
   </form>
 </div>
-<section id="wb-res" class="wb-res" role="dialog" aria-label="Resources" hidden>
-  <header class="wb-res-head">
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19v-3M10 19v-3M14 19v-3M18 19v-3M8 11V9M12 11V9M16 11V9M2 15h20"/><path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v1.1a2 2 0 0 0 0 3.837V17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5.1a2 2 0 0 0 0-3.837Z"/></svg>
-    <span class="wb-res-title">Resources</span>
-    <button type="button" class="mini" id="wb-res-refresh" title="Refresh" aria-label="Refresh">
-      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-    </button>
-  </header>
-  <div id="wb-res-sum" class="wb-res-sum"></div>
-  <div class="wb-res-cols" aria-hidden="true"><span>Name</span><span>CPU</span><span>RAM</span></div>
-  <div id="wb-res-rows" class="wb-res-rows"></div>
-</section>
 <div id="helpsheet" hidden></div>
 <div id="toast" hidden></div>
 <script src="static/workbench.js"></script>

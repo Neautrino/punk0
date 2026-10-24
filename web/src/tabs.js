@@ -3,7 +3,7 @@ import { $, esc, S, doc_, api, apiPost, LH, CHUNK, withKeys } from './state.js';
 import { emit } from './bus.js';
 import { vp, sizer, rowsEl, editor } from './ui.js';
 import { render, layout, refineChunk, getLH, lineTopY } from './renderer.js';
-import { updateStatus, setStatusNote, refreshMetrics } from './status.js';
+import { updateStatus, setStatusNote, refreshResources } from './status.js';
 import { pushHistory } from './history.js';
 import { warmLSP } from './lsp.js';
 import { loadOutline } from './outline.js';
@@ -476,7 +476,7 @@ function closeTabs(indices) {
     closedEvents.push({ doc: closed, index: i });
   }
   Promise.allSettled(evictions).then(results => {
-    if (results.some(result => result.status === 'fulfilled')) refreshMetrics();
+    if (results.some(result => result.status === 'fulfilled')) refreshResources();
   });
   if (S.tabs.length === 0) {
     S.active = -1;
