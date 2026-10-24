@@ -17,7 +17,6 @@ import { isAutoRevealEnabled } from './settings.js';
 import { openSettings } from './settings-form.js';
 import { showVimHelp, isVimEnabled, setVimModeEnabled } from './vim.js';
 import { launchPR } from './pr.js';
-import { newThread, deleteCurrentThread } from './thread.js';
 import { copyToClipboard, copyRichToClipboard } from './ui.js';
 import { getDocRaw } from './markdown.js';
 import { getSelectedRangeInfo } from './selbar.js';
@@ -101,9 +100,7 @@ export const COMMANDS = [
   { name: 'Close Tab', run: () => { if (S.active >= 0) closeTab(S.active); } },
   { name: 'Close All Tabs', run: () => closeAllTabs() },
   { name: withKeys('Reopen Closed Tab ({Alt+Shift+T})'), run: () => reopenClosedTab() },
-  { name: 'Threads: Show All', run: () => showRightInspector('threads') },
-  { name: withKeys('Threads: Start New Thread ({Alt+T} on a selection)'), run: () => newThread(null) },
-  { name: 'Threads: Delete Current Thread', run: deleteCurrentThread },
+  { name: withKeys('Terminal: Show Agent Terminal ({Alt+T})'), run: () => showRightInspector('term') },
   { name: 'Git: Open Pull Request…', run: () => openPalette('openpr', '') },
   { name: 'Preferences: Toggle Vim Keybindings', run: () => setVimModeEnabled(!isVimEnabled(), true) },
   { name: 'Help: Vim Keybindings Cheat Sheet', run: showVimHelp },

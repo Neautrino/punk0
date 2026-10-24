@@ -1065,6 +1065,21 @@ export function reloadWorkspace(focus, what = 'Changed') {
 }
 
 export function initAgent() {
+  if (gitHarness) {
+    gitHarness.addEventListener('change', async () => {
+      const hName = gitHarness.value;
+      if (!hName) return;
+      await select(hName, msg => showToast('!', msg));
+    });
+  }
+  if (gitModel) {
+    gitModel.addEventListener('change', async () => {
+      const hName = gitHarness?.value || chosen();
+      const mName = gitModel.value;
+      await select(hName, mName, msg => showToast('!', msg));
+    });
+  }
+
   if (!box || !tpl) return;
   setAgentHandler(openAgentEdit);
 
@@ -1084,20 +1099,6 @@ export function initAgent() {
       const hName = batchHarness?.value || chosen();
       const mName = batchModel.value;
       await select(hName, mName, msg => showBatchErr(msg));
-    });
-  }
-  if (gitHarness) {
-    gitHarness.addEventListener('change', async () => {
-      const hName = gitHarness.value;
-      if (!hName) return;
-      await select(hName, msg => showToast('!', msg));
-    });
-  }
-  if (gitModel) {
-    gitModel.addEventListener('change', async () => {
-      const hName = gitHarness?.value || chosen();
-      const mName = gitModel.value;
-      await select(hName, mName, msg => showToast('!', msg));
     });
   }
 

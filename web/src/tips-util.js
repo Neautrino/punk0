@@ -156,14 +156,14 @@ export const DEFAULT_TIPS = [
     title: "Selection Actions & Context Menu",
     category: "Selection",
     tag: "Editor",
-    content: "Right-click any selected text to reveal the action menu: copy formatted Markdown, copy reference, start an agent thread, or edit inline."
+    content: "Select code to reveal the floating action pill: Quick Edit (Cmd+K), Add to Chat (Alt+L), or Copy Ref (Alt+C)."
   },
   {
-    id: "agent-threads",
-    title: "Start an AI Agent Thread",
+    id: "agent-terminal",
+    title: "Interactive Agent Terminal",
     category: "AI",
     tag: "Agent",
-    content: "Select code and press **`Alt + T`** to start a multi-turn conversation anchored to that code. Changes can be watched live or dispatched to Claude Code, Gemini CLI, Cursor Agent, Antigravity, or Codex.",
+    content: "Press **`Alt + T`** to focus the right-sidebar Agent Terminal running Claude Code or shell tabs. Use **`Alt + L`** to stage highlighted code directly into the terminal prompt.",
     shortcut: "Alt+T"
   },
   {

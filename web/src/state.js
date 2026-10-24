@@ -4,13 +4,13 @@
  * @param {ParentNode} [r=document]
  * @returns {any}
  */
-export const $ = (s, r = document) => r.querySelector(s);
+export const $ = (s, r = (typeof document !== 'undefined' ? document : null)) => r?.querySelector?.(s);
 /**
  * @param {string} s
  * @param {ParentNode} [r=document]
  * @returns {any[]}
  */
-export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+export const $$ = (s, r = (typeof document !== 'undefined' ? document : null)) => r?.querySelectorAll ? [...r.querySelectorAll(s)] : [];
 export const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 const request = async (method, path, params, opts = {}) => {
