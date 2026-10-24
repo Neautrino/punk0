@@ -584,20 +584,6 @@ func gitApplyHunk(root, relpath, hunk, action string) error {
 	return nil
 }
 
-// gitSnapshotWorktree captures the entire working tree (including unstaged and
-// untracked files) as a ref-free commit on top of HEAD (gitSnapshotCommit).
-// Returns "" if git is unavailable or the snapshot fails.
-func gitSnapshotWorktree(root string) string {
-	if !gitAvailable(root) {
-		return ""
-	}
-	sha, err := gitSnapshotCommit(root, gitHeadSHA(root), "px0 turn snapshot")
-	if err != nil {
-		return ""
-	}
-	return sha
-}
-
 // gitSnapshotCommit records the working tree as it is -- unstaged and
 // untracked files included, ignored ones not -- as a commit with parent (none
 // when "") that no ref points to. It stages into a copy of the index in the
@@ -662,43 +648,6 @@ func gitSnapshotCommit(root, parent, message string) (string, error) {
 		return "", fmt.Errorf("git commit-tree: unexpected output %q", sha)
 	}
 	return sha, nil
-}
-
-// gitRestoreSnapshotPaths restores the specified root-relative paths to their
-// state in snapshotSHA, removing any path that did not exist in snapshotSHA.
-func gitRestoreSnapshotPaths(root, snapshotSHA string, paths []string) error {
-	info := gitProbe(root)
-	if !info.ok {
-		return errors.New("git repository not available")
-	}
-	if !validSHA(snapshotSHA) {
-		return errors.New("invalid snapshot SHA")
-	}
-	for _, rel := range paths {
-		clean := filepath.Clean(filepath.FromSlash(rel))
-		if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
-			continue
-		}
-		abs := filepath.Join(root, clean)
-		repoRel, err := filepath.Rel(info.toplevel, abs)
-		if err != nil {
-			continue
-		}
-		repoRel = filepath.ToSlash(repoRel)
-
-		// Check if the path existed in snapshotSHA.
-		if exec.Command("git", "-C", info.toplevel, "cat-file", "-e", snapshotSHA+":"+repoRel).Run() == nil {
-			if out, err := exec.Command("git", "-C", info.toplevel, "checkout", snapshotSHA, "--", repoRel).CombinedOutput(); err != nil {
-				return fmt.Errorf("git checkout %s: %w: %s", rel, err, strings.TrimSpace(string(out)))
-			}
-			// Reset index entry to HEAD if HEAD has it, or unstage if it was newly added.
-			_ = exec.Command("git", "-C", info.toplevel, "reset", "-q", "HEAD", "--", repoRel).Run()
-		} else {
-			_ = exec.Command("git", "-C", info.toplevel, "rm", "-f", "--ignore-unmatch", "--cached", "--", repoRel).Run()
-			_ = os.Remove(abs)
-		}
-	}
-	return nil
 }
 
 // gitCommit commits whatever is currently staged. Refuses up front when

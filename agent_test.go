@@ -65,6 +65,14 @@ func agentPostJSON(t *testing.T, s *Server, url string, body any) (int, map[stri
 	return rec.Code, m
 }
 
+// agentEdit dispatches one anchored edit through /api/agent/batch.
+func agentEdit(t *testing.T, s *Server, path string, l1, l2 int, instruction string) (int, map[string]any) {
+	t.Helper()
+	return agentPostJSON(t, s, "/api/agent/batch", map[string]any{"edits": []map[string]any{
+		{"path": path, "l1": l1, "l2": l2, "instruction": instruction},
+	}})
+}
+
 func agentServer(t *testing.T, root, harness string) *Server {
 	t.Helper()
 	isolateSettings(t)
@@ -233,7 +241,7 @@ func TestAgentHarnessEndpointsRequireAvailability(t *testing.T) {
 	if code, _ := get(t, s, "/api/agent/harnesses"); code != http.StatusNotFound {
 		t.Fatalf("harnesses = %d, want 404", code)
 	}
-	if code, _ := agentPost(t, s, "/api/agent/edit?path=main.go&l1=1&l2=1&instruction=hi"); code != http.StatusNotFound {
+	if code, _ := agentEdit(t, s, "main.go", 1, 1, "hi"); code != http.StatusNotFound {
 		t.Fatalf("edit = %d, want 404", code)
 	}
 
@@ -262,7 +270,7 @@ func TestAgentEditRefusedUntilHarnessChosen(t *testing.T) {
 	s.localOnly = true // a command template is only accepted on loopback
 	s.SetAgent(m)
 
-	code, body := agentPost(t, s, "/api/agent/edit?path=a.go&l1=1&l2=1&instruction=hi")
+	code, body := agentEdit(t, s, "a.go", 1, 1, "hi")
 	if code != 400 {
 		t.Fatalf("edit with nothing selected = %d, want 400", code)
 	}
@@ -274,7 +282,7 @@ func TestAgentEditRefusedUntilHarnessChosen(t *testing.T) {
 	if code, _ = agentPost(t, s, "/api/agent/select?name="+"echo+%7Bprompt%7D"); code != 200 {
 		t.Fatalf("select = %d, want 200", code)
 	}
-	if code, _ = agentPost(t, s, "/api/agent/edit?path=a.go&l1=1&l2=1&instruction=hi"); code != 200 {
+	if code, _ = agentEdit(t, s, "a.go", 1, 1, "hi"); code != 200 {
 		t.Fatalf("edit after select = %d, want 200", code)
 	}
 	waitIdle(t, s)
@@ -290,7 +298,7 @@ func TestAgentEditRunsHarnessAndReportsChange(t *testing.T) {
 	s := agentServer(t, root, writeHarness(t,
 		"printf 'touched\\n' >> keep.go\nprintf '%s' \"$1\" > "+filepath.Join(out, "prompt.txt")+"\n"))
 
-	code, _ := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=add+a+line")
+	code, _ := agentEdit(t, s, "keep.go", 1, 1, "add a line")
 	if code != 200 {
 		t.Fatalf("edit = %d, want 200", code)
 	}
@@ -316,7 +324,7 @@ func TestAgentEditRunsHarnessAndReportsChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"@keep.go line 1", "### Instruction", "add a line"} {
+	for _, want := range []string{"@keep.go 1", "add a line"} {
 		if !strings.Contains(string(prompt), want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
@@ -334,7 +342,7 @@ func TestAgentOutsideGitReportsUnknownChanges(t *testing.T) {
 	s := agentServer(t, root, writeHarness(t, "printf 'touched\\n' >> a.go\n"))
 
 	// With no git there is also no uncommitted-work guard to satisfy.
-	if code, _ := agentPost(t, s, "/api/agent/edit?path=a.go&l1=1&l2=1&instruction=hi"); code != 200 {
+	if code, _ := agentEdit(t, s, "a.go", 1, 1, "hi"); code != 200 {
 		t.Fatalf("edit = %d, want 200", code)
 	}
 	job := waitIdle(t, s)
@@ -360,10 +368,10 @@ func TestAgentRefusesSecondEditWhileRunning(t *testing.T) {
 	root := gitRepo(t)
 	s := agentServer(t, root, writeHarness(t, "sleep 2\n"))
 
-	if code, _ := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=one"); code != 200 {
+	if code, _ := agentEdit(t, s, "keep.go", 1, 1, "one"); code != 200 {
 		t.Fatalf("first edit = %d, want 200", code)
 	}
-	code, body := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=two")
+	code, body := agentEdit(t, s, "keep.go", 1, 1, "two")
 	if code != http.StatusConflict {
 		t.Fatalf("second edit = %d, want 409", code)
 	}
@@ -383,7 +391,7 @@ func TestAgentAllowsEditOverUncommittedFileWithoutForce(t *testing.T) {
 	// sub/mod.go is modified but not committed by gitRepo.
 	s := agentServer(t, root, writeHarness(t, "printf 'touched\\n' >> keep.go\n"))
 
-	code, _ := agentPost(t, s, "/api/agent/edit?path=sub/mod.go&l1=1&l2=1&instruction=hi")
+	code, _ := agentEdit(t, s, "sub/mod.go", 1, 1, "hi")
 	if code != http.StatusOK {
 		t.Fatalf("edit over uncommitted work = %d, want 200", code)
 	}
@@ -475,7 +483,7 @@ func TestAgentReportsEditToAlreadyModifiedFile(t *testing.T) {
 	root := gitRepo(t)
 	s := agentServer(t, root, writeHarness(t, "printf 'touched\\n' >> sub/mod.go\n"))
 
-	if code, _ := agentPost(t, s, "/api/agent/edit?path=sub/mod.go&l1=1&l2=1&instruction=hi&force=1"); code != 200 {
+	if code, _ := agentEdit(t, s, "sub/mod.go", 1, 1, "hi"); code != 200 {
 		t.Fatalf("edit = %d, want 200", code)
 	}
 	job := waitIdle(t, s)
@@ -496,15 +504,15 @@ func TestAgentAllowsNonOverlappingEditsInParallel(t *testing.T) {
 	root := gitRepo(t)
 	s := agentServer(t, root, writeHarness(t, "sleep 0.15\n"))
 
-	code, first := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=one")
+	code, first := agentEdit(t, s, "keep.go", 1, 1, "one")
 	if code != 200 {
 		t.Fatalf("first edit = %d, want 200", code)
 	}
-	code, _ = agentPost(t, s, "/api/agent/edit?path=keep.go&l1=2&l2=2&instruction=two")
+	code, _ = agentEdit(t, s, "keep.go", 2, 2, "two")
 	if code != 200 {
 		t.Fatalf("disjoint-range edit = %d, want 200 (should run in parallel)", code)
 	}
-	code, _ = agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=2&instruction=three")
+	code, _ = agentEdit(t, s, "keep.go", 1, 2, "three")
 	if code != http.StatusConflict {
 		t.Fatalf("edit overlapping both = %d, want 409", code)
 	}
@@ -523,7 +531,7 @@ func TestAgentMutationsRejectCrossOriginPost(t *testing.T) {
 	s := agentServer(t, root, writeHarness(t, "printf 'touched\\n' >> keep.go\n"))
 
 	for _, path := range []string{
-		"/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=hi",
+		"/api/agent/batch",
 		"/api/agent/select?name=claude",
 		"/api/agent/cancel",
 	} {
@@ -550,7 +558,7 @@ func TestAgentCancelJob(t *testing.T) {
 	// Harness that sleeps to simulate a long-running edit
 	s := agentServer(t, root, writeHarness(t, "sleep 5\n"))
 
-	code, first := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=first")
+	code, first := agentEdit(t, s, "keep.go", 1, 1, "first")
 	if code != http.StatusOK {
 		t.Fatalf("edit first = %d, want 200", code)
 	}
@@ -691,14 +699,13 @@ func TestAgentBatchEditRejectsIntraBatchOverlap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tm := newThreadManager(m, root)
 
 	// Overlapping ranges on the same file: lines 1-2 and lines 2-3
 	items := []agentBatchItem{
 		{Abs: filepath.Join(root, "a.go"), Path: "a.go", L1: 1, L2: 2, Instruction: "edit 1"},
 		{Abs: filepath.Join(root, "a.go"), Path: "a.go", L1: 2, L2: 3, Instruction: "edit 2"},
 	}
-	if _, err := tm.StartEdit(items); err == nil {
+	if _, err := m.StartEdit(items); err == nil {
 		t.Fatal("expected overlapping batch edits on same file to be rejected, got nil error")
 	}
 
@@ -707,12 +714,12 @@ func TestAgentBatchEditRejectsIntraBatchOverlap(t *testing.T) {
 		{Abs: filepath.Join(root, "a.go"), Path: "a.go", L1: 1, L2: 1, Instruction: "edit 1"},
 		{Abs: filepath.Join(root, "a.go"), Path: "a.go", L1: 3, L2: 3, Instruction: "edit 2"},
 	}
-	job, err := tm.StartEdit(validItems)
+	job, err := m.StartEdit(validItems)
 	if err != nil {
 		t.Fatalf("expected disjoint batch edits to succeed, got %v", err)
 	}
-	if job.BatchCount != 2 {
-		t.Errorf("job.BatchCount = %d, want 2", job.BatchCount)
+	if job.Path != "2 edits" {
+		t.Errorf("job.Path = %q, want %q", job.Path, "2 edits")
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -766,7 +773,7 @@ echo "// edited" >> keep.go
 `))
 
 	// Start individual edit on keep.go line 1
-	code1, body1 := agentPost(t, s, "/api/agent/edit?path=keep.go&l1=1&l2=1&instruction=one")
+	code1, body1 := agentEdit(t, s, "keep.go", 1, 1, "one")
 	if code1 != 200 {
 		t.Fatalf("edit 1 = %d, want 200 (error: %v)", code1, body1["error"])
 	}
@@ -806,47 +813,28 @@ echo "// edited" >> keep.go
 	}
 }
 
-func TestAgentBatchEditPayloadVariations(t *testing.T) {
+// /api/agent/batch takes only {"edits": [...]}, the shape pr.js sends.
+func TestAgentBatchEditPayload(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
 	}
 	root := gitRepo(t)
 	s := agentServer(t, root, writeHarness(t, "exit 0\n"))
 
-	// 1. Direct array JSON body
-	directArray := []map[string]any{
-		{"path": "keep.go", "l1": 1, "l2": 1, "instruction": "arr 1"},
+	for name, payload := range map[string]any{
+		"empty":    map[string]any{"edits": []any{}},
+		"bare":     []map[string]any{{"path": "keep.go", "l1": 1, "l2": 1, "instruction": "arr"}},
+		"no edits": map[string]any{"path": "keep.go", "l1": 1, "l2": 1, "instruction": "single"},
+	} {
+		code, body := agentPostJSON(t, s, "/api/agent/batch", payload)
+		if code != 400 || body["error"] != "invalid or empty batch edits payload" {
+			t.Fatalf("%s payload = %d %v, want 400", name, code, body["error"])
+		}
 	}
-	c1, b1 := agentPostJSON(t, s, "/api/agent/batch", directArray)
-	if c1 != 200 {
-		t.Fatalf("direct array batch = %d, want 200 (err: %v)", c1, b1["error"])
-	}
-	waitIdleID(t, s, int64(b1["id"].(float64)))
-
-	// 2. Query parameter edits JSON string
-	c2, b2 := agentPost(t, s, "/api/agent/batch?edits=%5B%7B%22path%22%3A%22keep.go%22%2C%22l1%22%3A1%2C%22l2%22%3A1%2C%22instruction%22%3A%22query%22%7D%5D")
-	if c2 != 200 {
-		t.Fatalf("query param batch = %d, want 200 (err: %v)", c2, b2["error"])
-	}
-	waitIdleID(t, s, int64(b2["id"].(float64)))
-
-	// 3. Single edit object JSON body
-	singleObj := map[string]any{
-		"path": "keep.go", "l1": 1, "l2": 1, "instruction": "single",
-	}
-	c3, b3 := agentPostJSON(t, s, "/api/agent/batch", singleObj)
-	if c3 != 200 {
-		t.Fatalf("single obj batch = %d, want 200 (err: %v)", c3, b3["error"])
-	}
-	waitIdleID(t, s, int64(b3["id"].(float64)))
-
-	// 4. Empty payload -> 400
-	c4, b4 := agentPostJSON(t, s, "/api/agent/batch", map[string]any{"edits": []any{}})
-	if c4 != 400 {
-		t.Fatalf("empty batch = %d, want 400", c4)
-	}
-	if b4["error"] != "invalid or empty batch edits payload" {
-		t.Fatalf("empty batch error = %v", b4["error"])
+	if code, body := agentPostJSON(t, s, "/api/agent/batch", map[string]any{"edits": []map[string]any{
+		{"path": "keep.go", "l1": 1, "l2": 1, "instruction": "  "},
+	}}); code != 400 || body["error"] != "instruction is empty" {
+		t.Fatalf("blank instruction = %d %v, want 400", code, body["error"])
 	}
 }
 
@@ -890,401 +878,6 @@ func TestCommitMessagePrompt(t *testing.T) {
 	}
 	if strings.Contains(p2, "- file100.go") {
 		t.Errorf("prompt contains file beyond 100:\n%s", p2)
-	}
-}
-
-func TestParseClaudeEvent(t *testing.T) {
-	evs := parseClaudeEvent(`{"type":"assistant","session_id":"s1","message":{"content":[{"type":"text","text":"Looking."},{"type":"tool_use","name":"Edit","input":{"file_path":"a.go"}}]}}`)
-	kinds := []string{}
-	for _, e := range evs {
-		kinds = append(kinds, e.kind+":"+e.text)
-	}
-	want := "session: text:Looking. tool:Edit a.go"
-	if got := strings.Join(kinds, " "); got != want {
-		t.Fatalf("events = %q, want %q", got, want)
-	}
-	if evs := parseClaudeEvent(`{"type":"result","is_error":true,"result":"bad key"}`); len(evs) != 1 || evs[0].kind != "error" || evs[0].text != "bad key" {
-		t.Fatalf("error result = %+v", evs)
-	}
-	if evs := parseClaudeEvent("not json"); len(evs) != 0 {
-		t.Fatalf("non-JSON yielded %+v", evs)
-	}
-}
-
-func TestParseAgyEvent(t *testing.T) {
-	if evs := parseAgyEvent(`{"event":"init","conversation_id":"c123"}`); len(evs) != 1 || evs[0].kind != "session" || evs[0].text != "c123" {
-		t.Fatalf("agy init = %+v", evs)
-	}
-	toolLine := `{"event":"step_update","step_update":{"step_type":"tool","tool_name":"view_file","state":"ACTIVE","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/path/file.go"}}}}`
-	if evs := parseAgyEvent(toolLine); len(evs) != 1 || evs[0].kind != "tool" || evs[0].text != "view_file /path/file.go" {
-		t.Fatalf("agy tool = %+v", evs)
-	}
-	deltaLine := `{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"hello world"}}`
-	if evs := parseAgyEvent(deltaLine); len(evs) != 1 || evs[0].kind != "text" || evs[0].text != "hello world" {
-		t.Fatalf("agy delta = %+v", evs)
-	}
-	resLine := `{"event":"result","result":{"status":"SUCCESS","response":"done"}}`
-	if evs := parseAgyEvent(resLine); len(evs) != 1 || evs[0].kind != "result" || evs[0].text != "done" {
-		t.Fatalf("agy result = %+v", evs)
-	}
-}
-
-func TestParseGeminiEvent(t *testing.T) {
-	if evs := parseGeminiEvent(`{"type":"init","session_id":"s456"}`); len(evs) != 1 || evs[0].kind != "session" || evs[0].text != "s456" {
-		t.Fatalf("gemini init = %+v", evs)
-	}
-	toolLine := `{"type":"tool_use","tool_name":"read_file","parameters":{"file_path":"b.go"}}`
-	if evs := parseGeminiEvent(toolLine); len(evs) != 1 || evs[0].kind != "tool" || evs[0].text != "read_file b.go" {
-		t.Fatalf("gemini tool = %+v", evs)
-	}
-	msgLine := `{"type":"message","role":"assistant","content":"thinking...","delta":true}`
-	if evs := parseGeminiEvent(msgLine); len(evs) != 1 || evs[0].kind != "text" || evs[0].text != "thinking..." {
-		t.Fatalf("gemini message = %+v", evs)
-	}
-}
-
-func TestThreadArgv(t *testing.T) {
-	tpl := []string{"/bin/claude", "--permission-mode", "acceptEdits", "-p", "{prompt}"}
-	first := strings.Join(threadArgv("claude", tpl, "U", false), " ")
-	if !strings.Contains(first, "--session-id U") || strings.Contains(first, "--resume") || !strings.Contains(first, "stream-json") {
-		t.Fatalf("first turn argv = %s", first)
-	}
-	next := strings.Join(threadArgv("claude", tpl, "U", true), " ")
-	if !strings.Contains(next, "--resume U") || strings.Contains(next, "--session-id") {
-		t.Fatalf("resume argv = %s", next)
-	}
-	if got := strings.Join(threadArgv("cursor-agent", []string{"/bin/cursor-agent", "-p", "{prompt}"}, "C", true), " "); !strings.Contains(got, "--resume C") {
-		t.Fatalf("cursor argv = %s", got)
-	}
-	if got := threadArgv("codex", tpl, "", false); len(got) != len(tpl) {
-		t.Fatalf("unsupported harness argv changed: %v", got)
-	}
-	if tpl[1] != "--permission-mode" {
-		t.Fatal("threadArgv mutated its template")
-	}
-}
-
-func TestThreadPrompt(t *testing.T) {
-	th := &thread{Path: "main.go", L1: 3, L2: 4, Snippet: "func main() {}"}
-	first := threadPrompt(th, nil, "why?", false, "", false)
-	if !strings.Contains(first, "@main.go lines 3-4") || !strings.Contains(first, "func main() {}") || !strings.HasSuffix(first, "why?") {
-		t.Fatalf("first prompt = %q", first)
-	}
-	prior := []*threadTurn{{Prompt: "why?", Reply: "because", Changed: []string{"a.go"}}}
-	if got := threadPrompt(th, prior, "and now?", false, "", false); got != "and now?" {
-		t.Fatalf("a live session should get the bare message, got %q", got)
-	}
-	replay := threadPrompt(th, prior, "and now?", true, "", false)
-	for _, want := range []string{"@main.go", "User: why?", "Assistant: because", "a.go", "and now?"} {
-		if !strings.Contains(replay, want) {
-			t.Fatalf("replay prompt missing %q:\n%s", want, replay)
-		}
-	}
-}
-
-func waitThreadIdle(t *testing.T, s *Server, id string) *thread {
-	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		if th := s.threads.Get(id); th != nil && !th.running() {
-			return th
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("thread turn did not finish")
-	return nil
-}
-
-func TestThreadConversationWithPlainHarness(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
-	// Echoes the prompt it was given, so the test can see what a replay carries.
-	h := writeHarness(t, `printf 'saw: %s\n' "$1"`)
-	s := agentServer(t, root, h)
-
-	code, m := agentPostJSON(t, s, "/api/threads/create", map[string]any{"path": "main.go", "l1": 3, "l2": 3, "message": "what does main do?"})
-	if code != 200 {
-		t.Fatalf("create = %d %v", code, m)
-	}
-	id := m["id"].(string)
-	th := waitThreadIdle(t, s, id)
-	if th.Error() != "" || len(th.Turns) != 1 {
-		t.Fatalf("turn 1 = %+v", th.Turns)
-	}
-	if !strings.Contains(th.Turns[0].Reply, "saw:") || !strings.Contains(th.Turns[0].Reply, "func main() {}") {
-		t.Fatalf("reply should echo an anchored prompt, got %q", th.Turns[0].Reply)
-	}
-
-	if code, _ := agentPostJSON(t, s, "/api/threads/send", map[string]any{"id": id, "message": "and its tests?"}); code != 200 {
-		t.Fatalf("send = %d", code)
-	}
-	th = waitThreadIdle(t, s, id)
-	if len(th.Turns) != 2 {
-		t.Fatalf("turns = %d, want 2", len(th.Turns))
-	}
-	second := th.Turns[1].Reply
-	if !strings.Contains(second, "what does main do?") || !strings.Contains(second, "and its tests?") {
-		t.Fatalf("a harness without sessions must be replayed the transcript, got %q", second)
-	}
-
-	// Threads survive a restart, with the same transcript.
-	again := newThreadManager(s.agent, root)
-	got := again.Get(id)
-	if got == nil || len(got.Turns) != 2 || got.Title != "what does main do?" {
-		t.Fatalf("reloaded thread = %+v", got)
-	}
-
-	if !s.threads.Delete(id) || s.threads.Get(id) != nil {
-		t.Fatal("delete did not remove the thread")
-	}
-}
-
-func (t *thread) Error() string {
-	if n := len(t.Turns); n > 0 {
-		return t.Turns[n-1].Error
-	}
-	return ""
-}
-
-func TestThreadClaudeSessionResume(t *testing.T) {
-	root := t.TempDir()
-	dir := t.TempDir()
-	log := filepath.Join(dir, "argv.log")
-	// A stand-in named claude: records its argv and emits stream-json.
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\n" +
-		`printf '{"type":"system","subtype":"init","session_id":"x"}\n'` + "\n" +
-		`printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"a.go"}}]}}\n'` + "\n" +
-		`printf '{"type":"assistant","message":{"content":[{"type":"text","text":"All good."}]}}\n'` + "\n" +
-		`printf '{"type":"result","is_error":false,"result":"All good."}\n'` + "\n"
-	bin := filepath.Join(dir, "claude")
-	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	s := agentServer(t, root, bin)
-
-	_, m := agentPostJSON(t, s, "/api/threads/create", map[string]any{"message": "look around"})
-	id := m["id"].(string)
-	th := waitThreadIdle(t, s, id)
-	if th.Turns[0].Reply != "All good." || len(th.Turns[0].Tools) != 1 || th.Turns[0].Tools[0] != "Read a.go" {
-		t.Fatalf("parsed turn = %+v", th.Turns[0])
-	}
-	agentPostJSON(t, s, "/api/threads/send", map[string]any{"id": id, "message": "again"})
-	th = waitThreadIdle(t, s, id)
-	if len(th.Turns) != 2 || th.Turns[1].Error != "" {
-		t.Fatalf("turn 2 = %+v", th.Turns)
-	}
-
-	data, _ := os.ReadFile(log)
-	var lines []string
-	for _, l := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(l, "--output-format") { // the first prompt spans several lines
-			lines = append(lines, l)
-		}
-	}
-	if len(lines) != 2 {
-		t.Fatalf("harness ran %d times, want 2:\n%s", len(lines), data)
-	}
-	sid := th.SessionID
-	if sid == "" || !strings.Contains(lines[0], "--session-id "+sid) {
-		t.Fatalf("first run should start session %q: %s", sid, lines[0])
-	}
-	if !strings.Contains(lines[1], "--resume "+sid) || strings.Contains(lines[1], "Earlier in this conversation") {
-		t.Fatalf("second run should resume without replay: %s", lines[1])
-	}
-}
-
-func TestThreadBusyAndCancel(t *testing.T) {
-	root := t.TempDir()
-	h := writeHarness(t, "sleep 30")
-	s := agentServer(t, root, h)
-	_, m := agentPostJSON(t, s, "/api/threads/create", map[string]any{"message": "slow one"})
-	id := m["id"].(string)
-	if code, _ := agentPostJSON(t, s, "/api/threads/send", map[string]any{"id": id, "message": "impatient"}); code != 409 {
-		t.Fatalf("send while running = %d, want 409", code)
-	}
-	if code, _ := agentPost(t, s, "/api/threads/cancel?id="+id); code != 200 {
-		t.Fatalf("cancel = %d", code)
-	}
-	th := waitThreadIdle(t, s, id)
-	if th.Turns[0].Error != "cancelled" {
-		t.Fatalf("cancelled turn error = %q", th.Turns[0].Error)
-	}
-}
-
-func TestThreadInterruptedTurnIsClosedOnLoad(t *testing.T) {
-	isolateSettings(t)
-	root := t.TempDir()
-	m, _ := newAgentManager(root, "", nil)
-	tm := newThreadManager(m, root)
-	tm.mu.Lock()
-	tm.threads["t1"] = &thread{ID: "t1", Title: "x", Turns: []*threadTurn{{ID: 1, Prompt: "p", Running: true}}}
-	tm.saveLocked()
-	tm.mu.Unlock()
-
-	got := newThreadManager(m, root).Get("t1")
-	if got == nil || got.Turns[0].Running || !strings.Contains(got.Turns[0].Error, "interrupted") {
-		t.Fatalf("interrupted turn = %+v", got)
-	}
-}
-
-func TestInlineEditRunsAsThread(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n\nfunc A() {}\n"), 0o644)
-	os.WriteFile(filepath.Join(root, "b.go"), []byte("package b\n\nfunc B() {}\n"), 0o644)
-	h := writeHarness(t, `printf 'did it\n'`)
-	s := agentServer(t, root, h)
-
-	code, m := agentPostJSON(t, s, "/api/agent/batch", map[string]any{"edits": []map[string]any{
-		{"path": "a.go", "l1": 3, "l2": 3, "instruction": "rename A"},
-		{"path": "b.go", "l1": 3, "l2": 3, "instruction": "rename B"},
-	}})
-	if code != 200 {
-		t.Fatalf("batch = %d %v", code, m)
-	}
-	id := int64(m["id"].(float64))
-	job := waitIdleID(t, s, id)
-	if job.Error != "" || job.BatchCount != 2 || !strings.Contains(job.Stdout, "did it") {
-		t.Fatalf("job = %+v", job)
-	}
-
-	list := s.threads.List()
-	if len(list) != 1 || list[0].Kind != "batch" || list[0].Title != "Batch edit: 2 changes" {
-		t.Fatalf("threads = %+v", list)
-	}
-	th := s.threads.Get(list[0].ID)
-	if p := th.Turns[0].Prompt; !strings.Contains(p, "rename A") || !strings.Contains(p, "@b.go") {
-		t.Fatalf("batch prompt should carry every instruction and snippet: %q", p)
-	}
-	// The thread can be followed up like any conversation.
-	if code, _ := agentPostJSON(t, s, "/api/threads/send", map[string]any{"id": th.ID, "message": "why?"}); code != 200 {
-		t.Fatalf("follow-up = %d", code)
-	}
-	waitThreadIdle(t, s, th.ID)
-}
-
-func TestInlineEditOverlapStillRefused(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n\nfunc A() {}\n"), 0o644)
-	s := agentServer(t, root, writeHarness(t, "sleep 30"))
-	q := "/api/agent/edit?path=a.go&l1=3&l2=3&instruction=one"
-	if code, _ := agentPost(t, s, q); code != 200 {
-		t.Fatalf("first edit = %d", code)
-	}
-	if code, _ := agentPost(t, s, "/api/agent/edit?path=a.go&l1=2&l2=4&instruction=two"); code != 409 {
-		t.Fatalf("overlapping edit = %d, want 409", code)
-	}
-	// A conversation is never guarded the way an edit is.
-	if code, _ := agentPostJSON(t, s, "/api/threads/create", map[string]any{"path": "a.go", "l1": 3, "l2": 3, "message": "hi"}); code != 200 {
-		t.Fatalf("thread on the same lines = %d, want 200", code)
-	}
-	s.agent.Cancel()
-	s.threads.Close()
-	// Let the cancelled turns finish saving before the temp dir goes away.
-	for _, sum := range s.threads.List() {
-		waitThreadIdle(t, s, sum.ID)
-	}
-}
-
-// In a PR review the harness is told what the thread is about: the whole PR
-// (merge-base to PR head), the reviewer's own changes, or just the selection.
-func TestThreadPromptCarriesPRScope(t *testing.T) {
-	root := t.TempDir()
-	th := &thread{Kind: "ask"}
-	s := &Server{ix: NewIndex(root), pr: &prSession{
-		target:   PRTarget{URL: "https://github.com/o/r/pull/7"},
-		meta:     PRMeta{Number: 7, Title: "Add thing", BaseRef: "main", HeadRef: "feat", HeadSHA: "abcdef1234567890"},
-		diffBase: "1234567890abcdef",
-	}}
-	defer s.pr.Close()
-
-	whole := s.prThreadContext("pr")
-	for _, want := range []string{"#7", "Add thing", "git diff 1234567890abcdef abcdef1234567890", "entire pull request"} {
-		if !strings.Contains(whole, want) {
-			t.Errorf("whole-PR context missing %q:\n%s", want, whole)
-		}
-	}
-	if s.prThreadContext("") != whole {
-		t.Error("an unset scope means the whole PR")
-	}
-	mine := s.prThreadContext("mine")
-	for _, want := range []string{"OWN changes", "git diff abcdef1234567890", "git log --stat abcdef1234567890..HEAD", "background only"} {
-		if !strings.Contains(mine, want) {
-			t.Errorf("mine context missing %q:\n%s", want, mine)
-		}
-	}
-	if strings.Contains(mine, "entire pull request") {
-		t.Error("mine scope must not tell the harness to review the whole PR")
-	}
-	sel := s.prThreadContext("selection")
-	if !strings.Contains(sel, "anchored") || strings.Contains(sel, "entire pull request") {
-		t.Errorf("selection context wrong:\n%s", sel)
-	}
-
-	first := threadPrompt(th, nil, "what do you think about the PR?", false, whole, false)
-	if !strings.Contains(first, "git diff 1234567890abcdef") || !strings.HasSuffix(first, "what do you think about the PR?") {
-		t.Errorf("first prompt should carry the PR context before the question:\n%s", first)
-	}
-	prior := []*threadTurn{{Prompt: "x", Reply: "y"}}
-	if got := threadPrompt(th, prior, "and now?", false, whole, false); got != "and now?" {
-		t.Errorf("follow-up turns stay bare when the scope is unchanged, got %q", got)
-	}
-	changed := threadPrompt(th, prior, "and now?", false, mine, true)
-	if !strings.Contains(changed, "changed what this conversation is about") || !strings.Contains(changed, "OWN changes") || !strings.HasSuffix(changed, "and now?") {
-		t.Errorf("a scope change should be announced with the new context:\n%s", changed)
-	}
-	if (&Server{}).prThreadContext("pr") != "" {
-		t.Error("no PR, no PR context")
-	}
-}
-
-func TestThreadDeleteAPI(t *testing.T) {
-	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
-	h := writeHarness(t, `printf 'ok\n'`)
-	s := agentServer(t, root, h)
-
-	// Create thread 1 and delete via query parameter
-	code, m1 := agentPostJSON(t, s, "/api/threads/create", map[string]any{"path": "main.go", "l1": 1, "l2": 1, "message": "thread 1"})
-	if code != 200 {
-		t.Fatalf("create 1 = %d", code)
-	}
-	id1 := m1["id"].(string)
-	waitThreadIdle(t, s, id1)
-
-	code, delResp1 := agentPost(t, s, "/api/threads/delete?id="+id1)
-	if code != 200 || delResp1["deleted"] != true {
-		t.Fatalf("delete via query = %d, resp: %v", code, delResp1)
-	}
-	if s.threads.Get(id1) != nil {
-		t.Fatalf("thread 1 should be gone after delete")
-	}
-
-	// Create thread 2 and delete via JSON body
-	code, m2 := agentPostJSON(t, s, "/api/threads/create", map[string]any{"path": "main.go", "l1": 1, "l2": 1, "message": "thread 2"})
-	if code != 200 {
-		t.Fatalf("create 2 = %d", code)
-	}
-	id2 := m2["id"].(string)
-	waitThreadIdle(t, s, id2)
-
-	code, delResp2 := agentPostJSON(t, s, "/api/threads/delete", map[string]any{"id": id2})
-	if code != 200 || delResp2["deleted"] != true {
-		t.Fatalf("delete via json body = %d, resp: %v", code, delResp2)
-	}
-	if s.threads.Get(id2) != nil {
-		t.Fatalf("thread 2 should be gone after delete")
-	}
-
-	// Deleting nonexistent thread returns 200 with deleted: false
-	code, delResp3 := agentPostJSON(t, s, "/api/threads/delete", map[string]any{"id": "nonexistent"})
-	if code != 200 || delResp3["deleted"] != false {
-		t.Fatalf("delete nonexistent = %d, resp: %v", code, delResp3)
-	}
-
-	// Missing id returns 400
-	code, _ = agentPost(t, s, "/api/threads/delete")
-	if code != 400 {
-		t.Fatalf("delete without id = %d, want 400", code)
 	}
 }
 

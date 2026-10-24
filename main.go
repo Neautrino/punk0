@@ -381,7 +381,6 @@ func main() {
 	}
 	lsp.Close()
 	agent.Close()
-	pxSrv.CloseThreads()
 	pr.Close()
 
 	if interrupted {

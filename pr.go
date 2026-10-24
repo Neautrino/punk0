@@ -54,8 +54,6 @@ type prSession struct {
 	// out of "Unpushed" without folding them into "PR changes".
 	pushedSHA string
 
-	scopeDir string // temp dir holding the diff files handed to threads; removed in Close
-
 	comments []prComment
 	nextID   int64
 }
@@ -314,9 +312,6 @@ func (p *prSession) Close() {
 	if p == nil {
 		return
 	}
-	if p.scopeDir != "" {
-		os.RemoveAll(p.scopeDir)
-	}
 	if p.srcRepo != "" {
 		exec.Command("git", "-C", p.srcRepo, "worktree", "remove", "--force", p.worktree).Run()
 		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/px0/pr/%d", p.meta.Number)).Run()
@@ -387,26 +382,6 @@ func redactToken(s, token string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, token, "***")
-}
-
-// writeScopeFile puts content in a per-session temp dir (outside the worktree, so
-// it never shows up as an untracked change) and returns its path, or "" if it
-// could not be written.
-func (p *prSession) writeScopeFile(name, content string) string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.scopeDir == "" {
-		dir, err := os.MkdirTemp("", "px0-prdiff-*")
-		if err != nil {
-			return ""
-		}
-		p.scopeDir = dir
-	}
-	path := filepath.Join(p.scopeDir, name)
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		return ""
-	}
-	return path
 }
 
 // errPRDiverged is returned by Pull when the checkout can't be fast-forwarded
