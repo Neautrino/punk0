@@ -6,6 +6,9 @@ import { render, toPos, rowFor } from './renderer.js';
 import { findReferences } from './lsp.js';
 import { fitStatus } from './status.js';
 import { domToMarkdown, getFragmentPlainText, getFragmentHtml, getMarkdownRangeLines, getDocRaw, previewTopLine } from './markdown.js';
+import { showSelPill, hideSelPill } from './selpill.js';
+import { openQuickEdit } from './quick_edit.js';
+import { sendToActiveTerminal } from './term_inspector.js';
 
 /* While code is selected, the left of the status bar trades its navigation
    buttons for actions on the selection, and hands them back once the selection
@@ -224,6 +227,7 @@ function showSelectionBar(info) {
   statsEl.textContent = (lines === 1 ? '1 line' : lines + ' lines') + ' · ' +
     info.text.length.toLocaleString() + ' chars';
 
+  showSelPill(info);
   const d = doc_();
   const footerSel = bar();
   if (footerSel) {
@@ -256,6 +260,7 @@ export function hideSelectionBar() {
   current = null;
   if (statsEl) statsEl.textContent = '';
   status.classList.remove('selecting');
+  hideSelPill();
   fitStatus();
 }
 
@@ -366,12 +371,13 @@ export function runSelectionAction(act, triggerBtn = null, override = null) {
     const lineStr = target.l1 === target.l2 ? 'line ' + target.l1 : 'lines ' + target.l1 + '-' + target.l2;
     const snippet = '@' + path + ' ' + lineStr + '\n```' + ext + '\n' + text + '\n```';
     copyToClipboard(snippet, 'Copied', targetBtn);
-  } else if (act === 'agent-edit') {
-    if (!agentHandler) return false;
-    agentHandler(target);
-  } else if (act === 'thread') {
-    if (!threadHandler) return false;
-    threadHandler(target);
+  } else if (act === 'quick-edit') {
+    openQuickEdit(target);
+  } else if (act === 'add-to-chat') {
+    const ext = path.split('.').pop() || '';
+    const lineStr = target.l1 === target.l2 ? 'line ' + target.l1 : 'lines ' + target.l1 + '-' + target.l2;
+    const payload = `@${path} ${lineStr}\n\`\`\`${ext}\n${text}\n\`\`\` `;
+    sendToActiveTerminal(payload);
   } else if (act === 'review-comment') {
     if (!reviewHandler) return false;
     reviewHandler(target);
@@ -404,8 +410,8 @@ export function openLineMenu(info, x, y) {
 // Exported so pr.js can append "Add Review Comment" in a PR review session
 // without selbar needing to know PR review exists.
 export const SEL_MENU_ITEMS = [
-  { sel: 'thread', label: 'Start Agent Thread', keys: 'Alt+T' },
-  { sel: 'agent-edit', label: 'Edit Inline', keys: 'Alt+E' },
+  { sel: 'quick-edit', label: 'Quick Edit', keys: 'Mod+K', forCode: true },
+  { sel: 'add-to-chat', label: 'Add to Chat', keys: 'Alt+L', forCode: true },
   { sel: 'copy-source', label: 'Copy Source', keys: 'Mod+C', forCode: true },
   { sel: 'copy-preview-text', label: 'Copy Formatted Text', keys: 'Mod+C', forPreview: true },
   { sel: 'copy-markdown', label: 'Copy Raw Markdown', keys: 'Alt+M', forPreview: true },

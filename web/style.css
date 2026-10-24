@@ -781,6 +781,63 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
 .term-inspector-body {
   flex: 1; min-height: 0; overflow: hidden; background: var(--bg); padding: 4px 0 0 6px;
 }
+/* Floating Selection Pill */
+.floating-sel-pill {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-family: var(--font);
+  user-select: none;
+  animation: pill-fade-in 0.12s ease-out;
+}
+@keyframes pill-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.sel-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--r);
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sel-pill-btn:hover {
+  background: var(--bg3);
+}
+.sel-pill-btn.pill-btn-primary {
+  color: var(--accent);
+  font-weight: 600;
+}
+.sel-pill-btn.pill-btn-primary:hover {
+  background: rgba(137, 180, 250, 0.15);
+}
+.sel-pill-btn kbd {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--dim);
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+.pill-sparkle {
+  color: var(--accent);
+  font-size: 13px;
+}
+
 
 /* ---------- main ---------- */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
