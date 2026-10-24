@@ -47,7 +47,7 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * Tab sequence: `Terminal` (default active), `References`, `Symbols`, `Calls`, `Search`, `Tips`.
 2. **Sub-Bar Header & Tab Ownership**:
    * The editor view is mounted at `/w/<workspace-id>/`. The parent orchestrator owns `/api/tabs/{id}/term`, `/api/tabs/{id}/send`, and `/api/workspaces/{id}/tabs`.
-   * The editor obtains the current workspace ID and tab list from workspace metadata (`S.meta.workspaceId` and `S.meta.tabs`).
+   * **Workspace Metadata Contract**: The parent passes `-workspace-id <id>` when spawning the child editor process (`workbench.go`). The child's `/api/meta` returns `workspaceId`. The editor frontend queries the parent's `GET /api/workspaces/{workspace-id}/tabs` to discover active terminal tabs.
    * Sub-bar displays tab chips: `[ ● Claude Code ]` (or detected agent) and `[ + Shell ]`.
    * If the workspace currently has zero terminal tabs, the editor sends `POST /api/workspaces/{workspace-id}/tabs {"kind": "claude"}` (or `"shell"` if no agent CLI is detected) upon first opening the Terminal pane.
    * Clicking `[+ Shell]` calls `POST /api/workspaces/{workspace-id}/tabs {"kind": "shell"}` and switches active terminal focus to the newly spawned tab.
@@ -60,9 +60,11 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
 
 ### 3.2 Floating Selection Pill
 
-1. **Trigger & Positioning**:
+1. **Trigger & Selection Context Gating**:
    * Listens to editor selection change events (`updateSelectionBar` in `selbar.js`).
-   * When a range is highlighted ($l1 \le l2$), renders a floating pill anchored directly above the start line of the selection (flipping below if near the top window boundary).
+   * **Context Restriction**: Quick Edit (`Cmd/Ctrl+K`) and Add to Chat (`Cmd/Ctrl+L`) are strictly restricted to standard Source Code Editor views (where line numbers $l1 \dots l2$ map directly to raw source file lines on disk).
+   * In Markdown preview (`mdview`), CSV table view, and read-only Diff views, Quick Edit is disabled and hidden from the pill. In those views, only `Copy Ref` and `Copy Formatted Text` appear.
+   * When a valid source range is highlighted ($l1 \le l2$), renders a floating pill anchored directly above the start line of the selection (flipping below if near the top window boundary).
    * Dismissed immediately upon selection collapse, clicking away, or pressing `Esc`.
 2. **Buttons & Actions**:
    * **`✦ Quick Edit` (`Cmd/Ctrl+K`)**: Opens the inline floating prompt box directly over the selected lines.
@@ -78,11 +80,15 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
 3. **`Cmd/Ctrl+K` Precedence & Keybinding Resolution**:
    * Currently, `Cmd/Ctrl+K` is bound globally to Quick Open palette alongside `Cmd/Ctrl+P`.
    * **Precedence rule**:
-     * If an active non-collapsed code selection exists in the editor ($l1 \le l2$ with selected characters), `Cmd/Ctrl+K` triggers **Quick Edit**.
+     * If an active non-collapsed code selection exists in a source editor ($l1 \le l2$ with selected characters), `Cmd/Ctrl+K` triggers **Quick Edit**.
      * If there is no active text selection, `Cmd/Ctrl+K` falls through to open the Quick Open file palette (`openPalette()`), preserving existing muscle memory.
      * Keyboard tips, palette hints, and help dialogs are updated to reflect this dual-binding rule.
-4. **Legacy Clean-up**:
+4. **Legacy Threads & Agentbox Deprecation Cutover**:
    * Remove gutter `.agent-btn` ("Edit" badge) and the old popup context menu.
+   * Remove `<div id="agentbox">` and `<section id="pane-right-threads">` from `web/index.html`.
+   * Remove `initThreads()` from `web/src/main.js` and delete `web/src/thread.js`.
+   * Remove `/api/threads/*` route registration from `server.go` and `agent.go`.
+   * Existing thread JSON files in `~/.px0/threads/` are retained passively on disk, but no new thread files are written.
 
 ### 3.3 Quick Edit (`Cmd/Ctrl+K`) Engine & In-Place Diff
 
@@ -100,8 +106,12 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
        "instruction": "add timeout parameter with 5s fallback"
      }
      ```
-   * Backend executes one-shot headless CLI command using the detected agent harness (e.g. `claude -p` or `codex exec`), passing prompt with instructions to return only replacement code.
-   * Response:
+   * **Non-Interactive Execution & Bounded Timeout**:
+     * Spawns detected harness CLI with non-interactive approval flags (e.g. `claude -p --permission-mode acceptEdits`, `codex exec --ask-for-approval never`).
+     * `cmd.Stdin` is set to `nil` (`/dev/null`) so the process cannot block on interactive input prompts.
+     * Execution is bounded by a strict 30-second context deadline (`context.WithTimeout(ctx, 30*time.Second)`).
+     * On timeout or non-zero exit, returns HTTP `422 Unprocessable Entity` with JSON `{"ok": false, "error": "<message>"}`.
+   * Success Response:
      ```json
      {
        "ok": true,
@@ -139,8 +149,9 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
 | :--- | :--- | :--- | :--- |
 | `/api/tabs/{id}/term` | `GET (WS)` | Binary PTY frames, JSON resize | Reused from orchestrator for terminal sessions. |
 | `/api/tabs/{id}/send` | `POST` | `{"text": "..."}` | Bracketed paste injection into active terminal tab. Returns 409 if tab is busy. |
+| `/api/workspaces/{id}/tabs` | `GET` | N/A | Lists tabs for workspace `{id}`. |
 | `/api/workspaces/{id}/tabs` | `POST` | `{"kind": "claude"\|"shell"}` | Spawns a new terminal tab in the workspace. |
-| `/api/quick-edit` | `POST` | `{"path", "l1", "l2", "selection", "instruction"}` | Headless one-shot agent execution for inline diffs. |
+| `/api/quick-edit` | `POST` | `{"path", "l1", "l2", "selection", "instruction"}` | Headless one-shot agent execution for inline diffs (30s timeout, non-interactive). |
 | `/api/file/replace` | `POST` | `{"path", "l1", "l2", "original", "replacement"}` | Atomic line replacement with optimistic conflict detection. |
 | `/api/threads/*` | `*` | N/A | **Deprecated**: Removed from active routing. |
 
@@ -156,8 +167,9 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * If lines on disk change between the prompt submission and clicking Accept, `/api/file/replace` rejects the write with `409 Conflict`. The UI highlights the conflict without clobbering disk content.
 4. **Editor Scroll & Virtualized Line Rendering**:
    * The floating selection pill and Quick Edit widgets anchor to line pixel coordinates calculated via the editor's virtualization layout, automatically repositioning on scroll.
-5. **Non-Loopback Security Guard**:
-   * Like all punk0 terminal endpoints, `/api/tabs/{id}/term` and `/api/tabs/{id}/send` reject non-loopback requests with `403 Forbidden` unless authorized.
+5. **Security & Path Confinement**:
+   * All mutating endpoints (`/api/quick-edit`, `/api/file/replace`, `/api/tabs/{id}/send`) require loopback callers (`localPost`).
+   * All path parameters are validated via `filepath.Clean` and confined strictly within the project working tree; paths resolving outside the workspace root return `400 Bad Request`.
 ## 6. Verification & Testing Plan
 
 1. **Go Backend Tests**:
