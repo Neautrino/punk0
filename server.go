@@ -211,6 +211,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/agent/batch"), s.handleAgentBatchEdit)
 	s.mux.HandleFunc(s.routePath("/api/agent/job"), s.handleAgentJob)
 	s.mux.HandleFunc(s.routePath("/api/agent/cancel"), s.handleAgentCancel)
+	s.mux.HandleFunc(s.routePath("/api/quick-edit"), s.handleQuickEdit)
 	s.mux.HandleFunc(s.routePath("/api/threads"), s.handleThreads)
 	s.mux.HandleFunc(s.routePath("/api/threads/get"), s.handleThreadGet)
 	s.mux.HandleFunc(s.routePath("/api/threads/create"), s.handleThreadCreate)
