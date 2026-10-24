@@ -156,27 +156,62 @@ function lineIndexAtY(w, total, y) {
   return Math.max(0, Math.min(total - 1, lo));
 }
 
+/* Quick Edit's inline preview (quick_edit.js): rows l1..l2 marked as removed
+   and, inside row l2, a block with the replacement and Accept / Reject. With
+   word wrap row l2 is just measured taller; without it rows have one fixed
+   height, so the block's px is added after line l2 wherever a y is worked out. */
+let preview = null; // { path, l1, l2, html, px, gen }
+let previewGen = 0;
+
+export function setInlinePreview(p) {
+  preview = p ? { ...p, px: 0, gen: ++previewGen } : null;
+  invalidatePaint();
+  layout();
+  render();
+}
+
+function fixedExtra(d) {
+  return preview && !S.wrap && preview.px && preview.path === d.path ? preview : null;
+}
+
 export function lineTopY(line, d = doc_()) {
   const lh = getLH();
   if (!d || !d.total) return Math.max(0, ((line || 1) - 1) * lh);
   const idx = Math.max(0, Math.min(d.total - 1, (line || 1) - 1));
-  if (!S.wrap) return idx * lh;
+  if (!S.wrap) {
+    const p = fixedExtra(d);
+    return idx * lh + (p && idx >= p.l2 ? p.px : 0);
+  }
   const w = ensureWrapMap(d);
   return w ? w.offsets[idx] : idx * lh;
 }
 
 export function lineHeightAt(line, d = doc_()) {
   const lh = getLH();
-  if (!d || !d.total || !S.wrap) return lh;
+  if (!d || !d.total) return lh;
+  if (!S.wrap) {
+    const p = fixedExtra(d);
+    return lh + (p && line === p.l2 ? p.px : 0);
+  }
   const idx = Math.max(0, Math.min(d.total - 1, (line || 1) - 1));
   const w = ensureWrapMap(d);
   return w ? w.heights[idx] : lh;
 }
 
+// A y without word wrap, with the preview block taken out: inside the block
+// counts as its line, l2.
+function fixedY(y, d) {
+  const p = fixedExtra(d);
+  if (!p) return y;
+  const end = p.l2 * getLH();
+  if (y >= end + p.px) return y - p.px;
+  return y >= end ? end - 1 : y;
+}
+
 export function lineAtScrollY(y, d = doc_()) {
   const lh = getLH();
   if (!d || !d.total) return Math.max(1, Math.floor(Math.max(0, y) / lh) + 1);
-  if (!S.wrap) return Math.max(1, Math.min(d.total, Math.floor(Math.max(0, y) / lh) + 1));
+  if (!S.wrap) return Math.max(1, Math.min(d.total, Math.floor(fixedY(Math.max(0, y), d) / lh) + 1));
   const w = ensureWrapMap(d);
   return w ? lineIndexAtY(w, d.total, y) + 1 : 1;
 }
@@ -200,7 +235,7 @@ export function layout() {
     ensureLineCols(d);
     const maxCols = Math.max(d.maxCols || 0, d._maxLineCols || 0);
     const w = Math.max(vp.clientWidth, gutter + (maxCols + 4) * S.chW);
-    sizer.style.height = (d.total * lh + bottomPad()) + 'px';
+    sizer.style.height = (d.total * lh + (fixedExtra(d)?.px || 0) + bottomPad()) + 'px';
     sizer.style.width = w + 'px';
     rowsEl.style.width = w + 'px';
   }
@@ -272,27 +307,26 @@ export function paint() {
     last = Math.min(d.total, lineIndexAtY(w, d.total, maxY) + 2);
     if (last <= first) last = Math.min(d.total, first + 1);
   } else {
-    first = Math.max(0, Math.floor(top / lh) - OVERSCAN);
+    first = Math.max(0, Math.floor(fixedY(top, d) / lh) - OVERSCAN);
     const count = Math.ceil((vp.clientHeight || 600) / lh) + OVERSCAN * 2;
     last = Math.min(d.total, first + count);
   }
   ensureChunks(d, first, last);
 
   const gut = d.gutter || null;
-  const agentRanges = (S.agentTargets || []).filter(t => t.path === d.path);
-  const agentKey = agentRanges.map(r => r.l1 + ':' + r.l2).join(',');
   const findKey = S.find && S.find.hits.length ? S.find.q + ':' + S.find.cs + ':' + S.find.active + ':' + S.find.hits.length : '';
   const linkKey = S.link ? S.link.line + ':' + S.link.col + ':' + S.link.word : '';
   const gutKey = gut ? gut.marks.size + ':' + gut.dels.size : '';
   const diagList = Array.isArray(d.diagnostics) ? d.diagnostics : [];
   const diagKey = diagList.length ? diagList.length + ':' + diagList[0].line + ':' + diagList[0].message : '';
+  const shown = preview && preview.path === d.path ? preview : null;
   const paintKey = [
     d.path, d.gen || 0, first, last, d.cur, S.occ || '',
-    findKey, linkKey, gutKey, diagKey, agentKey, S.selAll === d ? 1 : 0, S.wrap ? 1 : 0
+    findKey, linkKey, gutKey, diagKey, S.selAll === d ? 1 : 0, S.wrap ? 1 : 0, shown ? shown.gen : ''
   ].join('|');
 
   if (paintKey === lastPaintKey && rowsEl.children.length === Math.max(0, last - first)) {
-    const y0 = w ? w.offsets[first] : first * lh;
+    const y0 = w ? w.offsets[first] : lineTopY(first + 1, d);
     rowsEl.style.transform = 'translateY(' + y0 + 'px)';
     placeCaret();
     return;
@@ -313,8 +347,6 @@ export function paint() {
     const body = d.lines[i];
     let rc = 'row', gc = 'g';
     if (n === d.cur) rc += ' cur';
-    if (agentRanges.some(r => n >= r.l1 && n <= r.l2)) rc += ' agent-sel';
-    if (agentRanges.some(r => n === r.l1)) rc += ' agent-anchor';
     if (gut) {
       const m = gut.marks.get(n);
       if (m) gc += m === 'add' ? ' gut-add' : ' gut-mod';
@@ -329,15 +361,25 @@ export function paint() {
       const label = '  — ' + (dg.source ? dg.source + ': ' : '') + (dg.message || '').split('\n')[0];
       cAttr = ' data-diag="' + esc(label) + '" title="' + esc(dg.message || '') + '"';
     }
+    let extra = '';
+    if (shown && n >= shown.l1 && n <= shown.l2) rc += ' qe-old';
+    if (shown && n === shown.l2) { rc += ' qe-host'; extra = shown.html; }
     html += '<div class="' + rc + '" data-l="' + n + '">' +
-      '<div class="' + gc + '"><span class="line-btn" role="button" data-l="' + n + '" title="Thread and line actions">Edit</span>' + n + '</div><div class="c"' + cAttr + '>' + (body === undefined ? '' : body) + '</div></div>';
+      '<div class="' + gc + '">' + n + '</div><div class="c"' + cAttr + '>' + (body === undefined ? '' : body) + '</div>' + extra + '</div>';
   }
   const sel = saveSelection();
-  const y0 = w ? w.offsets[first] : first * lh;
+  const y0 = w ? w.offsets[first] : lineTopY(first + 1, d);
   rowsEl.style.transform = 'translateY(' + y0 + 'px)';
   rowsEl.innerHTML = html;
   rowsEl.classList.toggle('all', S.selAll === d);
   decorate(first, last);
+  if (shown && !S.wrap) {
+    const block = /** @type {HTMLElement|null} */ (rowsEl.querySelector('.qe-inline'));
+    if (block && block.offsetHeight !== shown.px) {
+      shown.px = block.offsetHeight;
+      layout();
+    }
+  }
   if (w && vp.clientWidth > 0) {
     let changed = false;
     let deltaAbove = 0;

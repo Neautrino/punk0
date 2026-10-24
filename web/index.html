@@ -227,37 +227,6 @@
         <button id="find-close" title="Close ({Esc})">&#10005;</button>
       </div>
 
-      <template id="agentbox-tpl">
-        <div class="agent-box">
-          <div class="agent-head">
-            <span class="sel-chip">Comment</span>
-            <span class="agent-ref" role="button" tabindex="0" title="Click to jump to code"></span>
-            <span class="grow"></span>
-            <button class="agent-close" title="Close ({Esc})">&#10005;</button>
-          </div>
-          <div class="agent-meta">
-            <span class="agent-meta-label">Model</span>
-            <select class="agent-harness-select" title="Coding harness"></select>
-            <select class="agent-model-select" title="Model"></select>
-          </div>
-          <!-- A comment that has been added to the batch: click to edit it again -->
-          <button class="agent-queued" title="Click to edit this comment" hidden></button>
-          <!-- Shown until a harness has been picked, and whenever one is changed -->
-          <div class="agent-pick" hidden></div>
-          <div class="agent-compose">
-            <textarea class="agent-input" rows="3" spellcheck="false" autocomplete="off" placeholder="Describe the change. Add it as a comment to batch with others, or apply it right away."></textarea>
-            <div class="agent-err" hidden></div>
-            <div class="agent-foot">
-              <span class="agent-hint">Enter to send, Esc to cancel</span>
-              <button class="agent-cancel" title="Cancel in-flight edit" hidden>Cancel</button>
-              <button class="agent-open-thread agent-now" title="Watch this edit as a thread" hidden>View thread</button>
-              <button class="agent-now" title="Run just this comment now ({Mod+Enter})">Apply now</button>
-              <button class="agent-send" title="Keep this comment and add more, then apply them all together ({Enter})">Add comment</button>
-            </div>
-          </div>
-        </div>
-      </template>
-
       <!-- Draft review comment composers: one .agent-box per open composer,
            each pinned beside the diff line it's on (or docked bottom-right
            when that file isn't the one on screen). web/src/pr.js owns it. -->
@@ -430,8 +399,6 @@
         <div class="hint">Search text across every indexed file.</div>
       </div>
     </section>
-    <!-- Right Pane 5: Threads. Long-running, multi-turn conversations with a
-         coding harness, anchored to code. web/src/thread.js owns it. -->
     <!-- Right Pane: Agent Terminal -->
     <section class="inspector-pane active" id="pane-right-term">
       <div class="term-inspector-bar" id="term-inspector-bar">
@@ -497,8 +464,6 @@
         <button class="footer-btn" data-sel="copy-markdown" title="Copy raw Markdown" hidden><span class="footer-btn-label">Copy Raw Markdown</span><kbd class="footer-kbd" data-keys="Alt+M"></kbd></button>
         <button class="footer-btn" data-sel="copy-ref" title="Copy file and line reference ({Alt+C})"><span class="footer-btn-label">Copy Ref</span><kbd class="footer-kbd" data-keys="Alt+C"></kbd></button>
         <button class="footer-btn" data-sel="copy-agent" title="Copy snippet with file path and line numbers ({Alt+A})"><span class="footer-btn-label">Copy with Context</span><kbd class="footer-kbd" data-keys="Alt+A"></kbd></button>
-        <button class="footer-btn" data-sel="thread" title="Start a thread on this selection ({Alt+T})"><span class="footer-btn-label">Thread</span><kbd class="footer-kbd" data-keys="Alt+T"></kbd></button>
-        <button class="footer-btn" data-sel="agent-edit" title="Edit this selection inline ({Alt+E})"><span class="footer-btn-label">Edit Inline</span><kbd class="footer-kbd" data-keys="Alt+E"></kbd></button>
       </div>
       <div id="footer-actions">
         <button class="footer-btn" data-action="quick-open" title="Go to File ({Mod+P})"><span class="footer-btn-label">Files</span><kbd class="footer-kbd" data-keys="Mod+P"></kbd></button>

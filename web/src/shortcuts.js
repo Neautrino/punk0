@@ -13,8 +13,7 @@ import { overlay, openPalette, closePalette } from './palette.js';
 import { moveCursor, moveCol, moveWord, caretToEdge } from './cursor.js';
 import { showCalls } from './calls.js';
 import { SEL_KEYS, runSelectionAction, selectAll, clearSelectAll, copySelectAll, getSelectedRangeInfo } from './selbar.js';
-import { openQuickEdit } from './quick_edit.js';
-import { sendToActiveTerminal } from './term_inspector.js';
+import { openQuickEdit, quickEditOpen, closeQuickEdit } from './quick_edit.js';
 
 import { cycleTheme } from './theme.js';
 import { previewing, togglePreview, previewKey, selectPreview } from './markdown.js';
@@ -23,7 +22,6 @@ import { toggleDiff, stepDiffHunk, stepChangedFile } from './diff.js';
 import { openSettings, closeSettings, isSettingsOpen } from './settings-form.js';
 import { handleVimKeyDown, isVimEnabled, getVimMode, showVimHelp, closeVimHelp } from './vim.js';
 import { handleImageKey } from './imageview.js';
-import { submitBatch } from './agent.js';
 import { reindexWorkspace } from './panels.js';
 import { enterEditMode, exitEditMode, saveActiveFile, editTextarea } from './editview.js';
 import { navigateToTips } from './tips.js';
@@ -114,10 +112,14 @@ export function initShortcuts() {
   });
 
   addEventListener('keydown', e => {
+    // The terminal and the Quick Edit box own their keys: a shell needs Ctrl+W/D/K/E,
+    // and an agent's TUI reads Esc; none of them should reach the viewer.
+    if (/** @type {Element|null} */ (e.target)?.closest?.('#pane-right-term, #quick-edit-container')) return;
     const mod = e[MOD];
 
     if (e.key === 'Escape') {
       if (exitMermaidFullscreen()) return;
+      if (quickEditOpen()) { closeQuickEdit(); return; }
       const lb = $('#img-lightbox');
       if (lb && !lb.hidden) { lb.hidden = true; return; }
       if (!$('#vim-helpsheet')?.hidden) { closeVimHelp(); return; }
@@ -145,29 +147,18 @@ export function initShortcuts() {
       return;
     }
 
-    // Context-sensitive Quick Edit (with selection) or Quick Open (without selection)
+    // Quick Edit on a code selection, else Quick Open.
     if (mod && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
       const selInfo = getSelectedRangeInfo();
-      if (selInfo && !selInfo.isMarkdownPreview && !selInfo.fromDiff) {
+      if (selInfo?.isEditor && !e.shiftKey) {
         openQuickEdit(selInfo);
         return;
       }
       openPalette(e.shiftKey ? 'command' : 'file');
       return;
     }
-    if (e.altKey && (e.key === 'l' || e.key === 'L')) {
-      e.preventDefault();
-      const selInfo = getSelectedRangeInfo();
-      if (selInfo) {
-        const ext = selInfo.path.split('.').pop() || '';
-        const lineStr = selInfo.l1 === selInfo.l2 ? 'line ' + selInfo.l1 : 'lines ' + selInfo.l1 + '-' + selInfo.l2;
-        const payload = `@${selInfo.path} ${lineStr}\n\`\`\`${ext}\n${selInfo.text}\n\`\`\` `;
-        sendToActiveTerminal(payload);
-        return;
-      }
-    }
-    if (e.altKey && (e.key === 't' || e.key === 'T')) {
+    if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') {
       e.preventDefault();
       showRightInspector('term');
       return;
@@ -238,15 +229,6 @@ export function initShortcuts() {
       e.preventDefault();
       togglePreview();
       return;
-    }
-
-    if (mod && e.shiftKey && !e.altKey && e.key === 'Enter') {
-      const b = $('#agentbox');
-      if (b && !b.hidden) {
-        e.preventDefault();
-        submitBatch();
-        return;
-      }
     }
 
     if (!mod && e.key === 'Enter' && !findbar.hidden) {

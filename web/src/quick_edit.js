@@ -1,177 +1,173 @@
 // web/src/quick_edit.js
-import { $, doc_, api, esc, keyLabel } from './state.js';
-import { showToast } from './ui.js';
-import { openFile } from './tabs.js';
-import { getSelectedRangeInfo } from './selbar.js';
+// Quick Edit (Mod+K on a code selection): an instruction box above the
+// selected lines, a one-shot harness run (POST /api/quick-edit) that returns
+// their replacement, and an inline preview in the code (renderer.js): the
+// lines struck out, the replacement under them, Accept / Reject below that.
+// Nothing is written until Accept (POST /api/file/replace), which refuses
+// lines that changed on disk since the preview was made from them.
+import { $, doc_, apiPostJson, esc, keyLabel } from './state.js';
+import { on } from './bus.js';
+import { showToast, vp } from './ui.js';
+import { reloadOpenTabs } from './tabs.js';
+import { rowFor, setInlinePreview } from './renderer.js';
 
 let containerEl = null;
-let currentTarget = null;
-let isBusy = false;
-let currentReplacement = null;
+let target = null;      // { path, l1, l2, original } as read from disk
+let replacement = null; // the harness's lines, once it answered
+let inflight = null;    // AbortController of the running harness request
+let accepting = false;
 
-function calculateBoxPosition(selectionRect) {
-  const top = Math.max(50, Math.min(window.innerHeight - 250, selectionRect.top - 12));
-  const left = Math.max(20, Math.min(window.innerWidth - 420, selectionRect.left));
-  return { top: Math.round(top), left: Math.round(left) };
+/* The selected lines whole, as they are on disk now: the editor's own lines
+   are highlighted HTML and only partly loaded, and Accept compares against
+   exactly this text. */
+async function readLines(path, l1, l2) {
+  const u = new URL('api/raw?path=' + encodeURIComponent(path), document.baseURI);
+  const r = await fetch(u, { cache: 'no-store' });
+  if (!r.ok) throw new Error('could not read ' + path);
+  const lines = (await r.text()).split(/\r?\n/);
+  return lines.slice(l1 - 1, Math.min(l2, lines.length)).join('\n');
 }
 
-export function openQuickEdit(info) {
-  const sel = info || getSelectedRangeInfo();
+/* Above the selected lines, where it never covers them or the preview that
+   grows below them; below the preview when the window has no room above.
+   Placed after showing, to measure it. */
+function place() {
+  if (!target || !containerEl || containerEl.hidden) return;
+  const sel = window.getSelection();
+  const range = sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0).getBoundingClientRect() : null;
+  const first = range || rowFor(target.l1)?.getBoundingClientRect();
+  const last = rowFor(target.l2)?.getBoundingClientRect() || range || first;
+  const h = containerEl.offsetHeight;
+  let top = first ? first.top - h - 6 : 120;
+  if (top < 40 && last) top = last.bottom + 6;
+  containerEl.style.top = Math.round(Math.max(40, top)) + 'px';
+  containerEl.style.left = Math.round(Math.max(20, Math.min(innerWidth - containerEl.offsetWidth - 20, first ? first.left : 240))) + 'px';
+}
+
+export const quickEditOpen = () => !!containerEl && !containerEl.hidden;
+
+/** @param {{path: string, l1: number, l2: number, isEditor?: boolean}} info a code selection */
+export async function openQuickEdit(info) {
   const d = doc_();
-  if (!sel || !d || sel.isMarkdownPreview || sel.fromDiff) {
-    showToast('!', 'Select lines in source code to quick edit');
+  if (!info?.isEditor || !d || d.path !== info.path) {
+    showToast('!', 'Select code in the source view to quick edit');
     return;
   }
-
-  // Expand to full line range
-  const l1 = Math.max(1, sel.l1);
-  const l2 = Math.min(d.lines ? d.lines.length : sel.l2, sel.l2);
-  const originalLines = d.lines ? d.lines.slice(l1 - 1, l2).join('\n') : sel.text;
-
-  currentTarget = {
-    path: d.path,
-    l1,
-    l2,
-    original: originalLines,
-  };
-  currentReplacement = null;
-  isBusy = false;
-
-  ensureDOM();
-
-  const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
-  const rect = range ? range.getBoundingClientRect() : { top: 120, left: 240 };
-  const pos = calculateBoxPosition(rect);
-
-  containerEl.style.top = `${pos.top}px`;
-  containerEl.style.left = `${pos.left}px`;
-  containerEl.hidden = false;
-
-  const input = $('#quick-edit-input');
-  if (input) {
-    input.value = '';
-    input.disabled = false;
-    input.focus();
+  if (/** @type {any} */ (d).isEditing) {
+    showToast('!', 'Save or leave edit mode before a quick edit');
+    return;
   }
-
-  $('#quick-edit-diff').hidden = true;
-  $('#quick-edit-err').hidden = true;
-  $('#quick-edit-prompt-row').hidden = false;
-  $('#quick-edit-submit').disabled = false;
-  $('#quick-edit-submit').textContent = 'Edit ↵';
+  let original;
+  try {
+    original = await readLines(info.path, info.l1, info.l2);
+  } catch (e) {
+    showToast('!', e.message);
+    return;
+  }
+  closeQuickEdit();
+  target = { path: info.path, l1: info.l1, l2: info.l2, original };
+  ensureDOM();
+  showErr('');
+  setBusy(false);
+  setHint('');
+  containerEl.hidden = false;
+  place();
+  const input = /** @type {HTMLTextAreaElement} */ ($('#quick-edit-input'));
+  input.value = '';
+  input.focus();
 }
 
 export function closeQuickEdit() {
-  if (containerEl) {
-    containerEl.hidden = true;
-  }
-  currentTarget = null;
-  currentReplacement = null;
-  isBusy = false;
+  inflight?.abort(); // the server stops the harness with the request
+  inflight = null;
+  if (replacement !== null) setInlinePreview(null);
+  target = null;
+  replacement = null;
+  if (containerEl) containerEl.hidden = true;
+}
+
+// readOnly, not disabled: a disabled field drops focus to the page, and then
+// Esc no longer reaches the box.
+function setBusy(busy) {
+  const submit = /** @type {HTMLButtonElement} */ ($('#quick-edit-submit'));
+  submit.disabled = busy;
+  submit.textContent = busy ? 'Editing…' : 'Edit ↵';
+  /** @type {HTMLTextAreaElement} */ ($('#quick-edit-input')).readOnly = busy;
+}
+
+function showErr(msg) {
+  const el = $('#quick-edit-err');
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+function setHint(msg) {
+  const el = $('#quick-edit-hint');
+  el.textContent = msg;
+  el.hidden = !msg;
 }
 
 async function submitEdit() {
-  if (isBusy || !currentTarget) return;
-  const input = /** @type {HTMLTextAreaElement|null} */ ($('#quick-edit-input'));
-  const instruction = input?.value.trim();
-  if (!instruction) {
-    input?.focus();
-    return;
-  }
-
-  isBusy = true;
-  const submitBtn = $('#quick-edit-submit');
-  const errEl = $('#quick-edit-err');
-  if (errEl) errEl.hidden = true;
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Editing…';
-  }
-  if (input) input.disabled = true;
-
+  if (!target || inflight) return;
+  const input = /** @type {HTMLTextAreaElement} */ ($('#quick-edit-input'));
+  const instruction = input.value.trim();
+  if (!instruction) { input.focus(); return; }
+  const mine = target;
+  const ctl = new AbortController();
+  inflight = ctl;
+  showErr('');
+  setBusy(true);
   try {
-    const res = await api('/api/quick-edit', {
-      path: currentTarget.path,
-      l1: currentTarget.l1,
-      l2: currentTarget.l2,
-      selection: currentTarget.original,
-      instruction,
-    });
-
-    if (!res.ok || !res.replacement) {
-      throw new Error(res.error || 'Failed to generate edit');
-    }
-
-    currentReplacement = res.replacement;
-    renderDiff(currentTarget.original, currentReplacement);
-  } catch (err) {
-    if (errEl) {
-      errEl.textContent = err.message || 'Quick Edit failed';
-      errEl.hidden = false;
-    }
+    const res = await apiPostJson('/api/quick-edit', {
+      path: mine.path, l1: mine.l1, l2: mine.l2, selection: mine.original, instruction,
+    }, { signal: ctl.signal });
+    if (target !== mine) return; // closed or reopened meanwhile
+    replacement = typeof res.replacement === 'string' ? res.replacement : '';
+    showPreview(mine, replacement);
+  } catch (e) {
+    if (ctl.signal.aborted || target !== mine) return;
+    showErr(e.message || 'Quick Edit failed');
   } finally {
-    isBusy = false;
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Edit ↵';
-    }
-    if (input) input.disabled = false;
+    if (inflight === ctl) inflight = null;
+    if (target === mine) setBusy(false);
   }
 }
 
-function renderDiff(orig, rep) {
-  const diffBox = $('#quick-edit-diff');
-  const diffLinesEl = $('#quick-edit-diff-lines');
-  if (!diffBox || !diffLinesEl) return;
-
-  const origLines = orig.split('\n');
-  const repLines = rep.split('\n');
-
-  let html = '';
-  for (const l of origLines) {
-    html += `<div class="qe-line qe-del"><span class="qe-sign">-</span><span class="qe-code">${esc(l)}</span></div>`;
-  }
-  for (const l of repLines) {
-    html += `<div class="qe-line qe-add"><span class="qe-sign">+</span><span class="qe-code">${esc(l)}</span></div>`;
-  }
-
-  diffLinesEl.innerHTML = html;
-  diffBox.hidden = false;
-  $('#btn-qe-accept')?.focus();
+function showPreview(t, rep) {
+  const lines = rep === ''
+    ? '<div class="qe-line qe-note">the selected lines are deleted</div>'
+    : rep.split('\n').map(l => `<div class="qe-line qe-add"><span class="qe-sign">+</span><span class="qe-code">${esc(l)}</span></div>`).join('');
+  setInlinePreview({
+    path: t.path, l1: t.l1, l2: t.l2,
+    html: `<div class="qe-inline">${lines}<div class="qe-inline-bar">` +
+      `<button class="qe-btn-accept" data-qe="accept">✓ Accept <kbd>${esc(keyLabel('Mod+Enter'))}</kbd></button>` +
+      `<button class="qe-btn-reject" data-qe="reject">✕ Reject <kbd>Esc</kbd></button></div></div>`,
+  });
+  setHint(`${keyLabel('Mod+Enter')} to accept, Esc to reject, ${keyLabel('Enter')} to try again`);
+  // Once painted: bring the preview into view, then move the box clear of it.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    rowFor(t.l2)?.querySelector('.qe-inline')?.scrollIntoView({ block: 'nearest' });
+    place();
+  }));
 }
 
 async function acceptEdit() {
-  if (!currentTarget || currentReplacement === null) return;
-  const acceptBtn = $('#btn-qe-accept');
-  const errEl = $('#quick-edit-err');
-  if (errEl) errEl.hidden = true;
-  if (acceptBtn) acceptBtn.disabled = true;
-
+  if (!target || replacement === null || accepting) return;
+  const mine = target;
+  accepting = true;
+  showErr('');
   try {
-    const res = await api('/api/file/replace', {
-      path: currentTarget.path,
-      l1: currentTarget.l1,
-      l2: currentTarget.l2,
-      original: currentTarget.original,
-      replacement: currentReplacement,
-    });
-
-    if (!res.ok) {
-      throw new Error(res.error || 'Conflict: file was modified on disk');
-    }
-
-    const savedTarget = currentTarget;
-    closeQuickEdit();
-    await openFile(savedTarget.path, { line: savedTarget.l1 });
-    showToast('✓', 'Edit applied');
-  } catch (err) {
-    if (errEl) {
-      errEl.textContent = err.message;
-      errEl.hidden = false;
-    }
+    await apiPostJson('/api/file/replace', { ...mine, replacement });
+  } catch (e) {
+    // 409: the lines changed on disk since the preview; nothing was written.
+    if (target === mine) showErr(e.message);
+    return;
   } finally {
-    if (acceptBtn) acceptBtn.disabled = false;
+    accepting = false;
   }
+  closeQuickEdit();
+  await reloadOpenTabs();
+  showToast('✓', 'Edit applied to ' + mine.path);
 }
 
 function ensureDOM() {
@@ -180,53 +176,45 @@ function ensureDOM() {
   containerEl.id = 'quick-edit-container';
   containerEl.className = 'quick-edit-container';
   containerEl.hidden = true;
-
   containerEl.innerHTML = `
-    <div class="quick-edit-box" id="quick-edit-box">
-      <div class="quick-edit-prompt-row" id="quick-edit-prompt-row">
+    <div class="quick-edit-box">
+      <div class="quick-edit-prompt-row">
         <span class="qe-prompt-icon">✦</span>
-        <textarea id="quick-edit-input" class="qe-input" rows="1" placeholder="Describe change... (${keyLabel('Enter')} to submit, ${keyLabel('Esc')} to cancel)"></textarea>
-        <button id="quick-edit-submit" class="qe-btn-submit" title="Generate Edit (${keyLabel('Enter')})">Edit ↵</button>
-        <button id="quick-edit-close" class="qe-btn-close" title="Cancel (${keyLabel('Esc')})">✕</button>
+        <textarea id="quick-edit-input" class="qe-input" rows="1" spellcheck="false" placeholder="Describe the change (${esc(keyLabel('Enter'))} to run, Esc to cancel)"></textarea>
+        <button id="quick-edit-submit" class="qe-btn-submit" title="Run (${esc(keyLabel('Enter'))})">Edit ↵</button>
+        <button id="quick-edit-close" class="qe-btn-close" title="Cancel (Esc)">✕</button>
       </div>
+      <div id="quick-edit-hint" class="qe-hint" hidden></div>
       <div id="quick-edit-err" class="qe-err" hidden></div>
-      <div id="quick-edit-diff" class="quick-edit-diff" hidden>
-        <div id="quick-edit-diff-lines" class="qe-diff-lines"></div>
-        <div class="qe-review-bar">
-          <button id="btn-qe-accept" class="qe-btn-accept" title="Accept (${keyLabel('Mod+Enter')})">✓ Accept (${keyLabel('Mod+Enter')})</button>
-          <button id="btn-qe-reject" class="qe-btn-reject" title="Reject (${keyLabel('Esc')})">✕ Reject (${keyLabel('Esc')})</button>
-        </div>
-      </div>
-    </div>
-  `;
-
+    </div>`;
   document.body.appendChild(containerEl);
 
-  const input = $('#quick-edit-input');
-  input?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submitEdit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeQuickEdit();
-    }
-  });
-
-  $('#quick-edit-submit')?.addEventListener('click', () => submitEdit());
-  $('#quick-edit-close')?.addEventListener('click', () => closeQuickEdit());
-  $('#btn-qe-accept')?.addEventListener('click', () => acceptEdit());
-  $('#btn-qe-reject')?.addEventListener('click', () => closeQuickEdit());
-
-  // Global Esc or Mod+Enter for diff review
+  $('#quick-edit-submit').addEventListener('click', submitEdit);
+  $('#quick-edit-close').addEventListener('click', closeQuickEdit);
   containerEl.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       e.preventDefault();
       closeQuickEdit();
-    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      if (!currentReplacement) submitEdit();
-      else acceptEdit();
+      if (replacement !== null) acceptEdit(); else submitEdit();
+    } else if (e.key === 'Enter' && !e.shiftKey && e.target === $('#quick-edit-input')) {
+      e.preventDefault();
+      submitEdit();
     }
   });
+
+  // The preview's buttons live in the code rows, which are redrawn on every
+  // paint: listen on the document. A press keeps focus in the box.
+  document.addEventListener('mousedown', e => {
+    if (/** @type {Element} */ (e.target)?.closest?.('.qe-inline')) e.preventDefault();
+  });
+  document.addEventListener('click', e => {
+    const btn = /** @type {HTMLElement|null} */ (/** @type {Element} */ (e.target)?.closest?.('.qe-inline [data-qe]'));
+    if (!btn) return;
+    if (btn.dataset.qe === 'accept') acceptEdit(); else closeQuickEdit();
+  });
+  // A preview belongs to its file: switching away ends it.
+  on('tab:activated', ({ doc }) => { if (target && doc?.path !== target.path) closeQuickEdit(); });
+  vp?.addEventListener('scroll', place, { passive: true });
 }

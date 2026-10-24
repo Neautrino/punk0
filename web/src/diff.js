@@ -166,7 +166,8 @@ export function scrollDiffToLine(line) {
 function appendHunks(frag, hunks, mode, reviewable, actions = null) {
   const opts = {
     reviewable,
-    lineActions: S.meta?.pr && reviewable ? 'Thread, review comment and line actions' : 'Thread and line actions',
+    lineActions: true,
+    reviewButton: !!(S.meta?.pr && reviewable),
     diagnostics: buildDiagMap(),
   };
   const layout = fileLayout(hunks, mode);
@@ -201,7 +202,6 @@ function renderDiff(d) {
     frag.append(createDiffSection(d, 'commit', title, sub,
       (bodyEl) => appendHunks(bodyEl, hunks, d.diffMode, false)));
     diffContent.append(frag);
-    syncDiffAgentTargets();
     if (prSyncHandler) prSyncHandler();
     return;
   }
@@ -249,7 +249,6 @@ function renderDiff(d) {
     appendHunks(frag, d.diffHunks, d.diffMode, true, d.diffWholeFile || 'hunk');
   }
   diffContent.append(frag);
-  syncDiffAgentTargets();
   if (prSyncHandler) prSyncHandler();
 }
 
@@ -321,7 +320,7 @@ function sectionNote(text) {
   return el;
 }
 
-/* One-way registration for pr.js, mirroring agent.js's hook into selbar.js:
+/* One-way registration for pr.js:
    diff.js never imports pr.js, it just calls this after every repaint when a
    PR review session has set it. */
 let prSyncHandler = null;
@@ -386,20 +385,6 @@ function currentDiffLine() {
     }
   }
   return null;
-}
-
-export function syncDiffAgentTargets() {
-  if (!diffview || diffview.hidden) return;
-  const d = doc_();
-  if (!d) return;
-  const ranges = (S.agentTargets || []).filter(t => t.path === d.path);
-  for (const el of diffview.querySelectorAll('[data-l]')) {
-    const l = +el.dataset.l;
-    const inAgent = ranges.some(r => l >= r.l1 && l <= r.l2);
-    const isAnchor = ranges.some(r => l === r.l1);
-    el.classList.toggle('agent-sel', inAgent);
-    el.classList.toggle('agent-anchor', isAnchor);
-  }
 }
 
 /* ---------- code review: hunk/file stepping, context expansion, hunk actions ---------- */

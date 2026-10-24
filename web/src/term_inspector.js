@@ -1,7 +1,9 @@
 // web/src/term_inspector.js
 import { $, S } from './state.js';
+import { showRightInspector } from './inspector.js';
 import { on } from './bus.js';
 import { showToast } from './ui.js';
+import { getTabLabel } from './term-util.js';
 
 let termEl = null;
 let tabListEl = null;
@@ -153,17 +155,6 @@ function getWorkspaceID() {
   return S.meta?.workspace || S.meta?.workspaceId || '';
 }
 
-export function getTabLabel(t) {
-  if (t.name && t.name !== t.kind) return t.name;
-  if (t.kind === 'claude') return 'Claude Code';
-  if (t.kind === 'shell') return 'Shell';
-  if (t.kind === 'codex') return 'Codex';
-  if (t.kind === 'opencode') return 'OpenCode';
-  if (t.kind === 'agy') return 'Antigravity';
-  if (t.kind === 'cursor-agent') return 'Cursor Agent';
-  return t.name || t.kind;
-}
-
 export async function refreshWorkspaceTabs() {
   const wsId = getWorkspaceID();
   if (!wsId) return;
@@ -292,36 +283,63 @@ export async function removeTab(tabId) {
   }
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function socketOpen(ms = 5000) {
+  for (let t = 0; t < ms; t += 100) {
+    if (activeSocket?.readyState === WebSocket.OPEN) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+/* A tab the selection can go to: the shown one if it runs an agent, else the
+   first agent tab, running ones first. A plain shell is never a target: it
+   would run the pasted lines as commands. */
+function chatTab() {
+  const isAgent = t => t.kind !== 'shell';
+  const shown = workspaceTabs.find(t => t.id === activeTabId);
+  if (shown && isAgent(shown)) return shown;
+  return workspaceTabs.find(t => isAgent(t) && t.running) || workspaceTabs.find(isAgent) || null;
+}
+
+/* Add to Chat: types text into an agent's prompt through xterm's paste, which
+   brackets it when the agent asked for bracketed paste (Claude Code does), so
+   the newlines stay in the input and nothing is sent until the user presses
+   Enter. Control characters are dropped so the text cannot end the paste. */
 export async function sendToActiveTerminal(text) {
-  if (!activeTabId) {
-    await refreshWorkspaceTabs();
-  }
-  if (!activeTabId) {
-    showToast('!', 'No terminal tab available');
+  showRightInspector('term');
+  await refreshWorkspaceTabs();
+  const tab = chatTab();
+  if (!tab) {
+    showToast('!', 'Start an agent tab first (+ Agent)');
     return false;
   }
-
-  try {
-    const res = await fetch(parentURL(`api/tabs/${encodeURIComponent(activeTabId)}/send`), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-
-    if (res.status === 409) {
-      showToast('!', 'Agent is busy with an in-flight command');
-      return false;
-    }
-    if (!res.ok) {
-      showToast('!', 'Failed to send text to terminal');
-      return false;
-    }
-    showToast('✓', 'Staged in Terminal');
-    return true;
-  } catch (err) {
-    showToast('!', 'Network error sending to terminal: ' + err.message);
+  if (tab.status === 'waiting') {
+    showToast('!', getTabLabel(tab) + ' is waiting for your answer');
     return false;
   }
+  const wasRunning = tab.running;
+  if (activeTabId !== tab.id || !activeSocket) attachTab(tab.id);
+  if (!await booting || !await socketOpen()) {
+    showToast('!', 'Could not connect to ' + getTabLabel(tab));
+    return false;
+  }
+  if (!wasRunning) {
+    // Just started: give the agent time to draw its prompt before typing into
+    // it. Claude reports idle through its hooks; others report nothing.
+    for (let t = 0; t < 20000; t += 500) {
+      await sleep(500);
+      if (tab.kind !== 'claude' && t >= 2500) break;
+      await refreshWorkspaceTabs();
+      if (workspaceTabs.find(x => x.id === tab.id)?.status === 'idle') break;
+    }
+  }
+  const clean = text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
+  xtermInstance.term.paste(clean + '\n');
+  xtermInstance.term.focus();
+  showToast('✓', 'Added to ' + getTabLabel(tab));
+  return true;
 }
 
 export function onTermInspectorShown() {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { getTabLabel } from './term_inspector.js';
+import { getTabLabel } from './term-util.js';
 
 test('getTabLabel maps default kind strings correctly', () => {
   assert.equal(getTabLabel({ kind: 'claude', name: 'claude' }), 'Claude Code');

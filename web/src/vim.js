@@ -298,7 +298,7 @@ export function handleVimKeyDown(e) {
     }
     if (e.key === 'e' || e.key === 'c') {
       e.preventDefault();
-      runSelectionAction('agent-edit');
+      runSelectionAction('quick-edit');
       exitVisualMode();
       return true;
     }
@@ -640,7 +640,7 @@ export const VIM_SHORTCUT_SECTIONS = [
     items: [
       [['v'], 'Character-wise visual selection'],
       [['V'], 'Line-wise visual selection'],
-      [['e', 'c'], 'Edit selection inline with AI coding agent'],
+      [['e', 'c'], 'Quick Edit the selection with the AI coding agent'],
       [['y'], 'Yank (copy) code to clipboard'],
       [['Y'], 'Yank reference (file:line-range)'],
       [['u'], 'Find usages of selected symbol'],

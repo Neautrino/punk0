@@ -6,10 +6,10 @@
 // (orch/changes.js), which style them alike (style.css .diff-*).
 //
 // opts: reviewable (a row's line number is a review-comment target; see
-// anchor), lineActions, the title of the line-actions button each line
-// number carries, which also makes the number open its line; none without it;
-// and diagnostics, a Map of new-file line to message shown on that line's
-// code cell (data-diag).
+// anchor), lineActions, which makes each line number open its line; none
+// without it; reviewButton, a Comment button on each line number for a PR
+// review (linecomment.js); and diagnostics, a Map of new-file line to message
+// shown on that line's code cell (data-diag).
 import { esc } from './state.js';
 
 // Lucide chevrons-up-down / chevrons-down-up: open out vs fold in. diff.js
@@ -203,17 +203,19 @@ function anchor(el, row, { reviewable = true }) {
   if (!reviewable) el.dataset.reviewable = '0';
 }
 
-function lineCell(n, { lineActions }) {
+function lineCell(n, { lineActions, reviewButton }) {
   const el = document.createElement('div');
   el.className = 'diff-ln';
   if (lineActions && n !== '' && n !== undefined) {
     el.classList.add('diff-ln-nav');
     el.title = 'Open in file view at line ' + n;
+  }
+  if (reviewButton && n !== '' && n !== undefined) {
     const btn = document.createElement('span');
     btn.className = 'line-btn';
     btn.setAttribute('role', 'button');
-    btn.title = lineActions;
-    btn.textContent = 'Edit';
+    btn.title = 'Add review comment and line actions';
+    btn.textContent = 'Comment';
     el.append(btn);
   }
   el.append(document.createTextNode(n === '' || n === undefined ? '' : String(n)));

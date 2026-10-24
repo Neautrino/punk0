@@ -5,7 +5,7 @@ import { vp, rowsEl, copyToClipboard, copyRichToClipboard, showToast } from './u
 import { render, toPos, rowFor } from './renderer.js';
 import { findReferences } from './lsp.js';
 import { fitStatus } from './status.js';
-import { domToMarkdown, getFragmentPlainText, getFragmentHtml, getMarkdownRangeLines, getDocRaw, previewTopLine } from './markdown.js';
+import { domToMarkdown, getFragmentPlainText, getFragmentHtml, getMarkdownRangeLines, getDocRaw } from './markdown.js';
 import { showSelPill, hideSelPill } from './selpill.js';
 import { openQuickEdit } from './quick_edit.js';
 import { sendToActiveTerminal } from './term_inspector.js';
@@ -25,22 +25,11 @@ export const SEL_KEYS = {
   KeyC: 'copy-ref',
   KeyA: 'copy-agent',
   KeyU: 'usages',
-  KeyE: 'agent-edit',
+  KeyL: 'add-to-chat',
   KeyR: 'review-comment',
-  KeyT: 'thread',
   KeyM: 'copy-markdown',
   KeyS: 'copy-source',
 };
-
-/* Editing lives in agent.js, which registers itself here on load. Keeping the
-   dependency one-way means selbar imports nothing back and the two never form
-   a cycle; the button simply does nothing when no harness is configured. */
-let agentHandler = null;
-export function setAgentHandler(fn) { agentHandler = fn; }
-
-/* Threads (thread.js) hook in the same way. */
-let threadHandler = null;
-export function setThreadHandler(fn) { threadHandler = fn; }
 
 /* Same one-way registration for PR review comments (pr.js), active only in a
    `px0 pr ...` session. */
@@ -227,7 +216,7 @@ function showSelectionBar(info) {
   statsEl.textContent = (lines === 1 ? '1 line' : lines + ' lines') + ' · ' +
     info.text.length.toLocaleString() + ' chars';
 
-  showSelPill(info);
+  showSelPill(info, act => runSelectionAction(act, null, info));
   const d = doc_();
   const footerSel = bar();
   if (footerSel) {
@@ -313,30 +302,19 @@ export function copySelectAll() {
   return true;
 }
 
+/* "@path lines a-b" and the code fenced: what Copy with Context copies and
+   Add to Chat types into the agent's prompt. */
+function contextSnippet({ path, l1, l2, text }) {
+  const ext = path.split('.').pop() || '';
+  const lineStr = l1 === l2 ? 'line ' + l1 : 'lines ' + l1 + '-' + l2;
+  return '@' + path + ' ' + lineStr + '\n```' + ext + '\n' + text + '\n```';
+}
+
 /* Runs one of the bar's actions on the current selection. Returns false when the
    bar is not showing, so a shortcut can fall through to the browser. */
 export function runSelectionAction(act, triggerBtn = null, override = null) {
   const target = override || current;
-  if (!target) {
-    if (act === 'thread') {
-      const d = doc_();
-      if (d && threadHandler) {
-        const line = (mdviewEl && !mdviewEl.hidden) ? previewTopLine() : (d.cur || 1);
-        threadHandler({ text: lineToText((d.lines && d.lines[line - 1]) || ''), l1: line, l2: line, path: d.path });
-        return true;
-      }
-    }
-    if (act === 'agent-edit') {
-      const d = doc_();
-      if (d && agentHandler) {
-        const line = (mdviewEl && !mdviewEl.hidden) ? previewTopLine() : (d.cur || 1);
-        const text = lineToText((d.lines && d.lines[line - 1]) || '');
-        agentHandler({ text, l1: line, l2: line, path: d.path });
-        return true;
-      }
-    }
-    return false;
-  }
+  if (!target) return false;
   const { text, path } = target;
   const ref = selectionRef(target);
   const targetBtn = triggerBtn || $('#footer-sel [data-sel="' + act + '"]');
@@ -367,17 +345,13 @@ export function runSelectionAction(act, triggerBtn = null, override = null) {
   } else if (act === 'copy-ref') {
     copyToClipboard(ref, 'Copied', targetBtn);
   } else if (act === 'copy-agent') {
-    const ext = path.split('.').pop() || '';
-    const lineStr = target.l1 === target.l2 ? 'line ' + target.l1 : 'lines ' + target.l1 + '-' + target.l2;
-    const snippet = '@' + path + ' ' + lineStr + '\n```' + ext + '\n' + text + '\n```';
-    copyToClipboard(snippet, 'Copied', targetBtn);
+    copyToClipboard(contextSnippet(target), 'Copied', targetBtn);
   } else if (act === 'quick-edit') {
+    if (!target.isEditor) return false;
     openQuickEdit(target);
   } else if (act === 'add-to-chat') {
-    const ext = path.split('.').pop() || '';
-    const lineStr = target.l1 === target.l2 ? 'line ' + target.l1 : 'lines ' + target.l1 + '-' + target.l2;
-    const payload = `@${path} ${lineStr}\n\`\`\`${ext}\n${text}\n\`\`\` `;
-    sendToActiveTerminal(payload);
+    if (target.isMarkdownPreview) return false;
+    sendToActiveTerminal(contextSnippet(target));
   } else if (act === 'review-comment') {
     if (!reviewHandler) return false;
     reviewHandler(target);
@@ -398,19 +372,19 @@ export function closeSelMenu() {
   if (menu && !menu.hidden) menu.hidden = true;
 }
 
-/* The gutter's thread button: the same actions as the right-click menu, aimed
-   at one line. Find Usages needs a symbol, which a whole line is not, and
-   Add Review Comment only makes sense on a line GitHub knows about. */
+/* The PR review Comment button on a diff line number (linecomment.js): the
+   same actions as the right-click menu, aimed at one line. Find Usages needs a
+   symbol, which a whole line is not. */
 export function openLineMenu(info, x, y) {
   closeSelMenu();
   pinnedInfo = info;
-  openSelMenu(x, y, item => item.sel !== 'usages' && item.sel !== 'copy-preview-text' && (item.sel !== 'review-comment' || !!info.fromDiff));
+  openSelMenu(x, y, item => item.sel !== 'usages' && item.sel !== 'copy-preview-text');
 }
 
 // Exported so pr.js can append "Add Review Comment" in a PR review session
 // without selbar needing to know PR review exists.
 export const SEL_MENU_ITEMS = [
-  { sel: 'quick-edit', label: 'Quick Edit', keys: 'Mod+K', forCode: true },
+  { sel: 'quick-edit', label: 'Quick Edit', keys: 'Mod+K', forCode: true, sourceOnly: true },
   { sel: 'add-to-chat', label: 'Add to Chat', keys: 'Alt+L', forCode: true },
   { sel: 'copy-source', label: 'Copy Source', keys: 'Mod+C', forCode: true },
   { sel: 'copy-preview-text', label: 'Copy Formatted Text', keys: 'Mod+C', forPreview: true },
@@ -433,6 +407,7 @@ function openSelMenu(x, y, keep = (item) => true) {
     if (isPreview && item.forCode) continue;
     if (!isPreview && item.forPreview) continue;
     if (item.forMarkdown && !isMdDoc && !isPreview) continue;
+    if (item.sourceOnly && !(info && info.isEditor)) continue;
 
     const btn = document.createElement('button');
     btn.className = 'sel-menu-item';
