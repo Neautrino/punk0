@@ -45,12 +45,16 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * Replace `<button data-itab="threads">` with `<button class="inspector-tab active" data-itab="term">Terminal</button>`.
    * Replace `<section id="pane-right-threads">` with `<section class="inspector-pane active" id="pane-right-term">`.
    * Tab sequence: `Terminal` (default active), `References`, `Symbols`, `Calls`, `Search`, `Tips`.
-2. **Sub-Bar Header**:
-   * Displays tab chips: `[ ● Claude Code ]` (or detected agent) and `[ + Shell ]`.
-   * Shows active agent status dot (green = idle/ready, yellow = working/waiting).
+2. **Sub-Bar Header & Tab Ownership**:
+   * The editor view is mounted at `/w/<workspace-id>/`. The parent orchestrator owns `/api/tabs/{id}/term`, `/api/tabs/{id}/send`, and `/api/workspaces/{id}/tabs`.
+   * The editor obtains the current workspace ID and tab list from workspace metadata (`S.meta.workspaceId` and `S.meta.tabs`).
+   * Sub-bar displays tab chips: `[ ● Claude Code ]` (or detected agent) and `[ + Shell ]`.
+   * If the workspace currently has zero terminal tabs, the editor sends `POST /api/workspaces/{workspace-id}/tabs {"kind": "claude"}` (or `"shell"` if no agent CLI is detected) upon first opening the Terminal pane.
+   * Clicking `[+ Shell]` calls `POST /api/workspaces/{workspace-id}/tabs {"kind": "shell"}` and switches active terminal focus to the newly spawned tab.
+   * Status indicators display live agent state (green dot = `idle`, yellow pulsing dot = `working` or `waiting`).
 3. **PTY Connection**:
    * Dynamically loads `xterm.js` via `static/vendor/xterm.mjs`.
-   * Establishes WebSocket to `/api/tabs/{id}/term`.
+   * Establishes WebSocket connection to `/api/tabs/{id}/term`.
    * Handles terminal resizing via JSON text frames `{"cols": N, "rows": N}` and binary PTY streaming.
    * Maintains persistent session in Go backend: switching away to `Symbols` or hiding the inspector detaches the WebSocket; reopening reattaches and replays recent scrollback from the ring buffer.
 
@@ -64,13 +68,20 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
    * **`✦ Quick Edit` (`Cmd/Ctrl+K`)**: Opens the inline floating prompt box directly over the selected lines.
    * **`💬 Add to Chat` (`Cmd/Ctrl+L`)**:
      * Activates and focuses the `Terminal` pane in the right inspector.
-     * Dispatches `POST /api/tabs/{id}/send` with payload:
+     * If the active tab is currently busy (`working` or `waiting`), `POST /api/tabs/{id}/send` returns `409 Conflict`. In this case, the editor shows a toast: *"Agent is busy with an in-flight command"*, keeps the code selection preserved, and allows the user to wait or switch to an idle tab.
+     * If the tab is idle, dispatches `POST /api/tabs/{id}/send` with payload:
        ```text
        @<path>:<l1>-<l2>
        ```
        followed by bracketed paste of the code snippet.
    * **`📋 Copy Ref` (`Alt+C`)**: Copies `<path>:<l1>-<l2>` to the clipboard with visual checkmark feedback.
-3. **Legacy Clean-up**:
+3. **`Cmd/Ctrl+K` Precedence & Keybinding Resolution**:
+   * Currently, `Cmd/Ctrl+K` is bound globally to Quick Open palette alongside `Cmd/Ctrl+P`.
+   * **Precedence rule**:
+     * If an active non-collapsed code selection exists in the editor ($l1 \le l2$ with selected characters), `Cmd/Ctrl+K` triggers **Quick Edit**.
+     * If there is no active text selection, `Cmd/Ctrl+K` falls through to open the Quick Open file palette (`openPalette()`), preserving existing muscle memory.
+     * Keyboard tips, palette hints, and help dialogs are updated to reflect this dual-binding rule.
+4. **Legacy Clean-up**:
    * Remove gutter `.agent-btn` ("Edit" badge) and the old popup context menu.
 
 ### 3.3 Quick Edit (`Cmd/Ctrl+K`) Engine & In-Place Diff
@@ -97,12 +108,27 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
        "replacement": "    const timeout = 5000;\n    if (idleTime > 10) {\n        resetIdleAnimation(timeout);\n    }"
      }
      ```
-3. **In-Editor Inline Diff Rendering**:
+3. **In-Editor Inline Diff Rendering & Atomic Accept Contract**:
    * Editor renders a temporary overlay spanning $l1 \dots l2$:
      * Red struck-through background for removed lines (`-`).
      * Green highlighted background for added lines (`+`).
    * Renders floating review strip below the diff:
-     * **`✓ Accept` (`Cmd+Enter` / `Enter`)**: Writes changes to disk via `/api/file/edit`, re-indexes, refreshes editor lines, and dismisses overlay.
+     * **`✓ Accept` (`Cmd+Enter` / `Enter`)**: Sends atomic replacement request:
+       ```http
+       POST /api/file/replace
+       Content-Type: application/json
+
+       {
+         "path": "src/player.ts",
+         "l1": 12,
+         "l2": 14,
+         "original": "    if (idleTime > 10) {\n        resetIdleAnimation();\n    }",
+         "replacement": "    const timeout = 5000;\n    if (idleTime > 10) {\n        resetIdleAnimation(timeout);\n    }"
+       }
+       ```
+       * **Stale-Source Precondition**: If the file on disk was modified by an external process or terminal agent while Quick Edit was running and lines $l1 \dots l2$ no longer match `original`, the backend returns `409 Conflict` with `{"ok": false, "error": "File was modified on disk; please review current lines"}`.
+       * On `409 Conflict`, the editor displays an inline conflict warning on the review strip, preserves the replacement text, and prevents silent source overwrites.
+       * On `200 OK`, updates file on disk, triggers live editor reload, and dismisses the overlay.
      * **`✕ Reject` (`Esc`)**: Reverts view to original lines with zero disk modification.
 
 ---
@@ -112,8 +138,10 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
 | Endpoint | Method | Payload | Description |
 | :--- | :--- | :--- | :--- |
 | `/api/tabs/{id}/term` | `GET (WS)` | Binary PTY frames, JSON resize | Reused from orchestrator for terminal sessions. |
-| `/api/tabs/{id}/send` | `POST` | `{"text": "..."}` | Bracketed paste injection into active terminal tab. |
+| `/api/tabs/{id}/send` | `POST` | `{"text": "..."}` | Bracketed paste injection into active terminal tab. Returns 409 if tab is busy. |
+| `/api/workspaces/{id}/tabs` | `POST` | `{"kind": "claude"\|"shell"}` | Spawns a new terminal tab in the workspace. |
 | `/api/quick-edit` | `POST` | `{"path", "l1", "l2", "selection", "instruction"}` | Headless one-shot agent execution for inline diffs. |
+| `/api/file/replace` | `POST` | `{"path", "l1", "l2", "original", "replacement"}` | Atomic line replacement with optimistic conflict detection. |
 | `/api/threads/*` | `*` | N/A | **Deprecated**: Removed from active routing. |
 
 ---
@@ -122,15 +150,14 @@ punk0 already possesses a robust, interactive PTY terminal subsystem (`term.go`,
 
 1. **Interactive Prompt in Terminal**:
    * When an agent CLI requires user approval (`[y/N]`), the user types directly into the right-sidebar `xterm.js` terminal. No EOF deadlocks occur.
-2. **Quick Edit Failure / Invalid Output**:
-   * If the one-shot agent fails (timeout, bad prompt), the prompt bar displays an inline error message with a **Retry** button; the editor code remains unmodified.
-3. **Editor Scroll & Resize**:
-   * The floating selection pill and Quick Edit widgets recalculate their relative top/left pixel positions on editor scroll and window resize.
-4. **Non-Loopback Security Guard**:
+2. **Add to Chat on Busy Tab**:
+   * If the user triggers `Cmd/Ctrl+L` while the terminal agent is in the middle of executing a previous command (`working` or `waiting`), the request is rejected with `409 Conflict`. A toast notification informs the user, and the selected code remains highlighted without data loss.
+3. **Quick Edit Conflict / External File Change**:
+   * If lines on disk change between the prompt submission and clicking Accept, `/api/file/replace` rejects the write with `409 Conflict`. The UI highlights the conflict without clobbering disk content.
+4. **Editor Scroll & Virtualized Line Rendering**:
+   * The floating selection pill and Quick Edit widgets anchor to line pixel coordinates calculated via the editor's virtualization layout, automatically repositioning on scroll.
+5. **Non-Loopback Security Guard**:
    * Like all punk0 terminal endpoints, `/api/tabs/{id}/term` and `/api/tabs/{id}/send` reject non-loopback requests with `403 Forbidden` unless authorized.
-
----
-
 ## 6. Verification & Testing Plan
 
 1. **Go Backend Tests**:
