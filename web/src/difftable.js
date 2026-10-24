@@ -127,6 +127,16 @@ export function unifiedTable(hunk, opts = {}) {
   return table;
 }
 
+/* fileLayout is the layout a file's hunks are drawn in: the one asked for,
+   except that a file whose diff is one-sided -- a new file (all additions) or
+   a deleted one (all deletions) -- is always unified, since split would leave
+   half the width blank. */
+export function fileLayout(hunks, mode) {
+  if (mode !== 'split' || !hunks.length) return mode;
+  const rows = hunks.flatMap(h => h.rows);
+  return rows.every(r => r.type === 'add') || rows.every(r => r.type === 'del') ? 'unified' : mode;
+}
+
 /* ---------- split layout: deletions and additions paired side by side ---------- */
 
 export function splitTable(hunk, opts = {}) {

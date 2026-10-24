@@ -14,7 +14,7 @@ import { gotoDefinition } from './lsp.js';
 import { hoverAt } from './hover.js';
 import { pushHistory } from './history.js';
 import { COMMIT_STATUS, loadCommitFiles, cachedCommitFiles } from './commitfiles.js';
-import { hunkHeader, unifiedTable, splitTable, ICON_FOLD, ICON_UNFOLD } from './difftable.js';
+import { hunkHeader, unifiedTable, splitTable, fileLayout, ICON_FOLD, ICON_UNFOLD } from './difftable.js';
 import { handleGitStatus, triggerRefresh } from './gitstream.js';
 
 export const diffview = $('#diffview');
@@ -169,10 +169,11 @@ function appendHunks(frag, hunks, mode, reviewable, actions = null) {
     lineActions: S.meta?.pr && reviewable ? 'Thread, review comment and line actions' : 'Thread and line actions',
     diagnostics: buildDiagMap(),
   };
+  const layout = fileLayout(hunks, mode);
   for (let idx = 0; idx < hunks.length; idx++) {
     const hunk = hunks[idx];
     frag.append(hunkHeader(hunk, { index: idx, expand: expandable(hunk), actions }));
-    frag.append(mode === 'unified' ? unifiedTable(hunk, opts) : splitTable(hunk, opts));
+    frag.append(layout === 'unified' ? unifiedTable(hunk, opts) : splitTable(hunk, opts));
   }
 }
 

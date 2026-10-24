@@ -14,7 +14,7 @@ import { call } from './api.js';
 import { subscribe, workspace, hasGit, openChanges, openFile } from './store.js';
 import { view } from './split.js';
 import { GIT_STATUS } from './tree.js';
-import { hunkHeader, unifiedTable, splitTable } from '../difftable.js';
+import { hunkHeader, unifiedTable, splitTable, fileLayout } from '../difftable.js';
 
 const LAYOUT_KEY = 'punk0.diffLayout';
 
@@ -183,8 +183,9 @@ function fileBody(f, mode) {
   else if (f.large) body.append(noteEl('Too large to show here; open the file to read it.'));
   else if (!f.hunks.length) body.append(noteEl(f.status === 'R' ? 'Renamed without changes.' : 'No changed lines.'));
   else {
+    const layout = fileLayout(f.hunks, mode);
     for (const h of f.hunks) {
-      body.append(hunkHeader(h), mode === 'split' ? splitTable(h) : unifiedTable(h));
+      body.append(hunkHeader(h), layout === 'split' ? splitTable(h) : unifiedTable(h));
     }
   }
   return body;
