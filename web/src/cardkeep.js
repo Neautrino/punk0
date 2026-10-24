@@ -30,7 +30,7 @@ function tickAll() {
 }
 
 function wirePointerTrack() {
-  if (ptrWired) return;
+  if (ptrWired || typeof document === 'undefined') return;
   ptrWired = true;
   // Capture, so a card's own stopPropagation can't blind the tracker, and
   // passive, since this runs on every move and never cancels anything.
