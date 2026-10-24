@@ -112,6 +112,29 @@ type PRMergeResult struct {
 	Message string `json:"message,omitempty"`
 }
 
+// PRSummary is one open pull request in a list of those into a branch.
+type PRSummary struct {
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Author  string `json:"author"`
+	Head    string `json:"head"` // the source branch
+	Draft   bool   `json:"draft"`
+	Updated int64  `json:"updated"` // unix ms, 0 when the forge gave none
+}
+
+// prListMax is how many open pull requests ListOpenPRs returns at most.
+const prListMax = 30
+
+// forgeMillis is an RFC 3339 forge timestamp as unix ms, 0 when unreadable.
+func forgeMillis(s string) int64 {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
 // Errors a provider's Merge wraps, so callers can tell a stale head or a PR
 // that can't merge from a transport failure without parsing forge text.
 var (
@@ -258,6 +281,11 @@ type GitProvider interface {
 	// ErrPRHeadMoved, when the PR head is no longer req.HeadSHA, and wrap
 	// ErrPRNotMergeable when the forge refuses the merge itself.
 	Merge(ctx context.Context, target PRTarget, token string, req PRMergeRequest) (PRMergeResult, error)
+
+	// ListOpenPRs lists the repository's open pull requests into branch
+	// base, newest first, at most prListMax. repo needs only Host, Owner
+	// and Repo.
+	ListOpenPRs(ctx context.Context, repo PRTarget, token, base string) ([]PRSummary, error)
 }
 
 var defaultProviders = []GitProvider{
@@ -443,7 +471,9 @@ func (a forgeAPI) linkPages(ctx context.Context, path string) ([]json.RawMessage
 
 // ---------------------------------------------------------------- GitHub
 
-const githubAPIBase = "https://api.github.com"
+// githubAPIBase is GitHub's API root; a variable so tests can point it at a
+// fake server.
+var githubAPIBase = "https://api.github.com"
 
 var githubPRURLRe = regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
 
@@ -544,6 +574,31 @@ func (g *GitHubProvider) MergeStatus(ctx context.Context, target PRTarget, token
 
 func (g *GitHubProvider) Merge(ctx context.Context, target PRTarget, token string, req PRMergeRequest) (PRMergeResult, error) {
 	return mergePR(ctx, target.Owner, target.Repo, target.Number, token, req)
+}
+
+func (g *GitHubProvider) ListOpenPRs(ctx context.Context, repo PRTarget, token, base string) ([]PRSummary, error) {
+	q := url.Values{"state": {"open"}, "base": {base}, "sort": {"created"}, "direction": {"desc"}, "per_page": {strconv.Itoa(prListMax)}}
+	var prs []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		HTMLURL   string `json:"html_url"`
+		Draft     bool   `json:"draft"`
+		UpdatedAt string `json:"updated_at"`
+		User      ghUser `json:"user"`
+		Head      struct {
+			Ref string `json:"ref"`
+		} `json:"head"`
+	}
+	path := "/repos/" + url.PathEscape(repo.Owner) + "/" + url.PathEscape(repo.Repo) + "/pulls?" + q.Encode()
+	if _, err := githubAPI(token).do(ctx, http.MethodGet, path, nil, &prs); err != nil {
+		return nil, err
+	}
+	out := make([]PRSummary, 0, len(prs))
+	for _, p := range prs {
+		out = append(out, PRSummary{Number: p.Number, Title: p.Title, URL: p.HTMLURL, Author: p.User.Login,
+			Head: p.Head.Ref, Draft: p.Draft, Updated: forgeMillis(p.UpdatedAt)})
+	}
+	return out[:min(len(out), prListMax)], nil
 }
 
 // resolveGitHubToken looks for a token in order: the explicit px0 setting
@@ -1149,6 +1204,7 @@ type glMR struct {
 	MergeStatus         string `json:"merge_status"`
 	HasConflicts        bool   `json:"has_conflicts"`
 	WebURL              string `json:"web_url"`
+	UpdatedAt           string `json:"updated_at"`
 	Author              struct {
 		Username string `json:"username"`
 	} `json:"author"`
@@ -1576,6 +1632,24 @@ func (g *GitLabProvider) Merge(ctx context.Context, t PRTarget, token string, re
 	return PRMergeResult{SHA: sha}, nil
 }
 
+func (g *GitLabProvider) ListOpenPRs(ctx context.Context, repo PRTarget, token, base string) ([]PRSummary, error) {
+	q := url.Values{"state": {"opened"}, "target_branch": {base}, "order_by": {"created_at"}, "sort": {"desc"}, "per_page": {strconv.Itoa(prListMax)}}
+	var mrs []glMR
+	if _, err := gitlabDo(ctx, http.MethodGet, repo, "/projects/"+gitlabProject(repo)+"/merge_requests?"+q.Encode(), token, nil, &mrs); err != nil {
+		return nil, err
+	}
+	out := make([]PRSummary, 0, len(mrs))
+	for _, mr := range mrs {
+		u := mr.WebURL
+		if u == "" {
+			u = prWebURL("gitlab", repo.Host, repo.Owner, repo.Repo, mr.IID)
+		}
+		out = append(out, PRSummary{Number: mr.IID, Title: mr.Title, URL: u, Author: mr.Author.Username,
+			Head: mr.SourceBranch, Draft: mr.Draft || mr.WorkInProgress, Updated: forgeMillis(mr.UpdatedAt)})
+	}
+	return out[:min(len(out), prListMax)], nil
+}
+
 // ---------------------------------------------------------------- Gitea / Forgejo / Codeberg
 
 // https://codeberg.org/owner/repo/pulls/12. GitHub's path is "pull",
@@ -1719,6 +1793,8 @@ type giteaUser struct {
 type giteaPR struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`
+	HTMLURL   string    `json:"html_url"`
+	UpdatedAt string    `json:"updated_at"`
 	State     string    `json:"state"` // open, closed
 	Merged    bool      `json:"merged"`
 	MergedAt  string    `json:"merged_at"`
@@ -2042,6 +2118,41 @@ func (g *GiteaProvider) Merge(ctx context.Context, t PRTarget, token string, req
 	return PRMergeResult{SHA: pr.MergeCommitSHA}, nil
 }
 
+// giteaListPages caps how many pages of open pull requests ListOpenPRs
+// reads looking for those into the base branch, which the list can't
+// filter by.
+const giteaListPages = 4
+
+func (g *GiteaProvider) ListOpenPRs(ctx context.Context, repo PRTarget, token, base string) ([]PRSummary, error) {
+	const limit = 50
+	a := giteaAPI(repo, token)
+	out := []PRSummary{}
+	for page := 1; page <= giteaListPages && len(out) < prListMax; page++ {
+		// No sort: the default is newest first.
+		q := url.Values{"state": {"open"}, "limit": {strconv.Itoa(limit)}, "page": {strconv.Itoa(page)}}
+		var prs []giteaPR
+		if _, err := a.do(ctx, http.MethodGet, giteaRepoPath(repo)+"/pulls?"+q.Encode(), nil, &prs); err != nil {
+			return nil, err
+		}
+		for _, p := range prs {
+			if p.Base.Ref != base {
+				continue
+			}
+			u := p.HTMLURL
+			if u == "" {
+				u = prWebURL("gitea", repo.Host, repo.Owner, repo.Repo, p.Number)
+			}
+			out = append(out, PRSummary{Number: p.Number, Title: p.Title, URL: u, Author: p.User.Login,
+				Head: p.Head.Ref, Draft: p.draft(), Updated: forgeMillis(p.UpdatedAt)})
+		}
+		if len(prs) < limit {
+			break
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Number > out[j].Number })
+	return out[:min(len(out), prListMax)], nil
+}
+
 // ---------------------------------------------------------------- Bitbucket Cloud
 
 var bitbucketAPIBase = "https://api.bitbucket.org/2.0"
@@ -2215,6 +2326,11 @@ type bbPR struct {
 	Draft       bool       `json:"draft"`
 	Author      bbUser     `json:"author"`
 	UpdatedOn   string     `json:"updated_on"`
+	Links       struct {
+		HTML struct {
+			Href string `json:"href"`
+		} `json:"html"`
+	} `json:"links"`
 	Source      bbEndpoint `json:"source"`
 	Destination bbEndpoint `json:"destination"`
 	MergeCommit *struct {
@@ -2616,4 +2732,25 @@ func (b *BitbucketProvider) Merge(ctx context.Context, t PRTarget, token string,
 		res.SHA = out.MergeCommit.Hash
 	}
 	return res, nil
+}
+
+func (b *BitbucketProvider) ListOpenPRs(ctx context.Context, repo PRTarget, token, base string) ([]PRSummary, error) {
+	quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(base) + `"`
+	q := url.Values{"state": {"OPEN"}, "q": {"destination.branch.name=" + quoted}, "sort": {"-created_on"}, "pagelen": {strconv.Itoa(prListMax)}}
+	var page struct {
+		Values []bbPR `json:"values"`
+	}
+	if _, err := bitbucketAPI(token).do(ctx, http.MethodGet, bitbucketRepoPath(repo.Owner+"/"+repo.Repo)+"/pullrequests?"+q.Encode(), nil, &page); err != nil {
+		return nil, err
+	}
+	out := make([]PRSummary, 0, len(page.Values))
+	for _, p := range page.Values {
+		u := p.Links.HTML.Href
+		if u == "" {
+			u = prWebURL("bitbucket", repo.Host, repo.Owner, repo.Repo, p.ID)
+		}
+		out = append(out, PRSummary{Number: p.ID, Title: p.Title, URL: u, Author: p.Author.name(),
+			Head: p.Source.Branch.Name, Draft: p.Draft, Updated: forgeMillis(p.UpdatedOn)})
+	}
+	return out[:min(len(out), prListMax)], nil
 }

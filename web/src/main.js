@@ -24,10 +24,10 @@ import { initSettings } from './settings.js';
 import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
 import { initGitStream, triggerRefresh } from './gitstream.js';
-import { initGitPanel, syncGitPanelMeta, revealGitPanel } from './gitpanel.js';
+import { initGitPanel, syncGitPanelMeta, revealGitPanel, reviewCommit } from './gitpanel.js';
 import { initPR } from './pr.js';
 import { initLineComment } from './linecomment.js';
-import { initUnpushed, refreshUnpushed } from './unpushed.js';
+import { initGitGraph, refreshGraph } from './gitgraph.js';
 import { initPRScope } from './prscope.js';
 import { initEditView } from './editview.js';
 import { initNewItem } from './newitem.js';
@@ -63,7 +63,7 @@ initSettings();
 initVim();
 initImageViewer();
 initLineComment();
-initUnpushed();
+initGitGraph();
 initPRScope();
 
 // Bootstrap application lifecycle
@@ -135,9 +135,9 @@ initPRScope();
   // completes (common right after `px0 <pr-url>`) would otherwise never
   // auto-select a diff tab -- until the next manual reload.
   const applyGitSidebarState = async () => {
-    // The unpushed list decides this too: a clean tree with local commits
-    // still belongs in Git view, which is the only place they are listed.
-    await refreshUnpushed();
+    // The graph's outgoing count decides this too: a clean tree with local
+    // commits still belongs in Git view (hasGitView() counts them).
+    await refreshGraph();
     const showGit = hasGitView();
     await setSidebarMode(showGit ? 'git' : 'files', { expandDirty: showGit });
     return !!(S.meta?.git && ((S.meta.gitChanges > 0) || S.meta?.pr));
@@ -157,17 +157,22 @@ initPRScope();
   const params = new URLSearchParams(window.location.search);
   const initialPath = params.get('path');
   const initialLine = parseInt(params.get('line'), 10) || undefined;
+  // ?commit=<sha>: the agents page's Review buttons for a commit.
+  const reviewSha = params.get('commit');
   if (initialPath) {
     await openFile(initialPath, { line: initialLine });
+  } else if (reviewSha) {
+    await reviewCommit(reviewSha);
   } else {
     if (hasGitChanges) await selectChangedFileTab();
   }
   // ?panel=git: opened from the agents page's branch bar, for its git panel.
   if (params.get('panel') === 'git') revealGitPanel();
-  if (initialPath || params.has('panel')) {
+  const handled = ['path', 'line', 'panel', 'commit'];
+  if (handled.some(k => params.has(k))) {
     try {
       const u = new URL(window.location.href);
-      for (const k of ['path', 'line', 'panel']) u.searchParams.delete(k);
+      for (const k of handled) u.searchParams.delete(k);
       const cleanSearch = u.searchParams.toString();
       const cleanUrl = u.pathname + (cleanSearch ? '?' + cleanSearch : '') + u.hash;
       window.history.replaceState({}, '', cleanUrl);
@@ -195,14 +200,17 @@ initPRScope();
         const m = await api('/api/meta');
         if (m.ready) {
           clearInterval(timer);
-          S.meta = m;
+          // /api/meta never lists harnesses (loadAgentAsync fetches those), so
+          // keep what it loaded rather than wiping the git panel's AI actions.
+          const { agents, agent, agentModel, agentPinned } = S.meta;
+          S.meta = { ...m, agents, agent, agentModel, agentPinned };
           updateSidebarToggleState();
           syncGitPanelMeta();
           updateStatus();
           setAutoRevealSuppressed(true);
           await refreshTree();
           await triggerRefresh();
-          if (!initialPath) {
+          if (!initialPath && !reviewSha) {
             hasGitChanges = await applyGitSidebarState();
             if (hasGitChanges) await selectChangedFileTab();
             if (inGitMode()) {

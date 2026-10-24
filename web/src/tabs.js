@@ -69,7 +69,7 @@ function openTabMenu(index, x, y) {
 
 /* opts.ref pins the tab to one commit: every diff it shows is that commit's
    own change to the file, frozen no matter what happens in the working tree
-   afterwards. The Unpushed sidebar section is what passes it. Opening the same
+   afterwards. The git panel's commit graph is what passes it. Opening the same
    path from anywhere else (tree, search, go-to-definition) passes no ref and so
    puts the tab back on the working tree, which is what "open this file" means
    everywhere else in px0. */

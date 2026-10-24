@@ -336,6 +336,7 @@ func (c *wbChild) failure() string {
 type workbench struct {
 	store     *wbStore
 	records   *Records // projects, workspaces and the terminals in them
+	ledgers   *ledgers // what each chat turn changed, per folder (ledger.go)
 	basePath  string
 	cwd       string
 	exe       string
@@ -357,13 +358,15 @@ type workbench struct {
 }
 
 func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, error) {
-	rec, err := OpenRecords(workbenchStateDir())
+	home := workbenchStateDir()
+	rec, err := OpenRecords(home)
 	if err != nil {
 		return nil, err
 	}
 	wb := &workbench{
 		store:     &wbStore{path: workbenchStorePath()},
 		records:   rec,
+		ledgers:   newLedgers(home),
 		basePath:  cleanBasePath(basePath),
 		cwd:       cwd,
 		exe:       exe,
@@ -442,6 +445,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/workspaces"), wb.handleWorkspaceAdd)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/plan"), wb.handleWorkspacePlan)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/refs"), wb.handleRefs)
+	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/changes-summary"), wb.handleChangesSummary)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
@@ -456,6 +460,9 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/hook"), wb.handleHook)
+	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/send"), wb.handleTabSend)
+	wb.mux.HandleFunc("GET "+wb.route("/api/folders/{dirID}/ledger"), wb.handleLedger)
+	wb.mux.HandleFunc("POST "+wb.route("/api/folders/{dirID}/reviews"), wb.handleReview)
 	wb.mux.HandleFunc(wb.route("/w/"), wb.handleWorkspace)
 	wb.mux.HandleFunc(wb.route("/"), wb.handleIndex)
 	if wb.basePath != "/" {
@@ -760,6 +767,8 @@ func (wb *workbench) Close() {
 		go func() { defer wg.Done(); wb.stop(id) }()
 	}
 	wg.Wait()
+	// A turn snapshot still being taken finishes, and is saved, first.
+	wb.ledgers.wait()
 }
 
 // reapIdle stops what nobody is using: a child nobody has had open for

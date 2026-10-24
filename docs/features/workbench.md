@@ -33,17 +33,33 @@ Settings → Appearance → **File View** (`layout.fileView`): `beside` (the def
 
 ### Changed files and the diff
 
-In a git checkout the files pane lists only the files changed against `HEAD`, untracked ones included, with their folders opened. The switch in its head (folder | branch) shows all files instead; the choice is remembered in this browser. The pane follows git as files change, while the page is in view and the pane shown; Refresh re-reads it at any time.
+In a git checkout the files pane lists only the files changed against `HEAD`, untracked ones included, with their folders opened. The switch in its head (folder | branch) shows all files instead; the choice is remembered in this browser, and a folder without git shows all files with the switch's second button off. The pane follows git as files change, while the page is in view and the pane shown; Refresh re-reads it at any time.
 
 Clicking a file in the changed-files view opens it as its diff: one tab per file, as in the editor. In a git checkout the path row of a file tab has a switch between the file's text and its diff; a file opened from all files keeps what its tab showed, the text at first.
 
 **Diff** opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals a diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. A diff re-reads the changes each time it comes into view, and with the refresh button in the path row.
 
+### Changes by chat
+
+punk0 records which agent chat (one Claude tab) changed which uncommitted file: its turn ledger, read every 3 seconds while the page is in view and whenever git changes. The changed files are shown once, in the changed-files view; the chats only narrow and label it.
+
+- **Scope.** A button over the changed files picks whose changes they show: **All changes**, each chat (its colour dot, the same colour as in the editor, its name and file count), **Group: <workspace>** for a workspace with two chats or more that changed files, **Last turn (<chat> · n)** (the files the newest finished prompt changed that are still uncommitted), and **Not from a chat** (files you or a shell changed). The choice is remembered per workspace in this browser, and changes only when you pick another one; a chat whose files were all committed falls back to All. A folder with no chats offers only All and Not from a chat.
+- **Dots.** A changed file a chat changed carries that chat's dot; a file more than one chat changed carries a dot for each and ⚠.
+- **Chat tabs.** An agent tab with uncommitted files shows their count beside its name (hover: *N files +a −d uncommitted*); clicking the count opens the files pane on the changed files, scoped to that chat.
+
 ### Staging and the branch bar
 
 Each changed file in the tree has a stage tick, as in the editor's tree: empty while unstaged, filled once staged. Click it to stage or unstage that one file.
 
-The bar under the tree shows the workspace's branch, how many of its changed files are staged (`2 / 30 staged`), and how far it is from its upstream: `↑` commits to push and `↓` commits to pull as of the last fetch, nothing when it is even, **unpublished** when it tracks no remote branch. Click the bar to open the workspace in the editor with its git panel unfolded (`/w/<id>/?panel=git`): committing (by hand or with AI), push and pull, staging hunks, and the history are there.
+The bar under the tree reads `⑂ branch ↑a ↓b · ○N`: how far the branch is from its upstream (`↑` commits to push and `↓` commits to pull as of the last fetch, nothing when it is even, **unpublished** when it tracks no remote branch) and how many commits the agents made that nobody reviewed yet. Click it to open the workspace in the editor with its git panel unfolded (`/w/<id>/?panel=git`): committing by hand or with AI, push and pull, staging hunks, and the history are there. Beside it, one button does what is next:
+
+- **Scope is a chat** (or a workspace's chats, or the last turn) **with files:** a one-line commit subject above the bar, prefilled with a draft made from the chat's prompt, and **Commit N**, which commits just those N files; the message gets the draft's body and a `Chat: <name>` line. Files you staged for something else stay staged. Commit is off while the chat is working. When it fails, the reason shows with **Send to chat**. **Ask chat ↗** beside the subject opens a box to type a prompt into the chat (Ctrl+Enter sends); a busy chat gets it as soon as it is idle (*will send when idle*, ✕ to drop it).
+- **Scope is Not from a chat, with files:** the same subject (empty, required) and **Commit N**.
+- **Scope is All, with changes:** **Commit…**, a menu of the chats (name · N files, and Not from a chat) that sets the scope.
+- **Nothing to commit, agent commits not reviewed:** **Review N** opens the oldest of them in the editor (`?commit=<sha>`); **Push anyway** under the bar while the branch is ahead.
+- **Ahead:** **Push ↑a**. Otherwise a disabled **Up to date**.
+
+When pull requests are open into the current branch on its forge (GitHub, GitLab, Bitbucket Cloud, Gitea/Forgejo, with a token set), the bar adds **⇣N PRs into <base>**: a menu of them (#n title · author) whose entries open the pull request's review, as from **Add project**.
 
 ## Sidebar
 
@@ -84,7 +100,7 @@ The panel opens on a short menu: a **Folder** field, **Browse folder**, **Clone 
 - **Agent.** The first tab: an installed agent, a shell, or none (the welcome view). **Language servers in this folder** turns them on for the new worktree (each costs 300 MB to 1.5 GB).
 - **Ctrl+Enter** creates. Agent, Where, start point and language servers are remembered per project, in this browser.
 
-Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, and, on hover, delete.
+Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, what its folder has uncommitted (`3 · +40 −2`: files, lines added and removed), or, with nothing uncommitted, `○ 2 to review` for agent commits not reviewed yet, and, on hover, delete.
 
 ### Scratch chats
 
@@ -103,7 +119,7 @@ Scratch is for agent work that has no repository yet: research, one-off scripts,
 
 ## Tabs
 
-The tab bar holds the selected workspace's terminals; open files have the panel beside it (see [Files beside the terminals](#files-beside-the-terminals)), or share this bar with **File View** set to `tabs`. **+** offers a new tab for every installed agent not hidden in settings (`agents.hidden`) and a shell, with `agents.default` first, then a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it. Closing a running terminal asks first unless `terminal.confirmCloseRunning` is off.
+The tab bar holds the selected workspace's terminals; open files have the panel beside it (see [Files beside the terminals](#files-beside-the-terminals)), or share this bar with **File View** set to `tabs`. **+** offers a new tab for every installed agent not hidden in settings (`agents.hidden`) and a shell, with `agents.default` first, then a file picker that fuzzy-finds a file of the workspace. Clicking a file in the right-hand tree also opens it. File tabs are read-only views; the editor view is for editing. Double-click a terminal tab to rename it. An agent tab with uncommitted files shows their count; click it to see them (see [Changes by chat](#changes-by-chat)). Closing a running terminal asks first unless `terminal.confirmCloseRunning` is off.
 
 With no tab open, as in a new project or worktree workspace, the center shows the welcome view: punk0's name and version, the workspace and its folder, and the same choices as **+**, the default agent first, then a file. Nothing starts until you pick one. With files open but no terminal, the welcome view takes the terminals' side. A scratch chat opens on the tab its agent runs in.
 
@@ -175,9 +191,11 @@ Everything is kept in the state directory, `$XDG_STATE_HOME/punk0`, falling back
 | `workbench.json` | Pull requests in the Reviews list, and the clone each repository's PRs use |
 | `repos/` | Clones punk0 makes for PRs |
 | `claude-hooks.json` | The hook settings Claude tabs start with |
+| `turns/<id>.json` | Each folder's chat turns: prompt, reply, files changed, commits made (the newest 500; past two weeks, only those whose work is still uncommitted) |
+| `reviews.json` | Which agent commits and turns were marked reviewed |
 | `workbench.lock` | The running punk0's address |
 
-Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs) and the `refs/px0/*` refs that PR review uses and removes on exit.
+Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs), the `refs/px0/*` refs that PR review uses and removes on exit, and a `refs/punk0/turns/<turn>` ref per chat turn, pointing at a snapshot commit of the working tree as the turn left it (untracked files included, ignored ones not; your index, branches and stash are never touched). The refs go with their turns.
 
 ## Flags
 

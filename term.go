@@ -11,9 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/coder/websocket"
 
@@ -273,6 +275,36 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
+// pasteSettle is how long Send waits between a paste and the Enter that
+// submits it: an agent's TUI that reads both at once may take the Enter as
+// part of the paste, leaving the prompt typed but not sent.
+const pasteSettle = 200 * time.Millisecond
+
+// Send types text into the terminal as one bracketed paste, then presses
+// Enter: what a user pasting a prompt and submitting it does. Control
+// characters other than newline and tab are dropped, so the text cannot end
+// the paste early and type keys of its own.
+func (s *Shell) Send(text string) error {
+	s.touch()
+	text = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\t':
+			return r
+		case r == '\r':
+			return '\n'
+		case unicode.IsControl(r):
+			return -1
+		}
+		return r
+	}, strings.ReplaceAll(text, "\r\n", "\n"))
+	if _, err := s.ptmx.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
+		return err
+	}
+	time.Sleep(pasteSettle)
+	_, err := s.ptmx.Write([]byte{'\r'})
+	return err
+}
+
 // dropLocked unregisters viewer v; closing its channel ends its Attach.
 func (s *Shell) dropLocked(v chan []byte) {
 	if _, ok := s.viewers[v]; ok {
@@ -307,4 +339,46 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sh.Attach(r.Context(), conn)
+}
+
+// handleTabSend serves POST /api/tabs/{id}/send {"text"}: the text goes to
+// the tab's agent as a pasted prompt (Send). An agent in the middle of a turn
+// or waiting on a question would take it as something else, so a busy one is
+// refused, as is a tab with no shell. Like the terminal itself, it is served
+// only while punk0 listens on loopback.
+func (wb *workbench) handleTabSend(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	if !wb.localOnly {
+		fail(w, http.StatusForbidden, "terminals are served only when punk0 listens on this machine")
+		return
+	}
+	tab := wb.records.Tab(r.PathValue("id"))
+	if tab == nil {
+		fail(w, http.StatusNotFound, "tab not found")
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if readJSONBody(r, &body) != nil || strings.TrimSpace(body.Text) == "" {
+		fail(w, http.StatusBadRequest, "text is required")
+		return
+	}
+	sh := tab.shell()
+	if sh == nil {
+		fail(w, http.StatusConflict, "chat isn't running")
+		return
+	}
+	switch tab.Status() {
+	case statusWorking, statusWaiting:
+		fail(w, http.StatusConflict, "chat is busy")
+		return
+	}
+	if err := sh.Send(body.Text); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
 }

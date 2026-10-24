@@ -67,7 +67,7 @@ The bar appears as soon as the first box opens, so the batch is always in view. 
 
 ## Beyond Code: Commit Messages
 
-The same harness and model you pick here are also used by the sidebar git panel's **Commit with AI** button, which asks the harness to write a commit message for your staged changes instead of editing code — see [Git Awareness: Stage, Commit, Push, Pull](git-integration.md).
+The same harness and model you pick here are also used by the sidebar git panel's **✦** button, which asks the harness to write a commit message for your staged changes (or, with nothing staged, to plan the commits for your review) instead of editing code — see [Git Awareness: Stage, Commit, Push, Pull](git-integration.md).
 
 ---
 

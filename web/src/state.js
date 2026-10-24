@@ -213,7 +213,7 @@ export const S = {
   tablePreview: true, // CSV and TSV tabs open as a table (default ON)
   settings: null,    // loaded from /api/settings
   agentTargets: [],  // [{ id, path, l1, l2 }, ...] ranges of open compose/edit sessions
-  unpushedCount: 0,  // commits ahead of the tracking branch; owned by unpushed.js
+  unpushedCount: 0,  // outgoing commits (not on the upstream yet); owned by gitgraph.js
 };
 
 /** @returns {DocTab|null} */

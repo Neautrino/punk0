@@ -493,6 +493,17 @@ func findProjectPull(ctx context.Context, dir, text string) (pp *projectPull, ok
 // remotePR is pull request n of the repository the project's origin (or its
 // only remote) points at.
 func remotePR(dir string, n int) (GitProvider, PRTarget, error) {
+	provider, repo, err := originRepo(dir)
+	if err != nil {
+		return nil, PRTarget{}, fmt.Errorf("#%d: %w", n, err)
+	}
+	target, err := provider.ParseURL(prWebURL(provider.Name(), repo.Host, repo.Owner, repo.Repo, n))
+	return provider, target, err
+}
+
+// originRepo is the repository dir's origin (or its only remote) points at,
+// as a target with no pull request number.
+func originRepo(dir string) (GitProvider, PRTarget, error) {
 	remote := "origin"
 	if out, err := exec.Command("git", "-C", dir, "remote").Output(); err == nil {
 		if rs := strings.Fields(string(out)); !slices.Contains(rs, remote) && len(rs) == 1 {
@@ -501,20 +512,26 @@ func remotePR(dir string, n int) (GitProvider, PRTarget, error) {
 	}
 	out, err := exec.Command("git", "-C", dir, "remote", "get-url", remote).Output()
 	if err != nil {
-		return nil, PRTarget{}, fmt.Errorf("#%d: this project has no remote named %s", n, remote)
+		return nil, PRTarget{}, fmt.Errorf("this project has no remote named %s", remote)
 	}
 	rawURL := strings.TrimSpace(string(out))
 	provider := ForgeForRemote(rawURL)
 	host, path, ok := remoteHostPath(rawURL)
 	if provider == nil || !ok {
-		return nil, PRTarget{}, fmt.Errorf("#%d: %s is not on a forge punk0 knows (GitHub, GitLab, Bitbucket, Gitea)", n, rawURL)
+		return nil, PRTarget{}, fmt.Errorf("%s is not on a forge punk0 knows (GitHub, GitLab, Bitbucket, Gitea)", rawURL)
 	}
 	i := strings.LastIndex(path, "/")
 	if i <= 0 {
-		return nil, PRTarget{}, fmt.Errorf("#%d: cannot tell the repository from %s", n, rawURL)
+		return nil, PRTarget{}, fmt.Errorf("cannot tell the repository from %s", rawURL)
 	}
-	target, err := provider.ParseURL(prWebURL(provider.Name(), host, path[:i], path[i+1:], n))
-	return provider, target, err
+	// Parsed from a pull request page, as everywhere else, so each forge
+	// cleans up owner and repository its own way.
+	target, err := provider.ParseURL(prWebURL(provider.Name(), host, path[:i], path[i+1:], 1))
+	if err != nil {
+		return nil, PRTarget{}, err
+	}
+	target.Number, target.URL = 0, ""
+	return provider, target, nil
 }
 
 // prWebURL is the page of pull request n on a forge.

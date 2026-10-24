@@ -80,7 +80,7 @@ export const DEFAULT_TIPS = [
     title: "Review Unpushed Commits",
     category: "Git",
     tag: "Git",
-    content: "Click the **Git changes** toggle in the sidebar to review the local commits ahead of your upstream branch, inspecting diffs one commit at a time before pushing."
+    content: "The **Graph** at the bottom of the git panel lists your outgoing commits — the ones your upstream branch doesn't have yet. Click one to see its files and inspect its diffs one commit at a time before pushing."
   },
   {
     id: "git-panel-sync",
@@ -91,10 +91,10 @@ export const DEFAULT_TIPS = [
   },
   {
     id: "ai-commit-messages",
-    title: "Stage All & Commit with AI",
+    title: "Commit with AI",
     category: "AI",
     tag: "Git",
-    content: "In the Git panel, click **Stage all + Commit with AI** to have your local AI coding harness inspect staged changes and generate conventional commit messages."
+    content: "In the Git panel, press **✦** in the message box to have your coding harness write a message for the staged files. With nothing staged, **✦ Commit N changes** asks it to plan one or more commits for review before anything is committed; the **▾** menu also has **Commit all as one with AI**."
   },
   {
     id: "quick-file-edit",

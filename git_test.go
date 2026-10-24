@@ -1098,17 +1098,19 @@ func TestGitRecentCommitsAndLog(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	var payload struct {
-		Commits    []GitCommit `json:"commits"`
-		CommitsURL string      `json:"commitsUrl"`
+		Commits    []GraphCommit `json:"commits"`
+		CommitsURL string        `json:"commitsUrl"`
+		Head       string        `json:"head"`
+		More       bool          `json:"more"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Commits) != 2 {
-		t.Fatalf("expected 2 commits from /api/git/log?limit=2, got %d", len(payload.Commits))
+	if len(payload.Commits) != 2 || !payload.More {
+		t.Fatalf("expected 2 commits and more from /api/git/log?limit=2, got %d (more=%v)", len(payload.Commits), payload.More)
 	}
-	if payload.Commits[0].Subject != "commit 3" {
-		t.Fatalf("expected 'commit 3', got %q", payload.Commits[0].Subject)
+	if payload.Commits[0].Subject != "commit 3" || payload.Commits[0].Full != payload.Head {
+		t.Fatalf("expected 'commit 3' at HEAD %s, got %+v", payload.Head, payload.Commits[0])
 	}
 
 	// Test gitCommitsWebURL with github origin
@@ -1564,40 +1566,83 @@ func unpushedRepo(tb testing.TB) string {
 	return clone
 }
 
-func TestGitUnpushedCommits(t *testing.T) {
+// The graph lists HEAD and its upstream together: local commits (a merge
+// included) are outgoing, a commit someone else pushed is incoming, the
+// pushed base is neither, and refs say which kind they are.
+func TestGitGraphLog(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
 	}
 	root := unpushedRepo(t)
+	remote := strings.TrimSpace(gitTestRun(t, root, "config", "remote.origin.url"))
+	other := filepath.Join(t.TempDir(), "other")
+	gitTestRun(t, filepath.Dir(other), "clone", "-q", remote, "other")
+	for _, cfg := range [][2]string{{"user.email", "o@example.com"}, {"user.name", "O"}, {"commit.gpgsign", "false"}} {
+		gitTestRun(t, other, "config", cfg[0], cfg[1])
+	}
+	gitTestRun(t, other, "commit", "-q", "--allow-empty", "-m", "theirs")
+	gitTestRun(t, other, "push", "-q")
+	gitTestRun(t, root, "fetch", "-q")
 
-	upstream, commits := gitUnpushedCommits(root, 0)
-	if upstream != "origin/main" {
-		t.Fatalf("expected upstream origin/main, got %q", upstream)
+	gitTestRun(t, root, "checkout", "-q", "-b", "side")
+	gitTestRun(t, root, "commit", "-q", "--allow-empty", "-m", "on side")
+	gitTestRun(t, root, "checkout", "-q", "main")
+	gitTestRun(t, root, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+	gitTestRun(t, root, "tag", "v1")
+
+	commits, more := gitGraphLog(root, "@{u}", 30)
+	if more {
+		t.Fatal("more should be false when the log didn't fill the limit")
 	}
-	if len(commits) != 2 {
-		t.Fatalf("expected 2 unpushed commits, got %d: %+v", len(commits), commits)
+	by := map[string]GraphCommit{}
+	for _, c := range commits {
+		by[c.Subject] = c
 	}
-	// Newest first, and the pushed commit must not be in the list.
-	if commits[0].Subject != "local two" || commits[1].Subject != "local one" {
-		t.Fatalf("expected [local two, local one], got %q, %q", commits[0].Subject, commits[1].Subject)
+	for _, s := range []string{"merge side", "on side", "local two", "local one"} {
+		if c := by[s]; !c.Outgoing || c.Incoming {
+			t.Errorf("%q: outgoing=%v incoming=%v, want outgoing", s, c.Outgoing, c.Incoming)
+		}
 	}
-	if len(commits[0].Hash) != 40 || commits[0].Short == "" || commits[0].Author != "T" || commits[0].Date == "" {
-		t.Fatalf("incomplete commit record: %+v", commits[0])
+	if c := by["theirs"]; !c.Incoming || c.Outgoing {
+		t.Errorf("theirs: outgoing=%v incoming=%v, want incoming", c.Outgoing, c.Incoming)
+	}
+	if c := by["pushed commit"]; c.Incoming || c.Outgoing || len(c.Parents) != 0 {
+		t.Errorf("pushed commit = %+v, want neither side and no parents", c)
+	}
+	merge := by["merge side"]
+	if len(merge.Parents) != 2 || merge.Parents[0] != by["local two"].Full || merge.Parents[1] != by["on side"].Full {
+		t.Errorf("merge parents = %v, want [local two, on side]", merge.Parents)
+	}
+	if !reflect.DeepEqual(merge.Refs, []GraphRef{{"main", "head"}, {"v1", "tag"}}) {
+		t.Errorf("merge refs = %+v", merge.Refs)
+	}
+	if !reflect.DeepEqual(by["on side"].Refs, []GraphRef{{"side", "branch"}}) {
+		t.Errorf("side refs = %+v", by["on side"].Refs)
+	}
+	if !reflect.DeepEqual(by["theirs"].Refs, []GraphRef{{"origin/main", "remote"}}) {
+		t.Errorf("theirs refs = %+v", by["theirs"].Refs)
+	}
+	if len(merge.Hash) == 0 || len(merge.Full) != 40 || merge.Author != "T" || merge.Date == "" {
+		t.Errorf("incomplete row: %+v", merge)
 	}
 
-	// Pushing empties the list without touching the upstream name.
-	gitTestRun(t, root, "push", "-q")
-	upstream, commits = gitUnpushedCommits(root, 0)
-	if upstream != "origin/main" || len(commits) != 0 {
-		t.Fatalf("expected an empty list after push, got upstream=%q, %d commits", upstream, len(commits))
+	if c, more := gitGraphLog(root, "@{u}", 2); len(c) != 2 || !more {
+		t.Errorf("limit 2: %d rows, more=%v", len(c), more)
+	}
+
+	// Detached: HEAD itself is the head ref.
+	gitTestRun(t, root, "checkout", "-q", "--detach")
+	commits, _ = gitGraphLog(root, "", 1)
+	if len(commits) != 1 || len(commits[0].Refs) == 0 || commits[0].Refs[0] != (GraphRef{"HEAD", "head"}) {
+		t.Errorf("detached refs = %+v", commits)
 	}
 }
 
-func TestGitUnpushedNoUpstream(t *testing.T) {
+func TestGitLogNoUpstream(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
 	}
-	// A repo with commits but no tracking branch: no list, and no guess at one.
+	// A repo with commits but no tracking branch: nothing marked, and no guess at one.
 	dir := t.TempDir()
 	gitTestRun(t, dir, "init", "-b", "main")
 	for _, cfg := range [][2]string{{"user.email", "t@example.com"}, {"user.name", "T"}, {"commit.gpgsign", "false"}} {
@@ -1612,9 +1657,13 @@ func TestGitUnpushedNoUpstream(t *testing.T) {
 	if ref := gitUpstreamRef(dir); ref != "" {
 		t.Fatalf("expected no upstream ref, got %q", ref)
 	}
-	upstream, commits := gitUnpushedCommits(dir, 0)
-	if upstream != "" || commits != nil {
-		t.Fatalf("expected nothing without an upstream, got %q / %+v", upstream, commits)
+	ix := NewIndex(dir)
+	ix.Build()
+	s := NewServer(ix, nil)
+	_, body := get(t, s, "/api/git/log")
+	commits, _ := body["commits"].([]any)
+	if body["upstream"] != "" || len(commits) != 1 || commits[0].(map[string]any)["outgoing"] != false {
+		t.Fatalf("expected one unmarked commit and no upstream, got %v", body)
 	}
 }
 
@@ -1623,7 +1672,7 @@ func TestGitCommitFilesAndDetail(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	root := unpushedRepo(t)
-	_, commits := gitUnpushedCommits(root, 0)
+	commits := gitCommitsInRange(root, "@{u}..HEAD", 0)
 	first := commits[1] // "local one": modify + delete + add
 
 	files := gitCommitFiles(root, first.Hash)
@@ -1682,7 +1731,7 @@ func TestGitCommitFilesLineCounts(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	root := unpushedRepo(t)
-	_, commits := gitUnpushedCommits(root, 0)
+	commits := gitCommitsInRange(root, "@{u}..HEAD", 0)
 	counts := map[string][2]int{}
 	for _, f := range gitCommitFiles(root, commits[1].Hash) {
 		counts[f.Path] = [2]int{f.Add, f.Del}
@@ -1743,7 +1792,7 @@ func TestGitDiffCommitIsFrozenAgainstTheWorkingTree(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	root := unpushedRepo(t)
-	_, commits := gitUnpushedCommits(root, 0)
+	commits := gitCommitsInRange(root, "@{u}..HEAD", 0)
 	first := commits[1] // "local one" changed two -> TWO
 
 	diff := gitDiffCommit(root, "a.txt", first.Hash)
@@ -1826,7 +1875,7 @@ func TestGithubAuthorURL(t *testing.T) {
 	}
 }
 
-func TestUnpushedEndpoints(t *testing.T) {
+func TestCommitGraphEndpoints(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
 	}
@@ -1852,16 +1901,15 @@ func TestUnpushedEndpoints(t *testing.T) {
 		}
 	}
 
-	var list struct {
-		Available bool             `json:"available"`
-		Upstream  string           `json:"upstream"`
-		Commits   []UnpushedCommit `json:"commits"`
+	var graph struct {
+		Upstream string        `json:"upstream"`
+		Commits  []GraphCommit `json:"commits"`
 	}
-	getJSON("/api/unpushed", &list)
-	if !list.Available || list.Upstream != "origin/main" || len(list.Commits) != 2 {
-		t.Fatalf("unexpected /api/unpushed payload: %+v", list)
+	getJSON("/api/git/log", &graph)
+	if graph.Upstream != "origin/main" || len(graph.Commits) != 3 || !graph.Commits[1].Outgoing || graph.Commits[2].Outgoing {
+		t.Fatalf("unexpected /api/git/log payload: %+v", graph)
 	}
-	sha := list.Commits[1].Hash // "local one"
+	sha := graph.Commits[1].Full // "local one"
 
 	var files struct {
 		SHA   string       `json:"sha"`
@@ -1925,37 +1973,6 @@ func TestUnpushedEndpoints(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 for a long-deleted file with no ref, got %d", resp.StatusCode)
-	}
-}
-
-func TestUnpushedEndpointWithoutUpstream(t *testing.T) {
-	if !gitInstalled() {
-		t.Skip("git not installed")
-	}
-	// gitRepo has no remote, so the section must report itself unavailable
-	// rather than fall back to some other branch.
-	root := gitRepo(t)
-	ix := NewIndex(root)
-	ix.Build()
-	s := NewServer(ix, nil)
-	ts := httptest.NewServer(s.mux)
-	defer ts.Close()
-
-	resp, err := http.Get(ts.URL + "/api/unpushed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var list struct {
-		Available bool             `json:"available"`
-		Upstream  string           `json:"upstream"`
-		Commits   []UnpushedCommit `json:"commits"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		t.Fatal(err)
-	}
-	if list.Available || list.Upstream != "" || len(list.Commits) != 0 {
-		t.Fatalf("expected an unavailable, empty list without an upstream, got %+v", list)
 	}
 }
 
@@ -2221,48 +2238,262 @@ func TestGitInitAfterProbeAndWatcherReady(t *testing.T) {
 	}
 }
 
-func TestGitCommitAutoStage(t *testing.T) {
+// Committing never stages on the user's behalf: with nothing staged it is
+// refused and the index is left alone; with one file staged only that file
+// is committed, and the answer names the new commit.
+func TestGitCommitStagedOnly(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
 	}
+	// The server's background git status must not hold index.lock while
+	// this test runs git itself.
+	t.Setenv("GIT_OPTIONAL_LOCKS", "0")
 	root := gitRepo(t)
-	// Unstage everything so nothing is staged
-	if out, err := exec.Command("git", "-C", root, "reset").CombinedOutput(); err != nil {
-		t.Fatalf("git reset: %v (%s)", err, out)
+	gitTestRun(t, root, "reset", "-q")
+	ix := NewIndex(root)
+	ix.Build()
+	s := NewServer(ix, nil)
+	head := gitHeadSHA(root)
+
+	code, body := agentPostJSON(t, s, "/api/git/commit", map[string]any{"message": "everything"})
+	if code != http.StatusBadRequest || body["error"] != "nothing staged to commit" {
+		t.Fatalf("commit with nothing staged = %d %v, want 400", code, body)
 	}
-	// Add an uncommitted modification
-	if err := os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("new file\n"), 0o644); err != nil {
-		t.Fatal(err)
+	if gitHasStaged(root) || gitHeadSHA(root) != head {
+		t.Fatal("a refused commit staged or committed something")
 	}
+
+	gitTestRun(t, root, "add", "--", "sub/mod.go")
+	code, body = agentPostJSON(t, s, "/api/git/commit", map[string]any{"message": "  change mod\n"})
+	if code != http.StatusOK || body["ok"] != true || body["subject"] != "change mod" || body["hash"] == "" {
+		t.Fatalf("commit = %d %v", code, body)
+	}
+	files := strings.Fields(gitTestRun(t, root, "show", "--name-only", "--format=", "HEAD"))
+	if !reflect.DeepEqual(files, []string{"sub/mod.go"}) {
+		t.Fatalf("committed %v, want only sub/mod.go", files)
+	}
+}
+
+// Amend and undo rewrite HEAD only while it is unpushed. Undo hands back the
+// whole message and leaves the changes staged.
+func TestGitAmendUndoRefusePushed(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	t.Setenv("GIT_OPTIONAL_LOCKS", "0") // see TestGitCommitStagedOnly
+	root := unpushedRepo(t)
 	ix := NewIndex(root)
 	ix.Build()
 	s := NewServer(ix, nil)
 
-	if len(gitStagedPaths(root)) != 0 {
-		t.Fatalf("expected nothing staged before commit")
+	code, body := agentPostJSON(t, s, "/api/git/commit", map[string]any{"message": "local two, reworded", "amend": true})
+	if code != http.StatusOK || body["subject"] != "local two, reworded" {
+		t.Fatalf("amend unpushed = %d %v", code, body)
+	}
+	// An empty message keeps HEAD's own.
+	if code, body = agentPostJSON(t, s, "/api/git/commit", map[string]any{"amend": true}); code != http.StatusOK || body["subject"] != "local two, reworded" {
+		t.Fatalf("amend --no-edit = %d %v", code, body)
 	}
 
-	body := bytes.NewBufferString(`{"message":"auto staged commit"}`)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/git/commit", body)
-	req.Host = "127.0.0.1:7777"
-	req.Header.Set("Origin", "http://127.0.0.1:7777")
-	s.handleGitCommit(w, req)
+	code, body = agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{})
+	if code != http.StatusOK || body["message"] != "local two, reworded" || !gitHasStaged(root) {
+		t.Fatalf("undo = %d %v (staged=%v)", code, body, gitHasStaged(root))
+	}
+	gitTestRun(t, root, "reset", "-q", "--hard")
+	code, body = agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{})
+	if code != http.StatusOK || body["message"] != "local one\n\nBody of the first local commit." {
+		t.Fatalf("undo with body = %d %v", code, body)
+	}
+	gitTestRun(t, root, "reset", "-q", "--hard")
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("handleGitCommit status code = %d; body = %s", w.Code, w.Body.String())
+	// HEAD is now the pushed commit.
+	head := gitHeadSHA(root)
+	for _, c := range []struct {
+		url  string
+		body map[string]any
+	}{
+		{"/api/git/commit", map[string]any{"message": "rewrite", "amend": true}},
+		{"/api/git/undo-commit", map[string]any{}},
+	} {
+		code, body := agentPostJSON(t, s, c.url, c.body)
+		if code != http.StatusConflict || body["error"] != "the last commit is already pushed" {
+			t.Errorf("%s on a pushed HEAD = %d %v, want 409", c.url, code, body)
+		}
+	}
+	if gitHeadSHA(root) != head {
+		t.Fatal("a refused amend/undo moved HEAD")
 	}
 
-	// Verify working tree is clean and commit succeeded
-	if gitHasUncommittedChanges(root) {
-		t.Fatalf("expected working tree clean after commit")
+	// A merge can't be undone with a soft reset.
+	gitTestRun(t, root, "checkout", "-q", "-b", "side")
+	gitTestRun(t, root, "commit", "-q", "--allow-empty", "-m", "on side")
+	gitTestRun(t, root, "checkout", "-q", "main")
+	gitTestRun(t, root, "commit", "-q", "--allow-empty", "-m", "on main")
+	gitTestRun(t, root, "merge", "-q", "--no-ff", "-m", "merge", "side")
+	if code, body := agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{}); code != http.StatusConflict || !strings.Contains(fmt.Sprint(body["error"]), "merge") {
+		t.Errorf("undo merge = %d %v, want 409", code, body)
 	}
-	out, err := exec.Command("git", "-C", root, "log", "-1", "--pretty=%s").Output()
-	if err != nil {
+}
+
+func TestGitUndoRootCommit(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t) // one commit, no upstream
+	s := NewServer(NewIndex(root), nil)
+	if code, body := agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{}); code != http.StatusConflict || !strings.Contains(fmt.Sprint(body["error"]), "first commit") {
+		t.Fatalf("undo root commit = %d %v, want 409", code, body)
+	}
+}
+
+// gitChangedPaths lists a rename as its two halves, so each can be staged
+// on its own.
+func TestGitChangedPaths(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	got := map[string]string{}
+	for _, c := range gitChangedPaths(root) {
+		got[c.Path] = c.Status
+	}
+	want := map[string]string{"sub/mod.go": "M", "add.go": "A", "untr.go": "??", "del.go": "D", "sub/ren2.go": "A", "sub/ren.go": "D"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("changed = %v, want %v", got, want)
+	}
+}
+
+// A plan is committed group by group, in order, with only each group's
+// files: untracked ones, deletions and both halves of a rename included,
+// while the user's own staged entries stay staged and out of the commits. A
+// group that fails (here a pre-commit hook) has its added files unstaged
+// again and nothing after it runs.
+func TestGitCommitPlanApply(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	t.Setenv("GIT_OPTIONAL_LOCKS", "0") // see TestGitCommitStagedOnly
+	root := gitRepo(t)
+	gitTestRun(t, root, "reset", "-q")
+	s := NewServer(NewIndex(root), nil)
+	apply := func(commits ...map[string]any) (int, map[string]any) {
+		t.Helper()
+		return agentPostJSON(t, s, "/api/git/commit-plan/apply", map[string]any{"commits": commits})
+	}
+	group := func(msg string, files ...string) map[string]any {
+		return map[string]any{"message": msg, "files": files}
+	}
+
+	if code, body := apply(group("x", "nope.go")); code != http.StatusBadRequest || !strings.Contains(fmt.Sprint(body["error"]), "nope.go") {
+		t.Fatalf("unknown path = %d %v, want 400 naming it", code, body)
+	}
+	if code, _ := apply(group("x", "add.go"), group("y", "add.go")); code != http.StatusBadRequest {
+		t.Fatalf("path in two groups = %d, want 400", code)
+	}
+	if code, _ := apply(group(" ", "add.go")); code != http.StatusBadRequest {
+		t.Fatalf("empty message = %d, want 400", code)
+	}
+	// The user's own staged work: a new file and an edit.
+	if err := os.WriteFile(filepath.Join(root, "keep.go"), []byte("keep staged\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(out)) != "auto staged commit" {
-		t.Fatalf("expected commit subject 'auto staged commit', got %q", strings.TrimSpace(string(out)))
+	gitTestRun(t, root, "add", "add.go", "keep.go")
+	staged := func() string { return gitTestRun(t, root, "diff", "--cached", "--name-status") }
+	before := staged()
+	if before != "A\tadd.go\nM\tkeep.go\n" {
+		t.Fatalf("staged before = %q", before)
+	}
+
+	code, body := apply(group("first\n\nwhy", "sub/mod.go", "del.go"), group("second", "untr.go"), group("rename", "sub/ren.go", "sub/ren2.go"))
+	done, _ := body["done"].([]any)
+	if code != http.StatusOK || body["ok"] != true || len(done) != 3 || done[1].(map[string]any)["subject"] != "second" {
+		t.Fatalf("apply = %d %v", code, body)
+	}
+	if log := gitTestRun(t, root, "log", "-4", "--format=%s"); log != "rename\nsecond\nfirst\ninit\n" {
+		t.Fatalf("log = %q", log)
+	}
+	for rev, want := range map[string]string{
+		"HEAD~2": "D\tdel.go\nM\tsub/mod.go\n",
+		"HEAD~1": "A\tuntr.go\n",
+		"HEAD":   "D\tsub/ren.go\nA\tsub/ren2.go\n",
+	} {
+		if got := gitTestRun(t, root, "show", "--no-renames", "--name-status", "--format=", rev); got != want {
+			t.Fatalf("%s has %q, want %q", rev, got, want)
+		}
+	}
+	if after := staged(); after != before {
+		t.Fatalf("staged after = %q, want %q", after, before)
+	}
+	if got := gitTestRun(t, root, "show", ":keep.go"); got != "keep staged\n" {
+		t.Fatalf("staged keep.go = %q", got)
+	}
+	hook := filepath.Join(root, ".git", "hooks", "pre-commit")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\ngit diff --cached --name-only | grep -q bad.txt && exit 1\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A global core.hooksPath would bypass .git/hooks.
+	gitTestRun(t, root, "config", "core.hooksPath", filepath.Dir(hook))
+	for _, f := range []string{"good.txt", "bad.txt", "later.txt"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte(f+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, body = apply(group("good", "good.txt"), group("bad", "bad.txt"), group("later", "later.txt"))
+	done, _ = body["done"].([]any)
+	if code != http.StatusOK || body["ok"] != false || len(done) != 1 || body["error"] == "" {
+		t.Fatalf("failing apply = %d %v", code, body)
+	}
+	if after := staged(); after != before {
+		t.Fatalf("staged after the failure = %q, want %q (the failed group unstaged)", after, before)
+	}
+	if log := gitTestRun(t, root, "log", "-1", "--format=%s"); log != "good\n" {
+		t.Fatalf("HEAD = %q, want good (nothing after the failure)", log)
+	}
+}
+
+// Preflight flags credentials and big files, but not env templates or
+// deletions; scope picks staged paths or every changed one.
+func TestGitPreflight(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	write := func(rel string, size int) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, bytes.Repeat([]byte("x"), size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".env", 10)
+	write(".env.example", 10)
+	write("keys/id_rsa", 10)
+	write("keys/id_rsa.pub", 10)
+	write("big.bin", 2<<20)
+	gitTestRun(t, root, "add", ".env")
+	s := NewServer(NewIndex(root), nil)
+
+	warnings := func(scope string) map[string]string {
+		t.Helper()
+		code, body := get(t, s, "/api/git/preflight?scope="+scope)
+		if code != http.StatusOK {
+			t.Fatalf("preflight %s = %d %v", scope, code, body)
+		}
+		got := map[string]string{}
+		for _, w := range body["warnings"].([]any) {
+			m := w.(map[string]any)
+			got[m["path"].(string)] = m["reason"].(string)
+		}
+		return got
+	}
+	if got, want := warnings("all"), map[string]string{".env": "secret", "keys/id_rsa": "secret", "big.bin": "large"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("all = %v, want %v", got, want)
+	}
+	if got, want := warnings("staged"), map[string]string{".env": "secret"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("staged = %v, want %v", got, want)
+	}
+	if code, _ := get(t, s, "/api/git/preflight?scope=x"); code != http.StatusBadRequest {
+		t.Errorf("bad scope = %d, want 400", code)
 	}
 }
 

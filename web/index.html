@@ -26,35 +26,18 @@
       <button type="button" data-scope="yours" aria-pressed="false" title="Only files you have edited or committed since checkout">Yours <span id="scope-yours-n" class="scope-n">0</span></button>
     </div>
     <div class="panel-body" id="tree"></div>
-    <!-- Unpushed commits: the local commits ahead of the tracking branch,
-         listed beside the tree while the "changed files only" filter is on.
-         web/src/unpushed.js owns it. -->
-    <div id="unpushed" class="unpushed" hidden>
-      <div id="unpushed-resizer" class="unpushed-resizer" title="Drag to resize"></div>
-      <div class="unpushed-head">
-        <svg class="unpushed-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-        <span class="unpushed-title">Unpushed</span>
-        <span id="unpushed-count" class="unpushed-count"></span>
-        <span class="grow"></span>
-        <span id="unpushed-upstream" class="unpushed-upstream"></span>
-        <button id="unpushed-collapse" class="pr-comments-collapse" title="Collapse/expand unpushed commits">&#9662;</button>
-      </div>
-      <div id="unpushed-body" class="unpushed-body"></div>
-    </div>
     <div id="git-panel" class="git-panel" hidden>
       <div id="git-panel-resizer" class="git-panel-resizer" title="Drag to resize"></div>
       <div class="git-panel-head">
         <svg class="git-panel-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" title="Git Panel"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg>
         <span id="git-branch" class="git-branch"></span>
-        <span id="git-counts" class="git-counts"></span>
+        <span id="git-ahead-behind" class="git-ahead-behind" hidden></span>
+        <span id="git-upstream" class="git-upstream" hidden></span>
         <span class="grow"></span>
+        <button id="git-counts" class="git-head-btn git-counts" type="button" hidden></button>
         <button id="git-panel-collapse" class="pr-comments-collapse" title="Collapse">&#9662;</button>
       </div>
       <div id="git-panel-body" class="git-panel-body">
-        <button id="git-token-nudge" class="git-token-nudge" type="button" hidden title="Set GITHUB_TOKEN, set GH_TOKEN, or run 'gh auth login' -- or add one below">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>No GitHub token configured &mdash; add one</span>
-        </button>
         <div id="git-notice" class="git-notice" role="status" aria-live="polite" hidden>
           <div class="git-notice-head">
             <span id="git-notice-title" class="git-notice-title"></span>
@@ -68,40 +51,27 @@
           <div id="git-notice-actions" class="git-notice-actions"></div>
           <details id="git-notice-log" class="git-notice-log" hidden><summary>Agent output</summary><pre></pre></details>
         </div>
-        <div id="git-commit-section" class="git-commit-section">
-          <div class="git-agent-picker">
-            <select id="git-harness" class="agent-harness-select" title="Coding harness"></select>
-            <select id="git-model" class="agent-model-select" title="Model"></select>
-            <div class="git-ai-row">
-              <button id="git-generate-msg" class="git-generate-btn" title="Stage all changes and write a commit message using the selected coding harness">Stage all + Commit with AI</button>
-            </div>
-          </div>
-          <textarea id="git-commit-msg" class="git-commit-msg" rows="3" spellcheck="false" autocomplete="off" placeholder="Commit message..." hidden></textarea>
-          <div class="git-instructions-wrap">
-            <a id="git-write-msg-link" class="git-instructions-link" href="#" role="button" title="Write the commit message yourself">write message</a>
-            <span class="git-link-sep" aria-hidden="true" hidden>&middot;</span>
-            <a id="git-generate-link" class="git-instructions-link" href="#" role="button" title="Generate a message for staged changes using the AI instructions" hidden>generate with AI</a>
-            <span class="git-link-sep" aria-hidden="true">&middot;</span>
-            <a id="git-instructions-link" class="git-instructions-link" href="#" role="button" title="Configure commit message instructions for AI in Settings">instructions for AI</a>
+        <div id="git-commit-area" class="git-commit-area">
+          <textarea id="git-commit-msg" class="git-commit-msg" rows="3" spellcheck="false" autocomplete="off" placeholder="Commit message (Ctrl+Enter to commit)"></textarea>
+          <div id="git-warnings" class="git-warnings" hidden></div>
+          <div id="git-actions" class="git-panel-actions">
+            <button id="git-primary" class="git-primary-btn" type="button" disabled>Up to date</button>
+            <button id="git-more" class="git-more-btn" type="button" title="More git actions" aria-haspopup="menu" aria-expanded="false">&#9662;</button>
+            <div id="git-more-menu" class="git-more-menu" role="menu" hidden></div>
           </div>
         </div>
-        <div id="git-clean-state" class="git-clean-state" hidden>
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          <span>Working tree clean</span>
-        </div>
-        <div class="git-panel-actions">
-          <button id="git-commit" class="footer-btn" title="Tick modified files to stage them for commit" disabled>Commit</button>
-          <button id="git-push" class="footer-btn" title="No unpushed commits to push" disabled>Push</button>
-          <button id="git-pull" class="footer-btn" title="Pull (fast-forward only; if the branches diverged, offers a rebase or merge by your coding harness)">Pull</button>
-        </div>
-        <div id="git-recent-commits" class="git-recent-commits">
-          <div class="git-recent-head">
-            <span class="git-recent-title">Recent Commits</span>
+        <!-- Commit graph: web/src/gitgraph.js owns it. The list scrolls inside
+             the panel; the commit area above keeps its place. -->
+        <div id="git-graph" class="git-graph">
+          <div class="gg-head">
+            <span class="gg-title">Graph</span>
+            <span id="gg-upstream" class="gg-upstream"></span>
+            <span class="grow"></span>
+            <button id="gg-pull" class="gg-tool" type="button" title="Pull"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg><span class="gg-n"></span></button>
+            <button id="gg-push" class="gg-tool" type="button" title="Push" disabled><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg><span class="gg-n"></span></button>
+            <button id="gg-refresh" class="gg-tool" type="button" title="Refresh the graph and git status"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
           </div>
-          <div id="git-commits-list" class="git-commits-list"></div>
-          <div class="git-see-all-wrap">
-            <a id="git-see-all-commits" class="git-see-all-commits" href="#" target="_blank" rel="noopener">See all commits</a>
-          </div>
+          <div id="gg-list" class="gg-list"></div>
         </div>
       </div>
     </div>
@@ -378,7 +348,7 @@
     <!-- Tree context menu: file & folder actions on the left sidebar -->
     <div id="tree-menu" role="menu" hidden></div>
 
-    <!-- Commit card: author, message and diffstat for a hovered unpushed commit -->
+    <!-- Commit card: author, message and diffstat for a commit hovered in the graph -->
     <div id="commitcard" hidden></div>
 
     <!-- Metrics menu, opened from CPU/RAM status bar -->

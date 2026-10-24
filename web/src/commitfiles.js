@@ -1,6 +1,6 @@
 // web/src/commitfiles.js
-// A commit's changed files as sidebar rows, shared by Recent Commits
-// (gitpanel.js) and the Unpushed section (unpushed.js), styled by the .up-file
+// A commit's changed files as sidebar rows, listed under a commit expanded in
+// the git panel's graph (gitgraph.js) and styled by the .up-file
 // rules. Rows are built COMMIT_FILES_PAGE at a time behind a "Show N more" row,
 // so a commit of thousands of files costs no more DOM than one of a hundred
 // until someone asks for more.

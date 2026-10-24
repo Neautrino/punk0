@@ -41,15 +41,17 @@ The sidebar's git panel is the one part of this feature that *does* write to the
 - **Direct Agent Editing from Diffs**: Select any modified or added line in the diff view and trigger an AI agent edit (`Alt+E`) to refine or correct the change on the spot.
 - **Battery and Focus Awareness**: The live stream automatically suspends when the browser tab is hidden (`document.visibilityState === 'hidden'`), conserving CPU cycles and laptop battery. When you switch back to px0, it instantly reconnects and queries `/api/git/refresh` to catch any changes made while the window was in the background.
 - **Per-File Stage Tick**: Every changed row in the file tree carries a small tick button next to its status badge. Clicking it stages or unstages that file (`git add` / `git reset`) without opening a terminal; the tick updates live as the same status stream that drives the badges reconciles it.
-- **Git Panel (Commit, Push, Pull)**: A resizable panel at the bottom of the sidebar shows the current branch, a live `staged / changed` count, a monospace commit message box, and Commit, Push, and Pull buttons. The **Commit** button enables whenever changes exist; if no files are explicitly staged, committing automatically stages all modified and untracked files. You can trigger a commit from the keyboard with **`Cmd/Ctrl+Enter`** inside the commit message box.
-- **Commit with AI**: A harness and model picker (the same one used for inline edits) sits above the commit box. **Commit with AI** dispatches the selected harness with the staged diff — plus any instructions from `git.commitMessageInstruction` in Settings — asks it to write only the commit message text, drops that into the box, and commits with it in the same action.
+- **Git Panel (Source Control)**: A resizable panel at the bottom of the sidebar, laid out like VS Code's Source Control. The head row shows the branch, `↑ahead ↓behind` (or *unpublished* for a branch with no upstream), the upstream it tracks, and a `staged / changed` count that switches the sidebar to the changed files when clicked; a key icon appears there when the remote's forge has no token yet. Below it sit the commit message box (always visible, except with a turn ledger — see **Commit by Chat Turn**; **`Cmd/Ctrl+Enter`** inside it runs the primary action), a harness/model chip with a gear for the AI instructions, warnings for staged files that look like secrets (`.env`, keys, credentials) or are over 1 MiB, and one primary button whose label says what comes next: **Commit N staged**, **Commit turn N**, **✦ Commit N changes**, **Push ↑N** (**Publish branch**, **Push to PR ↑N**), **Pull ↓N**, **Sync ↑N ↓M**, **Force-push** after a PR rebase, or a disabled **Up to date**. Its **▾** menu holds ✦ Write message, ✦ Plan commits…, Commit & Push, Commit all as one with AI, Stage all, Amend last commit, Undo last commit, Pull, and Push. Commit only ever commits what is staged (or, by turn, exactly that turn's files); nothing is staged for you.
+- **Commit with AI**: The **✦** in the corner of the message box (with a turn ledger: **✦ Write message** in the ▾ menu) asks your selected harness (plus any instructions from `git.commitMessageInstruction`) to write a message for the staged files and puts it in the box for you to edit; it never commits on its own. While it runs, the sparkles twinkle inside a turning ring (hover it for a stop button) and a line under the box counts the seconds. With nothing staged, ✦ (or **✦ Commit N changes**, or **✦ Plan commits…** in the ▾ menu) instead asks the harness to **plan** the commits: one commit, or several when the changes are clearly unrelated. The plan opens as a review card listing each commit's editable message and its files (click a file for its diff; risky files are flagged), plus anything the plan left uncommitted. **Commit N** commits the groups in order; if one fails, the ones before it stay committed and the rest stay on the card. **Commit all as one with AI** in the ▾ menu is the no-review fast path: stage everything, write one message, commit.
+- **Commit by Chat Turn** (editor opened from the punk0 agents page): punk0 records which Claude chat turn — one prompt until the chat stops — changed which files, and the git panel leads with that instead of a message box. Each turn that still has uncommitted files gets a card: the chat's colour dot, **chat · turn N**, its file count and a commit subject drafted from the prompt (the body from the chat's reply). Files no chat touched (edited by you or a shell) share a dashed **Not from a chat** card. One card is current — the one you picked, else the newest — and opens up to show the prompt, the message as a one-line field you can edit, and its files (**⚠ also in turn N** when another turn changed the same file). **Commit turn N** commits exactly those files with that message (`Enter` in the field does the same); the dashed card's button commits its files with the message you type there. **Ask chat ↗** types a message into that turn's chat (prefilled *About turn N (files…):*); while the chat is busy the box says so and sends it the moment the chat goes idle. **write message ▸** brings back the plain message box for committing what you staged; ✦ lives in the **▾** menu here. Picking a card is also a **lens**: the file tree narrows to that turn's files under a chip (*chat · turn N ✕*); pick the card again (its header) or press ✕ to see every change. A turn's files open on the turn's own change — its snapshot — with the turn, its prompt and **✓ Mark reviewed** in the diff strip. Without the punk0 orchestrator (a standalone px0, a PR review) the panel is the plain one above.
+- **Agent Commits & the Push Gate**: Commits a chat made on its own carry a **✳** in the graph (hover: *chat · turn N*) and a warning ring round their node until someone marks them reviewed with **✓ Mark reviewed** in their diff strip (click again to undo). While any unpushed agent commit is unreviewed, every Push — the primary button, the ▾ menu, the graph's header — first shows *N agent commits not reviewed* with **Review N** (opens the oldest) or **Push anyway**.
 - **Safe Repository & Unborn HEAD Support**: Seamlessly inspects repositories operating under safe directory configurations (`safe.directory`) and cleanly handles freshly initialized repositories before their first commit (unborn `HEAD`), without error dialogs during branch detection, unstaging, or diffing.
-- **Browse Recent Commits**: The git panel lists the latest commits. Click a commit to expand it in place: its author, when it was made, and every file it changed, each with an `A`/`M`/`D`/`R` status letter and `+`/`−` line counts. Click a file to read that commit's own diff, the same way the Unpushed list does: the tab is pinned to the commit and marked `@03beaf0`. A strip above the diff shows where the file sits in the commit (`3 / 17`); ‹ › step to the neighbouring file, swapping the tab in place rather than opening one per file. Click the short hash at the end of a row to copy it. Merge commits are shown against their first parent. In both lists, a large commit shows 100 files at a time, with a **Show 100 more** row below.
+- **Commit Graph**: The bottom of the git panel is a commit graph, like VS Code's: each commit on a lane drawn beside it (merges and forks curve between lanes, HEAD is a hollow ring), with its branch and tag badges, author and date. **Load more** pages further back; **Open on GitHub** (or your forge) opens the full history. Click a commit to expand it in place: every file it changed, each with an `A`/`M`/`D`/`R` status letter and `+`/`−` line counts. Click a file to read that commit's own diff: the tab is pinned to the commit and marked `@03beaf0`. A strip above the diff shows where the file sits in the commit (`3 / 17`); ‹ › step to the neighbouring file, swapping the tab in place rather than opening one per file. Hover a row and click its short hash to copy the SHA. Merge commits are shown against their first parent. A large commit shows 100 files at a time, with a **Show 100 more** row below.
 - **Fast-Forward-Only Pull**: Pull always tries a clean fast-forward onto the remote (or, in a PR review session, the pull request's current head). If history has diverged, px0 itself never starts a merge. Instead the git panel shows what diverged and offers **Rebase with AI** or **Merge with AI**, which hand the job, conflicts included, to your selected coding harness. Nothing runs unless you click one, and the harness is told never to push.
 - **Git Errors Stay in the Git Panel**: Every git failure (stage, commit, push, pull, abort) shows in a card at the top of the git panel, next to the buttons that caused it, never as a global toast. The card stays until you dismiss it or the next git action succeeds.
 - **Push to the Right Place**: In a plain workspace, Push pushes the current branch to its configured upstream (offering to set one up on a first push). In a PR review session, Push targets the pull request's actual head branch on its actual repository — a fork included — never wherever the checkout happens to be sitting.
-- **Unpushed Commits**: Under the file tree, the Git changes view lists the commits on your branch that the tracking branch doesn't have yet (`@{u}..HEAD`), labelled with the ref they're ahead of (e.g. `origin/master`) so it's clear what "unpushed" means here. Click a commit to see the files it touched, badged the same way as working-tree changes; click a file to read that commit's own diff in the normal diff viewer. Committing no longer hides your work: the toggle stays available on a clean working tree, precisely because the commits are then the only thing left to review. If the branch has no upstream configured, the section simply doesn't appear — px0 never guesses a branch to measure against.
-- **Commit Hover Card**: Hovering a commit in that list shows its author, the full commit message, and its diffstat (insertions in green, deletions in red), with a **Copy SHA** button and — on a GitHub remote — a link on the author's name.
+- **Outgoing & Incoming Commits**: Commits on your branch that its upstream doesn't have yet sit under an **Outgoing · N to push** row in the graph, and commits on the upstream you haven't pulled under **Incoming · N**; the graph's header names the upstream (e.g. `origin/master`) so it's clear what they're measured against, and carries **Pull**, **Push** and **Refresh**. Committing no longer hides your work: the Git changes toggle stays available on a clean working tree, precisely because the outgoing commits are then the only thing left to review. With no upstream configured nothing is marked outgoing — px0 never guesses a branch to measure against.
+- **Commit Hover Card**: Hovering a commit in the graph shows its author, the full commit message, and its diffstat (insertions in green, deletions in red), with a **Copy SHA** button and — on a GitHub remote — a link on the author's name.
 
 ---
 
@@ -73,16 +75,23 @@ Before committing code from your terminal, open px0 to perform a visual walk-thr
 
 ### Stage, Write, and Commit Without Leaving the Browser
 Once you've reviewed a change in the diff view, finish the commit right there:
-1. Tick the files you want in this commit from the file tree (or click **Stage All**).
-2. Write a message in the git panel's commit box, or click **Commit with AI** to have your configured coding harness write one from the staged diff and commit with it directly.
-3. Click **Push** to send the branch to its remote. If it's the first push on a new branch, px0 offers to set the upstream for you.
+1. Tick the files you want in this commit from the file tree (or **Stage all** from the git panel's ▾ menu).
+2. Write a message in the git panel's message box, or press **✦** to have your configured coding harness write one from the staged diff; edit it, then press **Commit N staged** (or `Cmd/Ctrl+Enter`). With nothing staged, **✦ Commit N changes** has the harness propose the commits for you to review first.
+3. Press **Push ↑N** to send the branch to its remote (**Publish branch** on a branch's first push sets the upstream for you).
 
 ### Reviewing Local Commits Before You Push
 When you've made several commits locally and want to read them over before sending them up:
-1. Switch to the **Git Changes** view. The **Unpushed** section under the tree lists every commit ahead of your tracking branch, newest first.
+1. Look at the **Graph** at the bottom of the git panel. The **Outgoing** group lists every commit your upstream doesn't have yet, newest first.
 2. Hover a commit to see who wrote it, its full message, and how much it changed.
 3. Click it to expand the files it touched, then click a file to read that commit's diff — just that commit's, unaffected by anything you've edited since.
-4. Fix anything that needs fixing, commit again (the list updates itself), and click **Push**. The section empties as the commits land.
+4. Fix anything that needs fixing, commit again (the graph updates itself), and click **Push** in the graph's header. The Outgoing group empties as the commits land.
+
+### Committing a Chat's Work Turn by Turn
+When Claude chats on the punk0 agents page have been editing a workspace (its **Review** buttons open the editor on a turn with `?turn=<id>`, or on an agent's commit with `?commit=<sha>`):
+1. The git panel lists one card per chat turn with uncommitted files, newest first. Click one: the file tree narrows to its files and the first one opens on the turn's own diff, prompt alongside.
+2. Step through its files with ‹ ›; press **✓ Mark reviewed** in the strip when you're done, or **Ask chat ↗** to tell the chat what to change.
+3. Tweak the drafted subject on the card if you like, then **Commit turn N**. The next turn's card becomes current.
+4. Before pushing, review any **✳** commit the chats made themselves; Push asks first while any are unreviewed.
 
 ### Catching Up With a Moving Remote
 When a teammate (or CI) has pushed new commits to the branch you're reviewing:
@@ -112,20 +121,33 @@ A rebase or merge left half-done from a terminal is shown the same way when px0 
 | Space Icon | Diff Header | Toggle Ignore Leading/Trailing Whitespace |
 | `Mod+Shift+R` | Global | Force Workspace and Git Status Refresh |
 | Stage Tick | File Tree Row | Stage / unstage that file |
-| Commit Row | Unpushed Section | Expand / collapse the files that commit touched |
-| File Row | Unpushed Section | Open that file's diff for that commit |
-| Hover a Commit | Unpushed Section | Show author, full message and diffstat, with Copy SHA |
-| **Stage All** | Git Panel | Stage every changed file |
-| **Commit** / `Cmd/Ctrl+Enter` | Git Panel / Commit Box | Commit staged changes (auto-stages all modifications if none staged) |
-| **Commit with AI** | Git Panel | Write a commit message from the staged diff with the selected harness, then commit with it |
-| **Pull** | Git Panel | Fast-forward onto the remote (or, in PR review, the PR's current head); on divergence, offers Rebase/Merge with AI |
-| **Push** | Git Panel | Push the current branch (or, in PR review, to the PR's head branch) |
-| Click a commit | Recent Commits | Expand / collapse its changed files |
-| Click a changed file | Recent Commits | Open that file's diff within the commit, in a tab pinned to it |
-| **Show 100 more** | Recent Commits, Unpushed | List the next 100 files of a large commit |
-| Double-click a commit / `Enter` | Recent Commits | Open the commit's first changed file |
-| Hash chip | Recent Commits | Copy the short SHA |
-| `↑` / `↓`, `→` / `←` | Recent Commits | Move between commits and files; expand / collapse |
+| Hover a Commit | Graph | Show author, full message and diffstat, with Copy SHA |
+| `staged / changed` count | Git Panel head | Show the changed files in the sidebar |
+| Primary button / `Cmd/Ctrl+Enter` | Git Panel / Message Box | The next step: commit the staged files, commit the current chat turn, plan commits with AI, push, pull, sync, or force-push a rebased PR |
+| **✦** | Message Box (no turn ledger) | Staged files: write a message with the selected harness (no commit). Nothing staged: plan the commits for review. While running: stop |
+| ▾ **✦ Write message** / **✦ Plan commits…** | Git Panel | The same two ✦ jobs from the menu (the only place for them with a turn ledger, where the primary button reads *… · Stop* while one runs) |
+| Click a turn card | Git Panel (turn ledger) | Make it current and narrow the file tree to its files; click its header again to widen |
+| **Commit turn N** / `Enter` in the card's field | Git Panel (turn ledger) | Commit that turn's files with the card's message |
+| **Ask chat ↗** | Git Panel (turn ledger) | Type a message into the current turn's chat (sent when the chat is idle) |
+| **write message ▸** | Git Panel (turn ledger) | Show / hide the plain message box |
+| ✕ on the lens chip | File tree | Show every changed file again |
+| **✓ Mark reviewed** | Diff strip (turn snapshot / agent commit) | Mark the turn or commit reviewed; again to unmark |
+| ▾ **Commit & Push** | Git Panel | Commit the staged files, then push |
+| ▾ **Commit all as one with AI** | Git Panel | Stage everything, write one message with the harness, commit it without review |
+| ▾ **Stage all** | Git Panel | Stage every changed file |
+| ▾ **Amend last commit** | Git Panel | Fold the staged files into the last (unpushed) commit; the box's text replaces its message, an empty box keeps it |
+| ▾ **Undo last commit** | Git Panel | Undo the last (unpushed) commit, keeping its changes staged and its message in the box |
+| ▾ **Pull** | Git Panel | Fast-forward onto the remote (or, in PR review, the PR's current head); on divergence, offers Rebase/Merge with AI |
+| ▾ **Push** | Git Panel | Push the current branch (or, in PR review, to the PR's head branch) |
+| **Commit N** / **Regenerate** / **Cancel** | Commit plan card | Commit the reviewed groups in order / ask for a new plan / drop the plan |
+| **×** / **+** on a file | Commit plan card | Leave the file out (it stays uncommitted; shown by default on flagged files) / add it back to the last commit |
+| Click a commit | Graph | Expand / collapse its changed files |
+| Click a changed file | Graph | Open that file's diff within the commit, in a tab pinned to it |
+| **Show 100 more** | Graph | List the next 100 files of a large commit |
+| Double-click a commit / `Enter` | Graph | Open the commit's first changed file |
+| Hash chip (on hover) | Graph | Copy the full SHA |
+| `↑` / `↓`, `→` / `←` | Graph | Move between commits and files; expand / collapse |
+| **Load more** | Graph | Show 30 older commits (up to 200) |
 | ‹ › | Diff strip | Previous / next changed file, in the file tree's order (in a pinned tab: the commit's files); binary files are passed over; the tooltip shows the file's position |
 | `[c` / `]c`, ˄ ˅ | Diff View / diff strip | Jump to previous / next diff hunk |
 | `[f` / `]f` | Diff View / Editor | Step to previous / next changed file |
@@ -143,10 +165,10 @@ Git behavior can be customized in Settings (`Cmd/Ctrl+,`):
 - **Git: Gutter Indicators** (`git.gutterIndicators`): Enable or disable real-time change indicator bars in the editor gutter (defaults to `true`).
 - **Diff Editor: Render Side-by-Side** (`diffEditor.renderSideBySide`): Default layout for the diff view (`true` for split, `false` for unified).
 - **Diff Editor: Ignore Trim Whitespace** (`diffEditor.ignoreTrimWhitespace`): Ignore leading and trailing whitespace diffs (defaults to `true`).
-- **Commit Message Instructions** (`git.commitMessageInstruction`): Free-text instructions appended to the prompt **Commit with AI** sends to your coding harness (e.g. *"Follow Conventional Commits"* or *"Reference the ticket number in the branch name"*). Defaults to empty. This setting renders as a multi-line textarea in the Settings UI.
-- **Coding Harness & Model**: **Commit with AI** uses the same globally selected harness and model as inline agent edits (`agent.harness`, and its persisted model) — see [Editing with Coding Agents](agent-editing.md).
+- **Commit Message Instructions** (`git.commitMessageInstruction`): Free-text instructions appended to the prompts **✦** sends to your coding harness, for a message and for a commit plan alike (e.g. *"Follow Conventional Commits"* or *"Reference the ticket number in the branch name"*). Defaults to empty. This setting renders as a multi-line textarea in the Settings UI; the gear next to the harness chip opens it.
+- **Coding Harness & Model**: **✦** uses the same globally selected harness and model as inline agent edits (`agent.harness`, and its persisted model) — see [Editing with Coding Agents](agent-editing.md).
 - **CLI Flag `-no-git`**: Launch px0 with Git features completely disabled (`px0 -no-git`) for environments where Git is not installed or when viewing plain directory archives.
-- **CLI Flag `-no-agent`**: Disables **Commit with AI** along with every other coding-harness feature; Stage/Commit/Push/Pull remain available since they never invoke a harness.
+- **CLI Flag `-no-agent`**: Disables **✦** and the commit plan along with every other coding-harness feature; staging, committing, pushing and pulling remain available since they never invoke a harness.
 
 ---
 

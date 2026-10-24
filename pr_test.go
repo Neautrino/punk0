@@ -388,7 +388,7 @@ func TestPRAheadCountsFromPRHead(t *testing.T) {
 	if n := gitCountSince(root, head); n != 1 {
 		t.Fatalf("after IDE commit: ahead = %d, want 1", n)
 	}
-	cs := gitCommitsSince(root, head, 0)
+	cs := gitCommitsInRange(root, head+"..HEAD", 0)
 	if len(cs) != 1 || cs[0].Subject != "my change" {
 		t.Fatalf("unpushed = %+v", cs)
 	}

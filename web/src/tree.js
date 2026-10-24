@@ -480,13 +480,8 @@ export async function patchTreeGitStatus(statuses = {}, dirtyDirs = {}, staged =
   markTreeCleanState();
 }
 
-/* Whether the Git view has anything to show. Unpushed commits count: once you
-   commit, the working tree goes clean but the commits are still unreviewed, and
-   the Unpushed section under the tree (unpushed.js, which owns S.unpushedCount)
-   is exactly where they show up. */
 /* In Git view with a clean working tree the tree renders nothing (every row is
-   filtered out), so it stops claiming the sidebar's spare height and says why.
-   The Unpushed section below it is then the whole of the view. */
+   filtered out), so it stops claiming the sidebar's spare height and says why. */
 export function markTreeCleanState() {
   const hasDirtyRows = !!treeEl?.querySelector('.tr.file.dirty');
   const hasChanges = (S.meta?.gitChanges > 0) || hasDirtyRows;
@@ -494,6 +489,10 @@ export function markTreeCleanState() {
     treeEl?.classList.contains('changed-only') && !hasChanges);
 }
 
+/* Whether the Git view has anything to show. Outgoing commits count: once you
+   commit, the working tree goes clean but the commits are still unreviewed, and
+   the graph in the git panel (gitgraph.js, which owns S.unpushedCount) lists
+   them, each expandable into its own diff. */
 export function hasGitView() {
   return !!(S.meta?.git && ((S.meta.gitChanges > 0) || (S.unpushedCount > 0) || S.meta?.pr));
 }
@@ -513,7 +512,7 @@ export function updateSidebarToggleState() {
   } else if (!available) {
     btnChanged.title = 'There are no git modified files.';
   } else if (!(S.meta.gitChanges > 0)) {
-    btnChanged.title = 'Git changes (working tree clean — showing unpushed commits)';
+    btnChanged.title = 'Git changes (working tree clean — your unpushed commits are in the graph)';
   } else {
     btnChanged.title = 'Git changes (show changed files only)';
   }
@@ -537,7 +536,7 @@ export async function setSidebarMode(mode, { expandDirty = true } = {}) {
     btnChanged?.classList.remove('active');
   }
   markTreeCleanState();
-  // unpushed.js hangs its section off this; tree.js doesn't import it.
+  // prscope.js hangs its scope bar off this; tree.js doesn't import it.
   emit('sidebar:mode', { mode: treeEl.classList.contains('changed-only') ? 'git' : 'files' });
 }
 

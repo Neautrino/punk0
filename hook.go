@@ -53,6 +53,15 @@ func writeClaudeHooks(exe string) error {
 	return writeFileAtomic(claudeHooksPath(), map[string]any{"hooks": hooks})
 }
 
+// hookBodyMax bounds one event as the handler reads it. runHook slims events
+// first (slimHookEvent), so only a very long prompt comes near it.
+const hookBodyMax = 1 << 20
+
+// hookSnapshotWait bounds how long a prompt's hook holds the agent back for
+// the turn's before snapshot (one `git add -A` into a scratch index); runHook
+// waits a little longer so it never gives up first.
+const hookSnapshotWait = 8 * time.Second
+
 // runHook is `punk0 hook`: Claude Code runs it with the event on stdin. It
 // posts the event to the tab it came from and says nothing either way -- a
 // hook that writes to stderr or fails would show up in the agent's chat.
@@ -61,15 +70,16 @@ func runHook() {
 	if target == "" {
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<10))
+	body, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<20))
 	if err != nil || len(body) == 0 {
 		return
 	}
+	body = slimHookEvent(body)
 	u, err := url.Parse(target)
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), hookSnapshotWait+2*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
@@ -83,13 +93,43 @@ func runHook() {
 	}
 }
 
+// slimHookEvent drops what punk0 never reads and a tool event can carry
+// megabytes of: the tool's result, and its input but for the file it wrote.
+// An event that does not parse goes as it came.
+func slimHookEvent(body []byte) []byte {
+	var ev map[string]json.RawMessage
+	if json.Unmarshal(body, &ev) != nil {
+		return body
+	}
+	delete(ev, "tool_response")
+	if in, ok := ev["tool_input"]; ok {
+		var paths struct {
+			FilePath     string `json:"file_path,omitempty"`
+			NotebookPath string `json:"notebook_path,omitempty"`
+		}
+		json.Unmarshal(in, &paths)
+		ev["tool_input"], _ = json.Marshal(paths)
+	}
+	out, err := json.Marshal(ev)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 // hookEvent is the part of a Claude Code hook event punk0 uses: what the tab
-// shows, and the prompt a scratch chat is titled after.
+// shows, the prompt a scratch chat is titled after, and what the turn ledger
+// (ledger.go) records.
 type hookEvent struct {
 	Name         string          `json:"hook_event_name"`
 	Notification string          `json:"notification_type"`
 	Background   json.RawMessage `json:"background_tasks"`
 	Prompt       string          `json:"prompt"` // UserPromptSubmit
+	Session      string          `json:"session_id"`
+	Transcript   string          `json:"transcript_path"` // the session's JSONL
+	Cwd          string          `json:"cwd"`
+	Tool         string          `json:"tool_name"`  // PreToolUse, PostToolUse
+	ToolInput    json.RawMessage `json:"tool_input"` // file_path or notebook_path for the edit tools
 }
 
 // hookStatus maps one hook event to the status its tab shows. The second
@@ -131,7 +171,9 @@ func hasBackgroundTasks(raw json.RawMessage) bool {
 }
 
 // handleHook takes a hook event from a tab's agent. It is a write from this
-// machine like any other, so it goes through the same Origin check.
+// machine like any other, so it goes through the same Origin check. The turn
+// ledger only queues the event -- the agent waits for this answer -- except a
+// prompt, which waits (bounded) for the turn's before snapshot.
 func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
@@ -141,7 +183,7 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "tab not found")
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	body, err := io.ReadAll(io.LimitReader(r.Body, hookBodyMax))
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
@@ -153,6 +195,14 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 	if status, ok := hookStatus(ev); ok {
 		tab.setStatus(status)
+	}
+	if place, ok := wb.records.Place(tab.ID); ok {
+		if done := wb.ledgers.hook(place, ev); done != nil {
+			select {
+			case <-done:
+			case <-time.After(hookSnapshotWait):
+			}
+		}
 	}
 	if ev.Name == "UserPromptSubmit" {
 		if err := wb.records.ChatPrompt(tab.ID, ev.Prompt); err != nil {

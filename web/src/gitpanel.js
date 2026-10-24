@@ -1,23 +1,31 @@
 // web/src/gitpanel.js
-// Sidebar git panel: stage/commit/push/pull, shown whenever the workspace is
-// a git repo (same gate as the diff-view toggle in status.js). In a PR
-// review session (S.meta.pr set), Push/Pull target the PR's actual head
-// branch instead of the checkout's own remote -- see pr.go's Push/Pull.
-import { $, esc, S, api, apiPostJson } from './state.js';
-import { showToast, copyToClipboard, flashActionSuccess } from './ui.js';
+// Sidebar git panel, laid out like VS Code's Source Control: a head row
+// (branch, ahead/behind, upstream, staged/changed counts), a clean commit
+// message box, and one contextual primary button whose ▾ menu holds the rest.
+// The visual commit graph below it belongs to gitgraph.js.
+// Shown whenever the workspace is a git repo. In a PR review session
+// (S.meta.pr set), Push/Pull target the PR's actual head branch instead of
+// the checkout's own remote.
+import { $, esc, S, api, apiPostJson, debounce, keyLabel, MOD } from './state.js';
+import { showToast } from './ui.js';
 import { reindexWorkspace } from './panels.js';
-import { refreshPRMeta, nudgeForgeToken, forgeInfo } from './pr.js';
-import { reloadOpenTabs } from './tabs.js';
-import { openSettings } from './settings-form.js';
+import { refreshPRMeta } from './pr.js';
+import { openFile, reloadOpenTabs } from './tabs.js';
 import { layout, render } from './renderer.js';
-import { refreshUnpushed } from './unpushed.js';
-import { openFile } from './tabs.js';
+import { setSidebarMode } from './tree.js';
 import { on, emit } from './bus.js';
-import { commitFileRows, COMMIT_FILES_PAGE, loadCommitFiles, cachedCommitFiles } from './commitfiles.js';
-import { handleGitStatus, triggerRefresh } from './gitstream.js';
+import { triggerRefresh } from './gitstream.js';
 import { registerAgentPicker } from './agent.js';
+import { refreshGraph } from './gitgraph.js';
+import { loadCommitFiles } from './commitfiles.js';
 
 const panel = () => $('#git-panel');
+const msgBox = () => $('#git-commit-msg');
+
+// The last status payload, reduced to what the controls are derived from.
+const git = { staged: 0, changed: 0, ahead: 0, behind: 0, upstream: '', branch: '' };
+
+let busy = ''; // label of a git action in flight ("Pushing…"); everything else waits
 
 export function initGitPanel() {
   if (!panel()) return;
@@ -51,39 +59,26 @@ export function initGitPanel() {
     });
   }
 
-  $('#git-commit')?.addEventListener('click', doCommit);
-  $('#git-commit-msg')?.addEventListener('input', () => $('#git-commit-msg')?.classList.remove('warn-border'));
-  $('#git-commit-msg')?.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+  $('#git-counts')?.addEventListener('click', () => setSidebarMode('git'));
+  msgBox()?.addEventListener('input', () => msgBox()?.classList.remove('warn-border'));
+  msgBox()?.addEventListener('keydown', e => {
+    if (e[MOD] && e.key === 'Enter') {
       e.preventDefault();
-      doCommit();
+      runPrimary();
     }
   });
-  $('#git-push')?.addEventListener('click', () => (rewritten ? confirmForcePush() : doPush()));
-  $('#git-pull')?.addEventListener('click', doPull);
-  $('#git-generate-msg')?.addEventListener('click', doCommitWithAI);
-  $('#git-token-nudge')?.addEventListener('click', nudgeForgeToken);
-  $('#git-write-msg-link')?.addEventListener('click', e => {
-    e.preventDefault();
-    toggleCommitMsgBox();
-  });
-  $('#git-generate-link')?.addEventListener('click', e => {
-    e.preventDefault();
-    doGenerateMessage();
-  });
-  $('#git-instructions-link')?.addEventListener('click', e => {
-    e.preventDefault();
-    openSettings('ui', 'Git & Diff', 'git.commitMessageInstruction');
-  });
-  $('#git-see-all-commits')?.addEventListener('click', handleSeeAllCommits);
-  initCommitList();
+  $('#git-primary')?.addEventListener('click', runPrimary);
+  initMenu();
   initNotice();
+  on('agent:meta', syncControls);
+  // The graph header's toolbar; btn is its clicked button, if any.
+  on('git:pull', ev => doPull(ev?.btn));
+  on('git:push', ev => (rewritten ? confirmForcePush() : doPush(false, ev?.btn)));
 
   syncGitPanelMeta();
 }
 
-// revealGitPanel unfolds the panel and brings it into view: the editor opened
-// as /w/<id>/?panel=git, from the agents page's branch bar.
+// revealGitPanel unfolds the panel and brings it into view.
 export function revealGitPanel() {
   const p = panel();
   if (!p || p.hidden) return;
@@ -97,7 +92,7 @@ export function revealGitPanel() {
 export function syncGitPanelMeta() {
   updateGitPanelVisibility();
   if (S.meta?.git) {
-    fetchRecentCommits();
+    refreshGraph();
     checkUnfinishedSync();
   }
 }
@@ -106,300 +101,420 @@ function updateGitPanelVisibility() {
   const p = panel();
   if (!p) return;
   p.hidden = !S.meta?.git;
-  const nudge = $('#git-token-nudge');
-  if (nudge) {
-    // Only for a remote on a forge px0 knows. The PR bar already carries its
-    // own "no token" note, so skip this one in PR review mode to avoid
-    // nudging twice.
-    const forge = S.meta?.forge;
-    nudge.hidden = !S.meta?.git || !forge || forge.hasToken || !!S.meta?.pr;
-    const label = nudge.querySelector('span');
-    if (forge && label) label.textContent = `No ${forgeInfo().label} token configured — add one`;
-  }
 }
 
+const hasUpstream = () => !!(S.meta?.pr || git.upstream);
+
 // Called from gitstream.js's handleGitStatus with each SSE/refresh payload,
-// so the branch name and staged/changed counts stay live without a manual
-// reload.
+// so the head row and the primary button stay live without a manual reload.
 export function updateGitPanel(payload) {
   updateGitPanelVisibility();
-  const branchEl = $('#git-branch');
-  if (branchEl) {
-    const branch = S.meta?.pr ? S.meta.pr.head + ' (PR review)' : (payload?.branch || '');
-    branchEl.textContent = branch;
-    branchEl.title = branch;
-  }
-  const staged = payload?.staged ? Object.keys(payload.staged).length : 0;
-  const changed = payload?.gitChanges ?? (payload?.statuses ? Object.keys(payload.statuses).length : (S.meta?.gitChanges || 0));
-  const countsEl = $('#git-counts');
-  if (countsEl) {
-    countsEl.textContent = changed ? staged + ' / ' + changed + ' staged' : '';
-  }
-
-  // Lifecycle state management:
-  // Show commit section when there are uncommitted changes or staged files.
-  // When clean, hide commit section and show clean state message.
-  const hasChanges = changed > 0 || staged > 0;
-  const commitSection = $('#git-commit-section');
-  if (commitSection) {
-    commitSection.hidden = !hasChanges;
-  }
-  const cleanState = $('#git-clean-state');
-  if (cleanState) {
-    cleanState.hidden = hasChanges;
-  }
-
-  // Commit button is enabled when there are changes or staged files
-  const commitBtn = $('#git-commit');
-  if (commitBtn) {
-    commitBtn.disabled = !hasChanges;
-    if (!commitBtn._flashTimer) commitBtn.textContent = 'Commit';
-    commitBtn.title = staged === 0
-      ? 'Commit all changes'
-      : `Commit ${staged} staged file${staged > 1 ? 's' : ''}`;
-  }
-
-  // Push button is enabled only when there are unpushed commits (ahead > 0)
-  const pushBtn = $('#git-push');
+  git.staged = payload?.staged ? Object.keys(payload.staged).length : 0;
+  git.changed = payload?.gitChanges ?? (payload?.statuses ? Object.keys(payload.statuses).length : (S.meta?.gitChanges || 0));
+  git.ahead = payload?.ahead ?? 0;
+  git.behind = payload?.behind ?? 0;
+  git.upstream = payload?.upstream || '';
+  git.branch = payload?.branch || '';
   if (payload && !!payload.rewritten !== rewritten) {
     rewritten = !!payload.rewritten;
     emitSync();
   }
-  if (pushBtn) {
-    const ahead = payload?.ahead ?? 0;
-    pushBtn.disabled = ahead === 0 || !!syncJob;
-    if (ahead > 0 && rewritten) {
-      // A rebased PR branch only reaches the PR by replacing its commits.
-      pushBtn.textContent = 'Force-push';
-      pushBtn.title = `This checkout was rebased: replace the commits on ${S.meta?.pr?.head || 'the PR branch'} with it (asks first)`;
-    } else if (ahead > 0) {
-      pushBtn.textContent = `Push (${ahead})`;
-      pushBtn.title = S.meta?.pr
-        ? `Push ${ahead} of your commit${ahead > 1 ? 's' : ''} to PR #${S.meta.pr.number} (${S.meta.pr.head})`
-        : `Push ${ahead} unpushed commit${ahead > 1 ? 's' : ''} to remote`;
-    } else {
-      pushBtn.textContent = 'Push';
-      pushBtn.title = S.meta?.pr ? 'Commit your changes to push them to this PR' : 'No unpushed commits to push';
-    }
-  }
-
-  // Pull button: show incoming badge if behind > 0
-  const pullBtn = $('#git-pull');
-  if (pullBtn) {
-    const behind = payload?.behind ?? 0;
-    if (behind > 0) {
-      pullBtn.textContent = `Pull (${behind})`;
-      pullBtn.title = `Pull ${behind} incoming commit${behind > 1 ? 's' : ''} from remote`;
-    } else {
-      pullBtn.textContent = 'Pull';
-      pullBtn.title = 'Pull changes from remote';
-    }
-    if (syncJob) pullBtn.disabled = true;
-  }
-
-  // Render recent commits if provided in payload
-  if (payload?.recentCommits) {
-    renderRecentCommits(payload.recentCommits);
-  }
-  updateSeeAllCommits(payload?.commitsUrl, payload?.recentCommits ? payload.recentCommits.length : undefined);
+  renderHead();
+  checkStagedSet(payload?.staged);
+  syncControls();
 }
 
-export async function stagePath(path) {
-  try {
-    const res = await apiPostJson('/api/git/stage', { path });
-    if (res && res.git !== undefined) await handleGitStatus(res);
-    else await triggerRefresh();
-  } catch (e) {
-    showGitError('Could not stage', e.message);
+function renderHead() {
+  const pr = S.meta?.pr;
+  const branch = pr ? pr.head : git.branch;
+  const branchEl = $('#git-branch');
+  if (branchEl) {
+    branchEl.textContent = branch;
+    branchEl.title = pr ? `${branch} (PR #${pr.number} review)` : branch;
   }
+  const ab = $('#git-ahead-behind');
+  if (ab) {
+    const unpublished = !hasUpstream();
+    const text = unpublished ? 'unpublished'
+      : [git.ahead ? '↑' + git.ahead : '', git.behind ? '↓' + git.behind : ''].filter(Boolean).join(' ');
+    ab.textContent = text;
+    ab.hidden = !text;
+    ab.classList.toggle('unpublished', unpublished);
+    ab.title = unpublished
+      ? 'This branch has no upstream yet; pushing publishes it'
+      : `${plural(git.ahead, 'commit')} to push, ${git.behind} to pull`;
+  }
+  const up = $('#git-upstream');
+  if (up) {
+    up.textContent = pr ? `PR #${pr.number}` : git.upstream;
+    up.title = pr ? `Pushes and pulls go to ${pr.head} of PR #${pr.number}` : `Tracking ${git.upstream}`;
+    up.hidden = !up.textContent;
+  }
+  const counts = $('#git-counts');
+  if (counts) {
+    counts.textContent = git.staged + ' / ' + git.changed;
+    counts.title = `${git.staged} staged / ${git.changed} changed: show the changed files`;
+    counts.hidden = !git.changed && !git.staged;
+  }
+  const ta = msgBox();
+  if (ta) ta.placeholder = `Message (${keyLabel('Mod+Enter')} to commit on "${branch}")`;
 }
 
-export async function unstagePath(path) {
-  try {
-    const res = await apiPostJson('/api/git/unstage', { path });
-    if (res && res.git !== undefined) await handleGitStatus(res);
-    else await triggerRefresh();
-  } catch (e) {
-    showGitError('Could not unstage', e.message);
+const idle = () => !busy && !syncJob;
+
+// primaryAction is the one thing the panel suggests doing next.
+function primaryAction() {
+  if (busy) return { label: busy };
+  if (syncJob) return { label: 'Rebase/merge running…', title: 'The harness is rewriting history; its card above says how it goes' };
+  const { staged, changed, ahead, behind } = git;
+  const pr = S.meta?.pr;
+
+  if (staged > 0) {
+    return {
+      label: `Commit ${staged} staged`,
+      title: `Commit the ${plural(staged, 'staged file')} with the message above (${keyLabel('Mod+Enter')})`,
+      run: doCommit,
+    };
   }
+  if (changed > 0) {
+    return {
+      label: `Commit all (${changed})`,
+      title: `Stage all changes and commit with the message above (${keyLabel('Mod+Enter')})`,
+      run: doCommit,
+    };
+  }
+  if (pr && rewritten) {
+    return { label: 'Force-push', title: `This checkout was rebased: replace the commits on ${pr.head} with it (asks first)`, run: confirmForcePush };
+  }
+  if (ahead > 0 && behind > 0) {
+    return { label: `Sync ↑${ahead} ↓${behind}`, title: 'Pull first (offers a rebase or merge when branches diverged), then push', run: () => doPull() };
+  }
+  if (ahead > 0) {
+    if (pr) return { label: `Push to PR ↑${ahead}`, title: `Push ${plural(ahead, 'commit')} to PR #${pr.number} (${pr.head})`, run: () => doPush() };
+    if (!git.upstream) return { label: 'Publish branch', title: `Push ${git.branch || 'this branch'} to origin and track it`, run: () => doPush() };
+    return { label: `Push ↑${ahead}`, title: `Push ${plural(ahead, 'commit')} to ${git.upstream}`, run: () => doPush() };
+  }
+  if (behind > 0) {
+    return { label: `Pull ↓${behind}`, title: `Pull ${plural(behind, 'incoming commit')} from ${git.upstream || 'upstream'}`, run: () => doPull() };
+  }
+  return { label: 'Up to date', title: hasUpstream() ? 'Nothing to commit, push or pull' : 'Nothing to commit' };
 }
 
-// The message box stays collapsed behind a text link since most commits use
-// "Stage all + Commit with AI"; open it on demand to write a message by hand.
-function toggleCommitMsgBox(open) {
-  const ta = $('#git-commit-msg');
-  const link = $('#git-write-msg-link');
-  if (!ta) return;
-  ta.hidden = open === undefined ? !ta.hidden : !open;
-  if (link) link.textContent = ta.hidden ? 'write message' : 'hide message';
-  const gen = $('#git-generate-link');
-  if (gen) {
-    gen.hidden = ta.hidden;
-    if (gen.previousElementSibling) gen.previousElementSibling.hidden = ta.hidden;
-  }
-  if (!ta.hidden) ta.focus();
+function runPrimary() {
+  primaryAction().run?.();
 }
 
-async function doCommit() {
-  const ta = $('#git-commit-msg');
-  if (ta?.hidden) {
-    toggleCommitMsgBox(true);
-    return;
+function syncControls() {
+  const a = primaryAction();
+  const btn = $('#git-primary');
+  if (btn) {
+    btn.textContent = a.label;
+    btn.title = a.title || '';
+    btn.disabled = !a.run;
   }
+  const more = $('#git-more');
+  if (more) more.disabled = !idle();
+  if (!idle()) toggleMenu(false);
+  else if (!$('#git-more-menu')?.hidden) renderMenu();
+}
+
+function setBusy(label) {
+  busy = label;
+  syncControls();
+}
+
+/* The ▾ menu: actions the primary button isn't right now. */
+function menuItems() {
+  const { staged, changed, ahead } = git;
+  const local = !(ahead === 0 && hasUpstream());
+  const pushed = 'The last commit is already pushed';
+  return [
+    { label: 'Commit & Push', why: (staged || changed) ? '' : 'Nothing to commit', run: () => doCommit({ push: true }) },
+    { label: 'Stage all', why: changed ? '' : 'Nothing to stage', run: stageAll },
+    { label: 'Unstage all', why: staged ? '' : 'Nothing is staged', run: unstageAll },
+    null,
+    {
+      label: 'Amend last commit', run: doAmend, why: local ? '' : pushed,
+      title: 'Fold the staged files into the last commit; uses the message box if it has text, else keeps the old message',
+    },
+    {
+      label: 'Undo last commit', run: doUndo, why: local ? '' : pushed,
+      title: 'Undo the last commit, keeping its changes staged and its message in the box',
+    },
+    null,
+    { label: 'Pull', why: hasUpstream() ? '' : 'This branch has no upstream to pull from', run: () => doPull() },
+    {
+      label: rewritten ? 'Force-push…' : 'Push', why: ahead ? '' : 'No commits to push',
+      run: () => (rewritten ? confirmForcePush() : doPush()),
+    },
+  ];
+}
+
+function renderMenu() {
+  const menu = $('#git-more-menu');
+  if (!menu) return;
+  const items = menuItems();
+  menu.replaceChildren(...items.map(it => {
+    if (!it) return document.createElement('hr');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
+    b.textContent = it.label;
+    b.disabled = !!it.why;
+    b.title = it.why || it.title || '';
+    b.addEventListener('click', () => {
+      toggleMenu(false);
+      it.run();
+    });
+    return b;
+  }));
+}
+
+function toggleMenu(force) {
+  const menu = $('#git-more-menu');
+  if (!menu) return;
+  const open = force === undefined ? menu.hidden : force;
+  if (open) renderMenu();
+  menu.hidden = !open;
+  $('#git-more')?.setAttribute('aria-expanded', String(open));
+}
+
+function initMenu() {
+  $('#git-more')?.addEventListener('click', e => {
+    e.stopPropagation();
+    toggleMenu();
+  });
+  document.addEventListener('click', e => {
+    if (!e.target?.closest?.('#git-actions')) toggleMenu(false);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('#git-more-menu')?.hidden) toggleMenu(false);
+  });
+}
+
+async function doCommit(opts = {}) {
+  const ta = msgBox();
   const message = ta ? ta.value.trim() : '';
   if (!message) {
-    if (ta) {
-      ta.classList.remove('shake');
-      void ta.offsetWidth;
-      ta.classList.add('shake', 'warn-border');
-      setTimeout(() => ta.classList.remove('shake'), 350);
-      ta.focus();
-    }
-    showGitError('Write a commit message first');
+    if (ta) shakeBox(ta, 'Write a commit message first');
     return;
   }
-  const btn = $('#git-commit');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Committing...';
-  }
+  setBusy('Committing…');
   try {
+    // If nothing is explicitly staged, stage all changes first (clean convenience).
+    if (git.staged === 0 && git.changed > 0) {
+      await apiPostJson('/api/git/stage', { path: '.' });
+    }
     await apiPostJson('/api/git/commit', { message });
     if (ta) {
       ta.value = '';
       ta.classList.remove('warn-border');
     }
-    toggleCommitMsgBox(false);
     clearGitNotice();
     showToast('✓', 'Committed');
-    if (btn) {
-      btn.textContent = 'Commit';
-      flashActionSuccess(btn, 'Committed');
-    }
-    await fetchRecentCommits();
-    await refreshUnpushed();
-    await triggerRefresh();
+    await afterCommit();
+    if (opts.push) await doPush();
   } catch (e) {
-    if (btn) {
-      btn.textContent = 'Commit';
-      btn.disabled = false;
-    }
     showGitError('Commit failed', e.message);
+  } finally {
+    setBusy('');
   }
 }
 
-async function doPush(force = false) {
-  const btn = $('#git-push');
-  const prevText = btn?.textContent || 'Push';
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Pushing...';
+async function stageAll() {
+  setBusy('Staging…');
+  try {
+    await apiPostJson('/api/git/stage', { path: '.' });
+    clearGitNotice();
+    await triggerRefresh();
+  } catch (e) {
+    showGitError('Could not stage', e.message);
+  } finally {
+    setBusy('');
   }
+}
+
+async function unstageAll() {
+  setBusy('Unstaging…');
+  try {
+    await apiPostJson('/api/git/unstage', { path: '.' });
+    clearGitNotice();
+    await triggerRefresh();
+  } catch (e) {
+    showGitError('Could not unstage', e.message);
+  } finally {
+    setBusy('');
+  }
+}
+
+async function doAmend() {
+  const ta = msgBox();
+  const message = ta ? ta.value.trim() : '';
+  setBusy('Amending…');
+  try {
+    await apiPostJson('/api/git/commit', { message, amend: true });
+    if (ta) {
+      ta.value = '';
+      ta.classList.remove('warn-border');
+    }
+    clearGitNotice();
+    showToast('✓', 'Amended');
+    await afterCommit();
+  } catch (e) {
+    showGitError('Amend failed', e.message);
+  } finally {
+    setBusy('');
+  }
+}
+
+async function doUndo() {
+  setBusy('Undoing commit…');
+  try {
+    const res = await apiPostJson('/api/git/undo-commit', {});
+    const ta = msgBox();
+    if (ta && res.message) {
+      ta.value = res.message;
+      ta.focus();
+    }
+    clearGitNotice();
+    showToast('✓', 'Commit undone — changes are staged');
+    await afterCommit();
+  } catch (e) {
+    showGitError('Undo failed', e.message);
+  } finally {
+    setBusy('');
+  }
+}
+
+async function afterCommit() {
+  await refreshGraph();
+  await triggerRefresh();
+}
+
+/* Review entry points: ?commit= (main.js) */
+export async function reviewCommit(sha) {
+  let files;
+  try {
+    files = await loadCommitFiles(sha);
+  } catch (e) {
+    showGitError('Could not open the commit', e.message);
+    return;
+  }
+  const f = files.find(x => !x.binary);
+  if (f) await openFile(f.path, { ref: sha, view: 'diff' });
+  else showGitError(files.length ? 'Binary files only, no diff to show' : 'This commit changes no files');
+}
+
+/* ---------- staged-set warnings ----------
+   A secret or a huge file is easiest to catch before the commit, so the
+   staged set is checked whenever it changes (not on every status tick). */
+
+let stagedKey = '';
+let preflightSeq = 0;
+
+function checkStagedSet(staged) {
+  const key = Object.keys(staged || {}).sort().join('\n');
+  if (key === stagedKey) return;
+  stagedKey = key;
+  if (!key) {
+    preflightSeq++;
+    renderWarnings([]);
+    return;
+  }
+  const seq = ++preflightSeq;
+  debouncedPreflight(seq);
+}
+
+const debouncedPreflight = debounce(async seq => {
+  try {
+    const res = await api('/api/git/preflight?scope=staged');
+    if (seq === preflightSeq) renderWarnings(res?.warnings || []);
+  } catch {
+    if (seq === preflightSeq) renderWarnings([]);
+  }
+}, 350);
+function renderWarnings(warnings) {
+  const el = $('#git-warnings');
+  if (!el) return;
+  if (!warnings || !warnings.length) {
+    el.hidden = true;
+    el.replaceChildren();
+    return;
+  }
+  el.innerHTML = warnings.map(w => {
+    const base = w.path.split('/').pop() || w.path;
+    const why = w.reason === 'secret' ? 'secret' : 'large';
+    return `<span class="git-warning-chip" title="${esc(w.path)}: flagged as ${why}">⚠ ${esc(base)} (${why})</span>`;
+  }).join('');
+  el.hidden = false;
+}
+
+function shakeBox(el, placeholder) {
+  if (!el) return;
+  el.classList.remove('shake', 'warn-border');
+  void el.offsetWidth;
+  el.classList.add('shake', 'warn-border');
+  if (placeholder) el.placeholder = placeholder;
+  setTimeout(() => el.classList.remove('shake'), 400);
+  el.focus();
+}
+
+/* ---------- push, pull ---------- */
+
+async function doPush(force = false, btn = null) {
+  if (!idle()) return;
+  setBusy(force ? 'Force-pushing…' : 'Pushing…');
   try {
     await apiPostJson('/api/git/push', force ? { force: true } : {});
     rewritten = false;
     emitSync();
     clearGitNotice();
     showToast('✓', S.meta?.pr ? `${force ? 'Force-pushed' : 'Pushed'} to PR #${S.meta.pr.number}` : 'Pushed');
-    if (btn) {
-      btn.textContent = 'Push';
-      flashActionSuccess(btn, 'Pushed');
-      btn.title = 'No unpushed commits to push';
-      btn.disabled = true;
-    }
-    await refreshUnpushed(); // the section empties out with the push
-    if (S.meta?.pr) {
-      // Your commits are the PR's now: re-read the PR state (its file set and
-      // head) and repaint open diffs so "Your changes" empties out.
-      await refreshPRMeta();
-      await reloadOpenTabs();
-    }
+    await afterHistoryChange();
   } catch (e) {
-    if (btn) btn.textContent = prevText;
     showGitError('Push failed', e.message);
-    if (btn) btn.disabled = false;
+  } finally {
+    setBusy('');
+    triggerRefresh();
   }
 }
 
-async function doPull() {
-  const btn = $('#git-pull');
-  const prevText = btn?.textContent || 'Pull';
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Pulling...';
-  }
+async function doPull(btn = null) {
+  if (!idle()) return;
+  setBusy('Pulling…');
   try {
     const j = await apiPostJson('/api/git/pull', {});
     clearGitNotice();
     showToast('✓', j.message || 'Pulled');
-    if (btn) {
-      btn.textContent = 'Pull';
-      flashActionSuccess(btn, 'Pulled');
-    }
     await afterHistoryChange();
   } catch (e) {
-    if (btn) btn.textContent = prevText;
-    // A refused fast-forward is a decision, not a dead end: offer to have the
-    // harness rebase or merge. Nothing runs unless one of those is clicked.
     const b = e.body || {};
     if (b.code === 'diverged') offerSync(b);
     else if (b.code === 'in-progress') offerUnfinished(b);
     else showGitError('Pull failed', e.message);
   } finally {
-    if (btn) btn.disabled = !!syncJob;
+    setBusy('');
+    triggerRefresh();
   }
 }
 
-// After anything that moved HEAD (pull, agent rebase/merge, abort): open
-// files, diffs, the tree and the commit lists all show the new history.
 async function afterHistoryChange() {
   await reindexWorkspace();
   if (S.meta?.pr) await refreshPRMeta();
-  await reloadOpenTabs(); // open files and diffs show the pulled content, not what was loaded before
-  await fetchRecentCommits();
-  await refreshUnpushed();
+  await reloadOpenTabs();
+  await refreshGraph();
   await triggerRefresh();
 }
 
-/* ---------- PR branch: rebase onto the base, force-push ----------
-   In a PR review the same agent flow brings the PR up to date with its base
-   branch: the PR bar asks for it ('pr:resolve') when the forge reports
-   conflicts or a branch that is behind. A rebase rewrites the PR's commits,
-   so it only reaches the PR by a force-push, and that is always confirmed
-   here first. 'git:sync' tells the PR bar what is going on, so Approve and
-   Merge never act on commits the checkout has since moved past. */
+/* ---------- PR branch: rebase onto the base, force-push ---------- */
 
-let rewritten = false; // PR mode: HEAD rebased past the PR head, not yet force-pushed
+let rewritten = false;
 
 function emitSync() {
   emit('git:sync', { running: !!syncJob, inProgress: syncInProgress, rewritten });
 }
 
-let syncInProgress = ''; // "rebase"/"merge" left half-done, as last seen
-
-async function resolvePRBase() {
-  if (syncJob) return;
-  const base = S.meta?.pr?.base || 'the base branch';
-  notice({ tone: 'busy', title: `Fetching ${base}...`, closable: false });
-  let st;
-  try {
-    st = await api('/api/git/sync-state?fetch=1');
-  } catch (e) {
-    showGitError(`Could not fetch ${base}`, e.message);
-    return;
-  }
-  syncInProgress = st.inProgress || '';
-  emitSync();
-  if (st.inProgress) offerUnfinished(st);
-  else if (st.rewritten) confirmForcePush();
-  else if (st.behind > 0) offerSync(st);
-  else {
-    notice({
-      tone: 'ok', title: `Up to date with ${base}`,
-      html: `This checkout already has everything on ${code(base)}. If the PR still shows conflicts, the forge may not have recomputed them yet.`,
-    });
-  }
-}
+let syncInProgress = '';
 
 function confirmForcePush() {
   const pr = S.meta?.pr || {};
@@ -414,14 +529,9 @@ function confirmForcePush() {
   });
 }
 
-/* ---------- notice: git outcomes, inline ----------
-   Every git failure lands in this one card at the top of the panel, never in
-   a global toast. A pull that can't fast-forward turns into an offer to
-   rebase or merge with the selected harness; the run, and whatever it left
-   behind (done, still diverged, or stopped midway on a conflict), stay in
-   the same card so the next step is always right there. */
+/* ---------- notice: git outcomes, inline ---------- */
 
-let syncJob = 0; // id of the agent rebase/merge job while one runs
+let syncJob = 0;
 
 function initNotice() {
   $('#git-notice-close')?.addEventListener('click', clearGitNotice);
@@ -429,19 +539,12 @@ function initNotice() {
   const harnessSelect = $('#git-sync-harness');
   const modelSelect = $('#git-sync-model');
   if (n && harnessSelect && modelSelect) registerAgentPicker({ el: n, harnessSelect, modelSelect });
-  // Stage ticks in the file tree report their failures here too.
   on('git:error', ({ title, message }) => showGitError(title, message));
-  on('pr:resolve', resolvePRBase);
   on('pr:force-push', confirmForcePush);
-  on('pr:pull', doPull);
+  on('pr:pull', () => doPull());
   on('forge:connected', updateGitPanelVisibility);
 }
 
-/**
- * @param {{tone?: string, title: string, html?: string, picker?: boolean,
- *   actions?: {label: string, run: () => void, primary?: boolean, title?: string}[],
- *   log?: string, closable?: boolean}} opts
- */
 function notice({ tone = 'err', title, html = '', picker = false, actions = [], log = '', closable = true }) {
   const n = $('#git-notice');
   if (!n) return;
@@ -466,11 +569,7 @@ function notice({ tone = 'err', title, html = '', picker = false, actions = [], 
   if (details) details.open = false;
   setNoticeLog(log);
   n.hidden = false;
-  const p = panel();
-  if (p?.classList.contains('collapsed')) {
-    p.classList.remove('collapsed');
-    layout(); render();
-  }
+  revealGitPanel();
   n.scrollIntoView({ block: 'nearest' });
 }
 
@@ -485,15 +584,13 @@ function setNoticeLog(text) {
 }
 
 export function clearGitNotice() {
-  if (syncJob) return; // a running rebase/merge keeps its card until it ends
+  if (syncJob) return;
   const n = $('#git-notice');
   if (n) n.hidden = true;
 }
 
-// showGitError reports a failed git action in the panel. message is the
-// server's own error text when there is one.
 export function showGitError(title, message = '') {
-  if (syncJob) return; // don't bury the running rebase/merge; its outcome follows
+  if (syncJob) return;
   notice({ tone: 'err', title, html: esc(message) });
 }
 
@@ -501,8 +598,6 @@ const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
 const code = s => '<code>' + esc(s || '') + '</code>';
 const hasHarness = () => (S.meta?.agents || []).some(h => h.installed);
 
-// offerSync is the card a diverged pull leaves: what diverged, and the two
-// ways the harness can bring the branch up to date.
 function offerSync(st, err = '') {
   const up = st.upstream || 'upstream';
   const pr = st.pr > 0;
@@ -530,8 +625,6 @@ function offerSync(st, err = '') {
   });
 }
 
-// offerUnfinished is the card for a rebase or merge left half-done -- by a
-// harness that stopped on a conflict, or started in a terminal.
 function offerUnfinished(st, log = '', err = '') {
   const op = st.inProgress;
   let html = `${code(st.branch)} is in the middle of a ${op}${st.upstream ? ' onto ' + code(st.upstream) : ''}, most likely stopped on a conflict.` +
@@ -547,13 +640,12 @@ async function startSync(strategy, st) {
   try {
     job = await apiPostJson('/api/git/sync-agent', { strategy });
   } catch (e) {
-    // Re-offer with the reason (no harness picked, tree got dirty, ...).
     if (st.inProgress) offerUnfinished(st, '', e.message);
     else offerSync(st, e.message);
     return;
   }
   syncJob = job.id;
-  setSyncButtons();
+  syncControls();
   emitSync();
   const verb = strategy === 'rebase' ? 'Rebasing' : 'Merging';
   const up = st.upstream || 'upstream';
@@ -580,12 +672,9 @@ async function startSync(strategy, st) {
   setTimeout(poll, 500);
 }
 
-// finishSync reads where the branch actually ended up rather than trusting
-// the harness's exit status: a clean exit can still leave a conflict behind,
-// and a failed one can still have finished the rebase.
 async function finishSync(strategy, j) {
   syncJob = 0;
-  setSyncButtons();
+  syncControls();
   const log = (j.stdout || j.log || '').trim();
   let st = {};
   try {
@@ -645,17 +734,6 @@ async function abortSync() {
   });
 }
 
-// Pull and Push stay disabled while the harness rewrites history under them.
-function setSyncButtons() {
-  const pull = $('#git-pull');
-  if (pull) pull.disabled = !!syncJob;
-  const push = $('#git-push');
-  if (push && syncJob) push.disabled = true;
-  else if (push) triggerRefresh(); // the next status payload re-derives Push's state
-}
-
-// A rebase or merge left half-done (a closed tab mid-run, a terminal) is
-// surfaced on load rather than discovered later as a confusing dirty tree.
 async function checkUnfinishedSync() {
   try {
     const st = await api('/api/git/sync-state');
@@ -664,412 +742,4 @@ async function checkUnfinishedSync() {
     emitSync();
     if (st.inProgress) offerUnfinished(st);
   } catch {}
-}
-
-// Dispatches Stage + Commit with AI:
-// 1. Stages all changes
-// 2. Dispatches the selected coding harness to write a commit message
-//    (honoring git.commitMessageInstruction setting)
-// 3. Automatically commits with the generated message
-async function doCommitWithAI() {
-  const btn = $('#git-generate-msg');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Staging...';
-  }
-
-  // Stage all changes
-  try {
-    await apiPostJson('/api/git/stage', { path: '.' });
-  } catch (e) {
-    resetGenerateBtn(btn);
-    showGitError('Could not stage changes', e.message);
-    return;
-  }
-
-  if (btn) {
-    btn.textContent = 'Writing message...';
-  }
-  let job;
-  try {
-    job = await apiPostJson('/api/git/commit-message', {});
-  } catch (e) {
-    resetGenerateBtn(btn);
-    showGitError('Could not write a commit message', e.message);
-    return;
-  }
-  pollCommitMessage(job.id, {
-    progress: t => { if (btn) btn.textContent = t; },
-    reset: () => resetGenerateBtn(btn),
-    done: async text => {
-      const ta = $('#git-commit-msg');
-      if (ta) ta.value = text;
-      await commitWithMessage(text, btn);
-    },
-  });
-}
-
-function resetGenerateBtn(btn) {
-  if (!btn) return;
-  btn.disabled = false;
-  btn.textContent = 'Stage all + Commit with AI';
-}
-
-// Polls the commit-message job. `ui` abstracts the trigger element:
-// progress(text) shows status, reset() restores it, done(text) receives the
-// cleaned message (the AI button commits it; the link only fills the textarea).
-function pollCommitMessage(id, ui) {
-  const poll = async () => {
-    let j;
-    try {
-      j = await api('/api/agent/job?id=' + id);
-    } catch (e) {
-      ui.reset();
-      showGitError('Could not write a commit message', e.message);
-      return;
-    }
-    if (j.running) {
-      const sec = Math.round((j.ms || 0) / 1000);
-      ui.progress('Writing message... (' + sec + 's)');
-      setTimeout(poll, 600);
-      return;
-    }
-    if (j.error) {
-      ui.reset();
-      showGitError('Could not write a commit message', (j.harness || 'agent') + ': ' + j.error);
-      return;
-    }
-    const text = cleanCommitMessage(j.stdout || j.log || '');
-    if (!text) {
-      ui.reset();
-      showGitError('Could not write a commit message', 'The harness returned an empty message.');
-      return;
-    }
-    await ui.done(text);
-  };
-  setTimeout(poll, 400);
-}
-
-// Generates a message for already-staged changes and fills the textarea
-// without committing, so it can be reviewed or edited first.
-async function doGenerateMessage() {
-  const link = $('#git-generate-link');
-  const ta = $('#git-commit-msg');
-  if (!link || link.dataset.busy) return;
-  const label = link.textContent;
-  link.dataset.busy = '1';
-  const reset = () => {
-    delete link.dataset.busy;
-    link.textContent = label;
-  };
-  link.textContent = 'Writing message...';
-  let job;
-  try {
-    job = await apiPostJson('/api/git/commit-message', {});
-  } catch (e) {
-    reset();
-    showGitError('Could not write a commit message', e.message);
-    return;
-  }
-  pollCommitMessage(job.id, {
-    progress: t => { link.textContent = t; },
-    reset,
-    done: text => {
-      reset();
-      if (ta) ta.value = text;
-      toggleCommitMsgBox(true);
-    },
-  });
-}
-
-async function commitWithMessage(message, btn) {
-  if (btn) btn.textContent = 'Committing...';
-  try {
-    await apiPostJson('/api/git/commit', { message });
-    const ta = $('#git-commit-msg');
-    if (ta) {
-      ta.value = '';
-      ta.classList.remove('warn-border');
-    }
-    clearGitNotice();
-    showToast('✓', 'Committed with AI');
-    await fetchRecentCommits();
-    await refreshUnpushed();
-    await triggerRefresh();
-    if (btn) {
-      btn.textContent = 'Stage all + Commit with AI';
-      flashActionSuccess(btn, 'Committed');
-    }
-  } catch (e) {
-    toggleCommitMsgBox(true); // surface the generated message so it isn't lost
-    showGitError('Commit failed', e.message);
-  } finally {
-    if (!btn?._flashTimer) resetGenerateBtn(btn);
-    else btn.disabled = false;
-  }
-}
-
-// Harnesses sometimes wrap output in a markdown code fence despite being
-// asked not to; strip that and surrounding whitespace before using it.
-function cleanCommitMessage(text) {
-  let t = (text || '').trim();
-  const fence = t.match(/```[a-zA-Z0-9_-]*\r?\n([\s\S]*?)\r?\n```/) || t.match(/^```([\s\S]*?)```$/);
-  if (fence) t = fence[1].trim();
-  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
-    t = t.slice(1, -1).trim();
-  }
-  return t;
-}
-
-export async function fetchRecentCommits() {
-  if (!S.meta?.git) return;
-  try {
-    const res = await api('/api/git/log?limit=5');
-    if (res?.commits) {
-      renderRecentCommits(res.commits);
-      updateSeeAllCommits(res.commitsUrl, res.commits.length);
-    }
-  } catch {
-    // Silently ignore if git log not available
-  }
-}
-
-let currentCommitsUrl = '';
-
-function updateSeeAllCommits(commitsUrl, commitCount) {
-  if (commitsUrl) currentCommitsUrl = commitsUrl;
-  if (S.meta?.pr) {
-    currentCommitsUrl = `https://github.com/${S.meta.pr.owner}/${S.meta.pr.repo}/pull/${S.meta.pr.number}/commits`;
-  }
-  const link = $('#git-see-all-commits');
-  if (!link) return;
-  if (commitCount === 0) {
-    link.hidden = true;
-    return;
-  }
-  link.hidden = false;
-  if (currentCommitsUrl) {
-    link.href = currentCommitsUrl;
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.title = 'View all repository commits in browser';
-  } else {
-    link.href = '#';
-    link.removeAttribute('target');
-    link.title = 'View commits';
-  }
-}
-
-async function handleSeeAllCommits(e) {
-  if (currentCommitsUrl) return; // Follow standard hyperlink
-  e.preventDefault();
-  try {
-    const res = await api('/api/git/log?limit=50');
-    if (res?.commits) {
-      renderRecentCommits(res.commits, 0);
-      const link = $('#git-see-all-commits');
-      if (link) link.hidden = true;
-    }
-  } catch (err) {
-    showGitError('Could not load commits', err.message);
-  }
-}
-
-/* ---------- recent commits: expandable rows ----------
-   The git status stream re-sends the commits on every tick, so the list is
-   rebuilt only when they change, and expanded rows are restored from cache.
-   A file opens as a tab pinned to the commit (openFile's ref), the same as
-   the Unpushed section; the rows themselves come from commitfiles.js. */
-
-const listedCommits = new Map(); // full SHA -> GitCommit, for the expanded meta line
-const expandedCommits = new Set();
-let renderedCommitsKey = '';
-
-function renderRecentCommits(commits, max = 5) {
-  const list = $('#git-commits-list');
-  if (!list) return;
-  if (!commits || commits.length === 0) {
-    renderedCommitsKey = '';
-    list.innerHTML = '<div class="git-commits-empty">No commits yet</div>';
-    return;
-  }
-  const slice = max ? commits.slice(0, max) : commits;
-  const key = slice.map(c => c.full + '\x1f' + c.subject + '\x1f' + c.date).join('\x1e');
-  if (key === renderedCommitsKey) return;
-  renderedCommitsKey = key;
-  listedCommits.clear();
-  for (const c of slice) listedCommits.set(c.full, c);
-  const focused = list.contains(document.activeElement) ? document.activeElement.closest('.git-commit')?.dataset.sha : null;
-  list.innerHTML = slice.map(c => `
-    <div class="git-commit" data-sha="${esc(c.full)}">
-      <div class="git-commit-row" tabindex="0" role="button" aria-expanded="false" title="${esc(c.subject || '')} (${esc(c.author || '')}, ${esc(c.date || '')})&#10;Click to show changed files">
-        <svg class="git-commit-caret" viewBox="0 0 10 10" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2L6.5 5L3.5 8"/></svg>
-        <svg class="git-commit-icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="2.8"/><line x1="8" y1="1" x2="8" y2="5.2"/><line x1="8" y1="10.8" x2="8" y2="15"/></svg>
-        <span class="git-commit-msg-text">${esc(c.subject || '(no message)')}</span>
-        <button type="button" class="git-commit-sha" tabindex="-1" title="Copy SHA">${esc(c.hash)}</button>
-      </div>
-      <div class="git-commit-files" hidden></div>
-    </div>
-  `).join('');
-  for (const sha of [...expandedCommits]) {
-    const el = commitEl(sha);
-    if (el) setCommitExpanded(el, true);
-    else expandedCommits.delete(sha);
-  }
-  if (focused) commitEl(focused)?.querySelector('.git-commit-row')?.focus();
-}
-
-function commitEl(sha) {
-  return $('#git-commits-list')?.querySelector(`.git-commit[data-sha="${CSS.escape(sha)}"]`);
-}
-
-async function setCommitExpanded(el, open) {
-  const sha = el.dataset.sha;
-  const row = el.querySelector('.git-commit-row');
-  const body = el.querySelector('.git-commit-files');
-  el.classList.toggle('expanded', open);
-  row.setAttribute('aria-expanded', String(open));
-  body.hidden = !open;
-  if (!open) {
-    expandedCommits.delete(sha);
-    body.replaceChildren(); // hiding would keep every row in memory
-    return;
-  }
-  expandedCommits.add(sha);
-  const cached = cachedCommitFiles(sha);
-  if (cached) { drawCommitFiles(body, sha, cached); return; }
-  body.innerHTML = '<div class="git-commit-note">Loading…</div>';
-  try {
-    const files = await loadCommitFiles(sha);
-    if (el.isConnected && expandedCommits.has(sha)) drawCommitFiles(body, sha, files);
-  } catch (e) {
-    if (el.isConnected) body.innerHTML = `<div class="git-commit-note">${esc(e.message || 'Could not load commit')}</div>`;
-  }
-}
-
-function drawCommitFiles(body, sha, files) {
-  const c = listedCommits.get(sha);
-  const meta = c ? `<div class="git-commit-meta">${esc(c.author)} · ${esc(c.date)}</div>` : '';
-  if (!files.length) {
-    body.innerHTML = meta + '<div class="git-commit-note">No file changes</div>';
-    return;
-  }
-  body.innerHTML = meta;
-  appendCommitFiles(body, sha, files);
-}
-
-// Builds the next page of rows; returns the index of the first one added.
-function appendCommitFiles(body, sha, files) {
-  const from = body.querySelectorAll('.up-file').length;
-  body.querySelector('.up-more')?.remove();
-  body.insertAdjacentHTML('beforeend', commitFileRows(files, from, from + COMMIT_FILES_PAGE, activeCommitPath(sha)));
-  return from;
-}
-
-function showMoreCommitFiles(el) {
-  const files = cachedCommitFiles(el.dataset.sha);
-  if (!files) return -1;
-  return appendCommitFiles(el.querySelector('.git-commit-files'), el.dataset.sha, files);
-}
-
-function openCommitPath(el, path) {
-  // px0 has no diff for a binary file, so say so rather than doing nothing.
-  if (cachedCommitFiles(el.dataset.sha)?.find(f => f.path === path)?.binary) {
-    showGitError('Binary file, no diff to show');
-    return;
-  }
-  openFile(path, { ref: el.dataset.sha, view: 'diff' });
-}
-
-// Double-click or Enter on a commit: expand it and open its first file.
-async function openFirstCommitFile(el) {
-  if (!el.classList.contains('expanded')) setCommitExpanded(el, true);
-  try {
-    const files = await loadCommitFiles(el.dataset.sha);
-    if (files.length) openCommitPath(el, files[0].path);
-    else showGitError('This commit changes no files');
-  } catch (e) {
-    showGitError('Could not load commit', e.message);
-  }
-}
-
-// The path the active tab shows if it is pinned to sha, else ''.
-function activeCommitPath(sha) {
-  const d = S.tabs[S.active];
-  return d && d.diffRef === sha ? d.path : '';
-}
-
-function markActiveCommitFile() {
-  const list = $('#git-commits-list');
-  if (!list) return;
-  for (const x of list.querySelectorAll('.up-file.sel')) x.classList.remove('sel');
-  for (const el of list.querySelectorAll('.git-commit.expanded')) {
-    const path = activeCommitPath(el.dataset.sha);
-    if (path) el.querySelector(`.up-file[data-path="${CSS.escape(path)}"]`)?.classList.add('sel');
-  }
-}
-
-function initCommitList() {
-  const list = $('#git-commits-list');
-  if (!list) return;
-  list.addEventListener('click', e => {
-    const sha = e.target.closest('.git-commit-sha');
-    if (sha) {
-      e.stopPropagation();
-      copyToClipboard(sha.textContent, 'Copied ' + sha.textContent, sha);
-      return;
-    }
-    const more = e.target.closest('.up-more');
-    if (more) { showMoreCommitFiles(more.closest('.git-commit')); return; }
-    const file = e.target.closest('.up-file');
-    if (file) { openCommitPath(file.closest('.git-commit'), file.dataset.path); return; }
-    const row = e.target.closest('.git-commit-row');
-    // The second click of a double-click opens instead (dblclick below).
-    if (row && e.detail < 2) {
-      const el = row.closest('.git-commit');
-      setCommitExpanded(el, !el.classList.contains('expanded'));
-    }
-  });
-  list.addEventListener('dblclick', e => {
-    const row = e.target.closest('.git-commit-row');
-    if (!row || e.target.closest('.git-commit-sha')) return;
-    openFirstCommitFile(row.closest('.git-commit'));
-  });
-  list.addEventListener('keydown', e => {
-    const item = e.target.closest('.git-commit-row, .up-file, .up-more');
-    if (!item) return;
-    const el = item.closest('.git-commit');
-    const isRow = item.classList.contains('git-commit-row');
-    if (item.classList.contains('up-more') && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      const first = showMoreCommitFiles(el);
-      el.querySelectorAll('.up-file')[first]?.focus();
-      return;
-    }
-    const items = [...list.querySelectorAll('.git-commit-row, .git-commit.expanded .up-file, .git-commit.expanded .up-more')];
-    const at = items.indexOf(item);
-    switch (e.key) {
-      case 'ArrowDown': items[at + 1]?.focus(); break;
-      case 'ArrowUp': items[at - 1]?.focus(); break;
-      case 'ArrowRight':
-        if (isRow && !el.classList.contains('expanded')) setCommitExpanded(el, true);
-        else if (isRow) items[at + 1]?.focus();
-        break;
-      case 'ArrowLeft':
-        if (isRow) setCommitExpanded(el, false);
-        else el.querySelector('.git-commit-row').focus();
-        break;
-      case 'Enter':
-        if (isRow) openFirstCommitFile(el);
-        else openCommitPath(el, item.dataset.path);
-        break;
-      case ' ':
-        if (isRow) setCommitExpanded(el, !el.classList.contains('expanded'));
-        else openCommitPath(el, item.dataset.path);
-        break;
-      default: return;
-    }
-    e.preventDefault();
-  });
-  on('tab:activated', markActiveCommitFile);
 }

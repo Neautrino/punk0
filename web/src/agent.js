@@ -80,6 +80,29 @@ export function applyAgentMeta() {
   for (const picker of extraPickers) updateSessionMeta(picker);
   syncBatchMeta();
   syncGitPanelHarnessMeta();
+  emit('agent:meta'); // the git panel's AI actions depend on there being a harness
+}
+
+// fillHarnessOptions lists the installed harnesses in sel. With none picked
+// yet it leads with a disabled "pick a harness" entry: otherwise the first
+// harness would look chosen while the server has none (every AI action is then
+// refused), and choosing that same displayed entry fires no change event.
+function fillHarnessOptions(sel, ready, current) {
+  if (!current) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'pick a harness';
+    opt.disabled = true;
+    opt.selected = true;
+    sel.appendChild(opt);
+  }
+  for (const h of ready) {
+    const opt = document.createElement('option');
+    opt.value = h.name;
+    opt.textContent = h.name;
+    if (h.name === current) opt.selected = true;
+    sel.appendChild(opt);
+  }
 }
 
 function updateSessionMeta(session) {
@@ -101,21 +124,15 @@ function updateSessionMeta(session) {
     return;
   }
 
-  for (const h of ready) {
-    const opt = document.createElement('option');
-    opt.value = h.name;
-    opt.textContent = h.name;
-    if (h.name === currentHarness) opt.selected = true;
-    session.harnessSelect.appendChild(opt);
-  }
+  fillHarnessOptions(session.harnessSelect, ready, currentHarness);
   const isBusy = session.el.classList.contains('busy');
   session.harnessSelect.disabled = isBusy || !!(S.meta && S.meta.agentPinned);
   session.harnessSelect.title = S.meta && S.meta.agentPinned
     ? 'Fixed for this run by -agent'
     : 'Change the coding harness';
 
-  // Populate model select for the currently selected harness
-  const activeH = ready.find(h => h.name === (session.harnessSelect.value || currentHarness)) || ready[0];
+  // Populate model select for the currently selected harness (none until one is picked)
+  const activeH = ready.find(h => h.name === (session.harnessSelect.value || currentHarness));
   session.modelSelect.innerHTML = '';
   const models = activeH?.models || [];
   if (models.length > 0) {
@@ -164,18 +181,12 @@ function syncBatchMeta() {
     return;
   }
 
-  for (const h of ready) {
-    const opt = document.createElement('option');
-    opt.value = h.name;
-    opt.textContent = h.name;
-    if (h.name === currentHarness) opt.selected = true;
-    batchHarness.appendChild(opt);
-  }
+  fillHarnessOptions(batchHarness, ready, currentHarness);
   const isBusy = !!batchJobId;
   batchHarness.disabled = isBusy || !!(S.meta && S.meta.agentPinned);
   batchHarness.title = S.meta && S.meta.agentPinned ? 'Fixed for this run by -agent' : 'Change the coding harness';
 
-  const activeH = ready.find(h => h.name === (batchHarness.value || currentHarness)) || ready[0];
+  const activeH = ready.find(h => h.name === (batchHarness.value || currentHarness));
   batchModel.innerHTML = '';
   const models = activeH?.models || [];
   if (models.length > 0) {
@@ -215,17 +226,11 @@ function syncGitPanelHarnessMeta() {
     return;
   }
 
-  for (const h of ready) {
-    const opt = document.createElement('option');
-    opt.value = h.name;
-    opt.textContent = h.name;
-    if (h.name === currentHarness) opt.selected = true;
-    gitHarness.appendChild(opt);
-  }
+  fillHarnessOptions(gitHarness, ready, currentHarness);
   gitHarness.disabled = !!(S.meta && S.meta.agentPinned);
   gitHarness.title = S.meta && S.meta.agentPinned ? 'Fixed for this run by -agent' : 'Change the coding harness';
 
-  const activeH = ready.find(h => h.name === (gitHarness.value || currentHarness)) || ready[0];
+  const activeH = ready.find(h => h.name === (gitHarness.value || currentHarness));
   gitModel.innerHTML = '';
   const models = activeH?.models || [];
   if (models.length > 0) {

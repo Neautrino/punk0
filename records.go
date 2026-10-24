@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -667,6 +668,82 @@ func (r *Records) Tab(id string) *Satellite {
 		return w.Tabs[i]
 	}
 	return nil
+}
+
+// tabPlace is where a tab runs, copied under the lock: what the turn ledger
+// (ledger.go) files the tab's turns under, and the name its chat goes by.
+type tabPlace struct {
+	tabID, chat, workspaceID, kind, dir string
+}
+
+// Place returns where tab id runs; ok is false for an unknown tab. A chat goes
+// by its workspace's name -- the feature it works on -- since agent tabs are
+// named after their harness ("claude") until renamed. A renamed tab adds its
+// name; one of several unrenamed agent tabs adds its harness and position.
+func (r *Records) Place(id string) (place tabPlace, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, i := r.tabLocked(id)
+	if w == nil {
+		return tabPlace{}, false
+	}
+	t := w.Tabs[i]
+	chat := w.Title
+	if chat == "" {
+		chat = w.Name
+	}
+	if t.Name != "" && t.Name != t.Kind {
+		chat += " · " + t.Name
+	} else {
+		agents, at := 0, 0
+		for _, o := range w.Tabs {
+			if o.Kind == tabShell {
+				continue
+			}
+			agents++
+			if o == t {
+				at = agents
+			}
+		}
+		if agents > 1 {
+			chat += " · " + t.Kind + " " + strconv.Itoa(at)
+		}
+	}
+	return tabPlace{tabID: t.ID, chat: chat, workspaceID: w.ID, kind: w.Kind, dir: w.Dir}, true
+}
+
+// WorkspaceLabel is what workspace id goes by -- its title, else its name --
+// or "" for an unknown one. The turn ledger groups a workspace's chats under
+// it.
+func (r *Records) WorkspaceLabel(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, i := r.workspaceLocked(id)
+	if p == nil {
+		return ""
+	}
+	if w := p.Workspaces[i]; w.Title != "" {
+		return w.Title
+	}
+	return p.Workspaces[i].Name
+}
+
+// workspaceDir is a workspace's id and the folder it runs in.
+type workspaceDir struct{ id, dir string }
+
+// WorkspaceDirs lists project id's workspaces in order; ok is false for an
+// unknown project.
+func (r *Records) WorkspaceDirs(id string) (dirs []workspaceDir, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := r.projectLocked(id)
+	if p == nil {
+		return nil, false
+	}
+	for _, w := range p.Workspaces {
+		dirs = append(dirs, workspaceDir{w.ID, w.Dir})
+	}
+	return dirs, true
 }
 
 // Tabs returns every tab, for the idle reaper and shutdown.

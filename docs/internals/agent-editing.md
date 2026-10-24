@@ -193,11 +193,12 @@ px0 dispatched the harness, so it knows when the work ended. Completion is detec
 | `/api/agent/edit` | POST | Dispatch an instruction for `path:l1-l2`. `409` when the range overlaps a job already running, or onto uncommitted work without `force=1`. |
 | `/api/agent/job` | GET | Snapshot of job `?id=`, or the most recently started job when `id` is omitted, polled while running. |
 | `/api/agent/cancel` | POST | Stop every harness currently running. Whatever each already wrote stays. |
-| `/api/git/commit-message` | POST | Dispatch the selected harness to write a commit message for the staged diff (git panel's **Commit with AI**). Not part of this file — see below. |
+| `/api/git/commit-message` | POST/GET | Dispatch the selected harness to write a commit message for the staged diff (git panel's **✦** button); `GET ?job=` reads the message. Not part of this file — see below. |
+| `/api/git/commit-plan` | POST/GET | Dispatch the selected harness to plan one or more commits for every change; `GET ?job=` reads the plan. Not part of this file — see below. |
 
 ### A Second Dispatch Shape: Prompts With No File
 
-Every dispatch above is anchored to a file range. `agentManager.StartPrompt(label, prompt)` is a narrower sibling of `StartBatch` used by exactly one caller today — the sidebar git panel's **Commit with AI** (`handleGitCommitMessage` in `server.go`, [Git Awareness §9](git-integration.md)) — to have a harness write a commit message rather than edit code. It skips everything file-range-specific (no snippet read, no overlap check against `jobs`, no target path) and reuses `run()` unchanged: same spawn, same `tailBuffer` stdout/stderr capture, same `changedSince` diff (which comes back empty, since a well-behaved prompt like this never touches disk). The `agentJob` it returns is polled through the very same `/api/agent/job`, so the frontend's polling logic doesn't need to know which kind of job it's watching.
+Every dispatch above is anchored to a file range. `agentManager.StartPrompt(label, prompt)` is a narrower sibling of `StartBatch` for jobs that answer rather than edit — the git panel's commit message and commit plan (`handleGitCommitMessage`, `handleGitCommitPlan` in `server.go`, [Git Awareness §9](git-integration.md)), its agent rebase/merge, and a PR's merge message. It skips everything file-range-specific (no snippet read, no overlap check against `jobs`, no target path) and reuses `run()` unchanged: same spawn, same `tailBuffer` stdout/stderr capture, same `changedSince` diff. The `agentJob` it returns is polled through the very same `/api/agent/job`, so the frontend's polling logic doesn't need to know which kind of job it's watching. For the commit message and plan, the server then parses the answer itself (`GET …?job=ID`, `promptJobAnswer`), and refuses it with 422 if `changedSince` found files the harness edited when it was only asked to answer.
 
 A job snapshot:
 

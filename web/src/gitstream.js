@@ -5,7 +5,7 @@ import { syncDiffView } from './diff.js';
 import { render } from './renderer.js';
 import { updateStatus, updateMetricsDisplay } from './status.js';
 import { updateGitPanel } from './gitpanel.js';
-import { refreshUnpushed } from './unpushed.js';
+import { updateGraph } from './gitgraph.js';
 import { updateScopeCounts } from './prscope.js';
 
 let eventSource = null;
@@ -25,7 +25,7 @@ function reconnect() {
 }
 
 async function handleWake() {
-  lastSig = ''; // Clear signature to ensure git-status, badges and unpushed state apply freshly
+  lastSig = ''; // Clear signature to ensure git-status, badges and the graph apply freshly
   reconnect();
   await triggerRefresh();
 }
@@ -175,11 +175,11 @@ export async function handleGitStatus(data) {
   if (data.gitChanges !== undefined) S.meta.gitChanges = data.gitChanges;
   if (data.gitFiles !== undefined) S.meta.gitFiles = data.gitFiles;
 
-  // Before the Git-view check below: committing empties the tree but fills the
-  // Unpushed section, and pushing empties that in turn, so whether Git view
-  // still has anything to show depends on a fresh unpushed count.
-  // Cheap: only re-reads git log when the ahead count or head commit moved.
-  await refreshUnpushed(data);
+  // Before the Git-view check below: committing empties the tree but adds an
+  // outgoing commit to the graph, and pushing clears that in turn, so whether
+  // Git view still has anything to show depends on a fresh outgoing count.
+  // Cheap: only re-reads git log when the head, ahead/behind or upstream moved.
+  await updateGraph(data);
 
   updateSidebarToggleState();
   if (treeEl?.classList.contains('changed-only') && !hasGitView()) {

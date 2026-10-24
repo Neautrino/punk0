@@ -96,7 +96,7 @@ The checkout is a real git worktree with the full git panel:
 
 - Edit a file (`Cmd/Ctrl+E`), or ask your coding harness to (`Alt+E` on a selection).
 - **⚡ Batch Apply** turns all your draft comments into code changes in one go.
-- Stage, then **Commit with AI** or write your own message, then **Push**. The push goes to the PR's own branch, even when it comes from a fork.
+- Stage, then press **✦** for an AI-written message or write your own, commit, then **Push to PR**. The push goes to the PR's own branch, even when it comes from a fork.
 - If someone pushes to the PR while you review, **Pull** brings their commits in.
 
 ---

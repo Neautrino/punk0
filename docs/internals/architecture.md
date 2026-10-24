@@ -115,15 +115,18 @@ px0 is structured into decoupled core files and modular `internal/` packages:
 | `/api/git/stage`      | `POST` | Stage a file (`?path=...`), or `"."` for all changes                   | JSON (`{ok, status}`)                      |
 | `/api/git/unstage`    | `POST` | Unstage a file (`?path=...`)                                            | JSON (`{ok, status}`)                      |
 | `/api/git/hunk`       | `POST` | Stage, unstage, or discard an isolated diff hunk (`?path=...&action=...`) | JSON (`{ok: true}`)                     |
-| `/api/git/commit`     | `POST` | Commit staged changes (auto-stages unstaged modifications if none staged) | JSON (`{ok, sha}`)                      |
-| `/api/git/commit-message` | `POST` | Dispatch harness to write commit message from staged diff           | JSON job snapshot                          |
+| `/api/git/commit`     | `POST` | Commit exactly what is staged, or amend HEAD (`{message, amend?}`); never auto-stages | JSON (`{ok, hash, subject}`)            |
+| `/api/git/undo-commit` | `POST` | Soft-reset the last (unpushed, non-merge) commit                       | JSON (`{ok, message}`)                     |
+| `/api/git/commit-message` | `POST`/`GET` | Dispatch harness to write a commit message from the staged diff; `?job=` reads it | JSON job snapshot / `{message}`   |
+| `/api/git/commit-plan` | `POST`/`GET` | Dispatch harness to plan commits for every change (nothing staged); `?job=` reads the plan | JSON job snapshot / `{commits, unassigned, dropped}` |
+| `/api/git/commit-plan/apply` | `POST` | Stage and commit a reviewed plan group by group                  | JSON (`{ok, done, error?}`)                |
+| `/api/git/preflight`  | `GET`  | Secret/large-file warnings for staged or all changed paths (`?scope=`)   | JSON (`{warnings}`)                        |
 | `/api/git/push`       | `POST` | Push current branch (or PR head) to remote                              | JSON (`{ok: true}`)                        |
 | `/api/git/pull`       | `POST` | Fast-forward pull from upstream                                         | JSON (`{ok: true}`)                        |
 | `/api/git/sync-agent` | `POST` | Dispatch harness to rebase or merge diverged branches                   | JSON job snapshot                          |
 | `/api/git/sync-state` | `GET`  | Current branch divergence and in-progress rebase/merge state            | JSON (`{code, branch, upstream, ...}`)     |
 | `/api/git/abort`      | `POST` | Abort a rebase or merge in progress                                     | JSON (`{ok: true}`)                        |
-| `/api/git/log`        | `GET`  | Recent commits in active repository                                     | JSON array of recent commits               |
-| `/api/unpushed`       | `GET`  | List commits on local branch not yet pushed to upstream                 | JSON (`{available, upstream, commits}`)    |
+| `/api/git/log`        | `GET`  | Commit graph from HEAD and its push boundary (`?limit=`)                | JSON (`{commits, commitsUrl, upstream, head, more}`) |
 | `/api/commitfiles`    | `GET`  | Files touched by a specific commit (`?sha=...`)                         | JSON array of file records                 |
 | `/api/commitdetail`   | `GET`  | Commit author, message, and diffstat summary (`?sha=...`)               | JSON commit details                        |
 | `/api/reindex`        | `POST` | Re-runs index walk and git status on demand                             | JSON (`{files, indexMs}`)                  |

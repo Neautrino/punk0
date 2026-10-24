@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -892,8 +893,6 @@ func TestCommitMessagePrompt(t *testing.T) {
 	}
 }
 
-
-
 func TestParseClaudeEvent(t *testing.T) {
 	evs := parseClaudeEvent(`{"type":"assistant","session_id":"s1","message":{"content":[{"type":"text","text":"Looking."},{"type":"tool_use","name":"Edit","input":{"file_path":"a.go"}}]}}`)
 	kinds := []string{}
@@ -1289,8 +1288,8 @@ func TestThreadDeleteAPI(t *testing.T) {
 	}
 }
 
-// A commit message with no harness to write it is refused before the
-// auto-stage, so the index stays as it was.
+// A commit message with no harness to write it is refused before anything
+// reads or touches the repository, so the index stays as it was.
 func TestGitCommitMessageWithoutHarnessLeavesIndex(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")
@@ -1316,5 +1315,115 @@ func TestGitCommitMessageWithoutHarnessLeavesIndex(t *testing.T) {
 	}
 	if staged := gitStagedPaths(root); len(staged) != 0 {
 		t.Fatalf("a refused commit message staged %v", staged)
+	}
+}
+
+func TestParseCommitMessage(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Thinking...\n<commit-message>\nFix the race\n\nWhy it raced.\n</commit-message>\n", "Fix the race\n\nWhy it raced."},
+		{"<commit-message>```\nAdd x\n```</commit-message>", "Add x"},
+		{"```text\nAdd y\n```", "Add y"},
+		{"\"Add z\"", "Add z"},
+		{"  Plain answer \n", "Plain answer"},
+	}
+	for _, c := range cases {
+		if got := parseCommitMessage(c.in); got != c.want {
+			t.Errorf("parseCommitMessage(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestParseCommitPlan(t *testing.T) {
+	changes := []gitChange{{"a.go", "M"}, {"b.go", "??"}, {"c.go", "D"}, {"d.go", "M"}}
+	out := "echoed prompt <commit-plan>{\"commits\":[{\"message\":\"subject\\n\\nbody\",\"files\":[\"path\"]}]}</commit-plan>\n" +
+		"answer:\n<commit-plan>\n```json\n" +
+		`{"commits":[` +
+		`{"message":"  Fix a \n\nbecause","files":["a.go","nope.go","b.go"]},` +
+		`{"message":"Dup only","files":["a.go"]},` +
+		`{"message":"Delete c","files":["c.go","nope.go"]}]}` +
+		"\n```\n</commit-plan>"
+	plan, err := parseCommitPlan(out, changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := CommitPlan{
+		Commits: []CommitPlanGroup{
+			{Message: "Fix a \n\nbecause", Files: []gitChange{{"a.go", "M"}, {"b.go", "??"}}},
+			{Message: "Delete c", Files: []gitChange{{"c.go", "D"}}},
+		},
+		Unassigned: []gitChange{{"d.go", "M"}},
+		Dropped:    []string{"nope.go"},
+	}
+	if !reflect.DeepEqual(plan, want) {
+		t.Fatalf("plan = %+v\nwant %+v", plan, want)
+	}
+
+	for name, bad := range map[string]string{
+		"no tags":       `{"commits":[{"message":"x","files":["a.go"]}]}`,
+		"not json":      "<commit-plan>commit everything</commit-plan>",
+		"empty message": `<commit-plan>{"commits":[{"message":" ","files":["a.go"]}]}</commit-plan>`,
+		"nothing known": `<commit-plan>{"commits":[{"message":"x","files":["zzz"]}]}</commit-plan>`,
+		"no commits":    `<commit-plan>{"commits":[]}</commit-plan>`,
+	} {
+		if _, err := parseCommitPlan(bad, changes); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+// GET ?job= reads a finished prompt job; a running, failed, or file-editing
+// one is refused with the reason.
+func TestCommitPlanJobAnswer(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	root := gitRepo(t)
+	isolateSettings(t)
+	m, err := newAgentManager(root, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := func(id int64, running bool, errMsg, stdout string, changed ...string) *agentJob {
+		out := &tailBuffer{max: 1 << 16}
+		out.Write([]byte(stdout))
+		return &agentJob{ID: id, Running: running, Error: errMsg, Changed: changed, out: out}
+	}
+	plan := `<commit-plan>{"commits":[{"message":"Add","files":["add.go","untr.go"]}]}</commit-plan>`
+	m.jobs = map[int64]*agentJob{
+		1: job(1, false, "", plan),
+		2: job(2, true, "", ""),
+		3: job(3, false, "exit status 1", ""),
+		4: job(4, false, "", plan, "keep.go", "sub/mod.go"),
+		5: job(5, false, "", "<commit-message>Fix it</commit-message>"),
+		6: job(6, false, "", "<commit-message> </commit-message>"),
+	}
+	ix := NewIndex(root)
+	ix.Build()
+	s := NewServer(ix, nil)
+	s.SetAgent(m)
+
+	code, body := get(t, s, "/api/git/commit-plan?job=1")
+	commits, _ := body["commits"].([]any)
+	unassigned, _ := body["unassigned"].([]any)
+	if code != 200 || len(commits) != 1 || len(unassigned) != 4 {
+		t.Fatalf("plan = %d %v", code, body)
+	}
+	for _, c := range []struct {
+		url  string
+		code int
+		want string
+	}{
+		{"/api/git/commit-plan?job=2", 409, "still running"},
+		{"/api/git/commit-plan?job=3", 422, "exit status 1"},
+		{"/api/git/commit-plan?job=4", 422, "the harness edited files instead of only answering: keep.go, sub/mod.go"},
+		{"/api/git/commit-plan?job=99", 404, "unknown job"},
+		{"/api/git/commit-message?job=6", 422, "the harness returned an empty message"},
+	} {
+		if code, body := get(t, s, c.url); code != c.code || body["error"] != c.want {
+			t.Errorf("%s = %d %v, want %d %q", c.url, code, body, c.code, c.want)
+		}
+	}
+	if code, body := get(t, s, "/api/git/commit-message?job=5"); code != 200 || body["message"] != "Fix it" {
+		t.Errorf("message = %d %v", code, body)
 	}
 }

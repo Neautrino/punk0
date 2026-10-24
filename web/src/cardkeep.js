@@ -1,6 +1,6 @@
 // web/src/cardkeep.js
 // Shared open/close lifetime for the floating cards that follow the pointer:
-// the LSP hover card (hover.js) and the unpushed-commit card (unpushed.js).
+// the LSP hover card (hover.js) and the commit card (gitgraph.js).
 //
 // Both used to close while the pointer was still on its way into them. Two
 // things caused that, and both are fixed here:

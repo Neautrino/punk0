@@ -254,6 +254,25 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
 #tree.changed-only .tr.file:not(.dirty) { display: none; }
 #tree.changed-only .tw:not(:has(.dirty)) { display: none; }
 
+/* Turn lens: the git panel's selected chat turn narrows the Git view to its
+   files (tree.js setTreeLens), named by the chip above the tree. */
+#tree.changed-only.turn-lens .tr.file:not(.in-lens) { display: none; }
+#tree.changed-only.turn-lens .tw:not(:has(.in-lens)) { display: none; }
+.tree-lens {
+  flex: none; display: flex; align-items: center; gap: 6px; min-width: 0;
+  margin: 5px 8px; padding: 2px 2px 2px 8px;
+  border: 1px solid var(--accent); border-radius: 10px; background: var(--bg2);
+  font: 600 11px var(--ui); color: var(--fg);
+}
+.tree-lens[hidden] { display: none; }
+.tree-lens-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.tree-lens-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-lens-x {
+  flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--faint); font: 14px/1 var(--ui); cursor: pointer;
+}
+.tree-lens-x:hover { color: var(--fg); background: var(--bg4); }
+
 /* PR review scope: whole PR vs only what you changed (prscope.js). */
 .scope-bar { display: flex; gap: 4px; padding: 5px 8px; border-bottom: 1px solid var(--line); flex: none; }
 .scope-bar[hidden] { display: none; }
@@ -292,64 +311,8 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
   padding: 8px 12px; font: 11.5px var(--ui); color: var(--faint);
 }
 
-/* ---------- unpushed commits (sidebar: @{u}..HEAD) ---------- */
-.unpushed {
-  flex: 0 1 auto; display: flex; flex-direction: column; min-height: 26px;
-  max-height: 45vh; background: var(--bg2); border-top: 1px solid var(--line);
-  position: relative;
-}
-.unpushed-resizer {
-  position: absolute; top: -3px; left: 0; right: 0; height: 6px; cursor: row-resize; z-index: 2;
-}
-.unpushed-resizer:hover, .unpushed-resizer.drag { background: var(--accent); opacity: .5; }
-.unpushed[hidden] { display: none; }
-.unpushed.collapsed { flex: none; }
-.unpushed.collapsed .unpushed-body { display: none; }
-.unpushed.collapsed .pr-comments-collapse { transform: rotate(-90deg); }
-.unpushed-head {
-  flex: none; display: flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-bottom: 1px solid var(--line); user-select: none;
-}
-.unpushed-head .grow { flex: 1; min-width: 0; }
-.unpushed-icon { flex: none; color: var(--accent); opacity: .85; }
-.unpushed-title {
-  font: 600 11px var(--ui); color: var(--dim);
-  text-transform: uppercase; letter-spacing: .05em; flex: none;
-}
-.unpushed-count {
-  flex: none; font: 600 10px/1 var(--mono); color: var(--accent-fg);
-  background: var(--bg4); border-radius: 8px; padding: 2px 5px;
-}
-/* The branch the list is measured against: without it "unpushed" is ambiguous. */
-.unpushed-upstream {
-  flex: none; max-width: 45%; font: 10.5px var(--mono); color: var(--faint);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.unpushed-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 8px; }
-
-.up-row {
-  display: flex; align-items: center; gap: 5px; height: 22px;
-  padding: 0 10px 0 8px; white-space: nowrap; cursor: pointer; user-select: none;
-}
-.up-row:hover { background: var(--bg3); }
-.up-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-/* Same disclosure triangle as the file tree's folders. */
-.up-ar {
-  flex: none; width: 0; height: 0; margin-left: 2px;
-  border: 4px solid transparent; border-left-color: var(--faint);
-  transition: transform .12s;
-}
-.up-commit.open .up-ar { transform: rotate(90deg) translateX(1px); }
-.up-subject {
-  flex: 1; min-width: 0; font-size: 12.5px; color: var(--fg);
-  overflow: hidden; text-overflow: ellipsis;
-}
-.up-sha { flex: none; font: 10.5px var(--mono); color: var(--faint); }
-.up-row:hover .up-sha { color: var(--dim); }
-
-.up-files { display: none; }
-.up-commit.open .up-files { display: block; }
-.up-note { padding: 4px 10px 4px 26px; font: 11px var(--ui); color: var(--faint); }
+/* ---------- commit file rows (commitfiles.js) ----------
+   A commit's files, listed under a commit expanded in the graph. */
 .up-file {
   display: flex; align-items: baseline; gap: 6px; height: 21px;
   padding: 0 10px 0 26px; white-space: nowrap; cursor: pointer; user-select: none;
@@ -378,7 +341,6 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
   padding: 3px 10px 3px 26px; font: 11px/1.4 var(--ui); color: var(--dim);
   cursor: pointer; user-select: none;
 }
-.git-commit-files .up-more { padding-left: 6px; border-radius: var(--r); }
 .up-more:hover { background: var(--bg3); color: var(--accent); }
 
 /* A tab pinned to a commit rather than the working tree. */
@@ -388,7 +350,7 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
 }
 .tab.active .tab-ref { color: var(--accent-fg); }
 
-/* ---------- commit card (hovering an unpushed commit) ---------- */
+/* ---------- commit card (hovering a commit in the graph) ---------- */
 #commitcard {
   position: fixed; z-index: 60; width: min(420px, 60vw);
   background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg);
@@ -449,85 +411,75 @@ a.cc-who:hover { color: var(--accent-fg); }
 }
 .git-panel-icon { flex: none; color: var(--accent); opacity: .85; }
 .git-panel-head .grow { flex: 1; min-width: 0; }
-.git-branch { font: 600 12px var(--ui); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.git-counts { font: 11px var(--mono); color: var(--faint); flex: none; }
+.git-branch { min-width: 0; font: 600 12px var(--ui); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-ahead-behind { flex: none; font: 11px var(--mono); color: var(--accent-fg); }
+.git-ahead-behind.unpublished { font: italic 11px var(--ui); color: var(--faint); }
+.git-upstream { flex: 0 1 auto; min-width: 0; font: 11px var(--ui); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-ahead-behind[hidden], .git-upstream[hidden] { display: none; }
+.git-head-btn {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  height: 18px; padding: 0 5px; border: 0; border-radius: var(--r);
+  background: none; color: var(--faint); cursor: pointer;
+}
+.git-head-btn:hover { color: var(--fg); background: var(--bg4); }
+.git-head-btn[hidden] { display: none; }
+.git-counts { font: 11px var(--mono); }
+.git-forge-token, .git-forge-token:hover { color: var(--mark-active); }
 .git-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
+
+/* Commit area: always-visible commit message textarea + warnings + action buttons. */
+.git-commit-area { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.git-commit-area[hidden] { display: none; }
 .git-commit-msg {
-  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
-  padding: 6px 8px; font: 12px var(--mono); resize: vertical; min-height: 60px;
+  width: 100%; min-width: 0; min-height: 60px; padding: 6px 8px;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: var(--r);
+  font: 12px var(--mono); resize: vertical;
 }
-.git-commit-msg:focus { border-color: var(--accent); }
-.git-commit-msg[hidden] { display: none; }
-.git-link-sep { font: 11px var(--ui); color: var(--faint); margin: 0 6px; }
-.git-instructions-wrap {
-  display: flex; align-items: center; justify-content: flex-start;
-  margin-top: -2px; margin-bottom: 2px; padding: 0 1px;
+.git-commit-msg:focus { border-color: var(--accent); outline: none; }
+.git-warnings { display: flex; flex-wrap: wrap; gap: 4px; }
+.git-warnings[hidden] { display: none; }
+.git-warning-chip {
+  max-width: 100%; padding: 1px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 10.5px var(--ui); color: var(--mark-active);
+  background: color-mix(in srgb, var(--mark-active) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mark-active) 40%, transparent); border-radius: var(--r);
 }
-.git-instructions-link {
-  font: 11px var(--ui); color: var(--faint);
-  text-decoration: underline; text-underline-offset: 2px;
-  cursor: pointer; transition: color .15s;
+.git-warning-chip code { font: 10.5px var(--mono); }
+.git-panel-actions { position: relative; display: flex; width: 100%; }
+.git-primary-btn, .git-more-btn {
+  height: 26px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+  cursor: pointer; transition: opacity .15s;
 }
-.git-instructions-link:hover {
-  color: var(--fg);
+.git-primary-btn {
+  flex: 1; min-width: 0; padding: 0 8px; border-radius: var(--r) 0 0 var(--r);
+  font: 600 11.5px var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.git-panel-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; }
-.git-panel-actions .footer-btn {
-  border: 1px solid var(--line); background: var(--bg3); border-radius: var(--r);
-  height: 24px; padding: 3px 6px; opacity: 1;
-  width: 100%; min-width: 0; justify-content: center;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.git-more-btn {
+  flex: none; width: 24px; padding: 0; border-left-color: color-mix(in srgb, var(--on-accent) 35%, var(--accent));
+  border-radius: 0 var(--r) var(--r) 0; font: 11px var(--ui);
 }
-.git-panel-actions .footer-btn:hover:not(:disabled) {
-  border-color: var(--accent); background: var(--bg4);
+.git-primary-btn:hover:not(:disabled), .git-more-btn:hover:not(:disabled) { opacity: .9; }
+/* Nothing to do: the pair turns neutral, the menu (Pull, Amend, ...) stays live. */
+.git-primary-btn:disabled, .git-primary-btn:disabled + .git-more-btn {
+  background: var(--bg3); border-color: var(--line); color: var(--faint);
 }
-.git-panel-actions .footer-btn:disabled { opacity: .5; cursor: default; }
+.git-primary-btn:disabled { cursor: default; }
+.git-primary-btn:disabled + .git-more-btn:hover:not(:disabled) { color: var(--fg); background: var(--bg4); opacity: 1; }
+.git-more-btn:disabled { opacity: .5; cursor: default; }
+.git-more-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 60; min-width: 200px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
+}
+.git-more-menu[hidden] { display: none; }
+.git-more-menu button {
+  width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r); background: none;
+  color: var(--fg); font: 12px var(--ui); text-align: left; cursor: pointer;
+}
+.git-more-menu button:hover:not(:disabled) { background: var(--bg4); }
+.git-more-menu button:disabled { color: var(--faint); cursor: default; }
+.git-more-menu hr { margin: 4px 2px; border: 0; border-top: 1px solid var(--line); }
 
-/* Harness/model pickers stacked (the sidebar is too narrow for them side by
-   side, as in the batch-edit bar), with the AI commit action -- the panel's
-   primary action -- right below. */
-.git-agent-picker { display: flex; flex-direction: column; gap: 6px; }
-.git-agent-picker .agent-harness-select,
-.git-agent-picker .agent-model-select { width: 100%; max-width: none; }
-#git-generate-msg,
-.git-generate-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; height: 24px; padding: 0 8px;
-  border: 1px solid var(--accent); border-radius: var(--r);
-  background: var(--accent); color: var(--on-accent); font: 600 11px/1 var(--ui);
-  opacity: 1; cursor: pointer; transition: opacity .15s, background .15s;
-}
-#git-generate-msg:hover:not(:disabled),
-.git-generate-btn:hover:not(:disabled) { opacity: .9; }
-#git-generate-msg:disabled,
-.git-generate-btn:disabled { opacity: .5; cursor: default; }
-
-.git-commit-section { display: flex; flex-direction: column; gap: 6px; }
-.git-commit-section[hidden] { display: none; }
-
-.git-ai-row { display: flex; align-items: center; gap: 6px; width: 100%; }
-.git-ai-row #git-generate-msg,
-.git-ai-row .git-generate-btn { flex: 1; min-width: 0; }
-.git-nudge-btn {
-  flex: none; width: 24px; height: 24px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); border-radius: var(--r);
-  background: var(--bg3); color: var(--faint); cursor: pointer;
-  transition: color .15s, border-color .15s, background-color .15s;
-}
-.git-nudge-btn:hover {
-  color: var(--fg); border-color: var(--accent); background: var(--bg4);
-}
-
-.git-token-nudge {
-  display: flex; align-items: center; gap: 6px;
-  width: 100%; padding: 6px 8px; font: 11px var(--ui); color: var(--warn, #e5a50a);
-  background: var(--bg3); border: 1px solid var(--warn, #e5a50a); border-radius: var(--r);
-  cursor: pointer; text-align: left;
-}
-.git-token-nudge:hover { background: var(--bg4); }
-.git-token-nudge[hidden] { display: none; }
-.git-token-nudge svg { flex: none; }
 
 /* The panel's one place for git outcomes: a failed action, a pull that can't
    fast-forward (with the rebase/merge offer), an agent rebase running, and
@@ -560,6 +512,11 @@ a.cc-who:hover { color: var(--accent-fg); }
 .git-notice-text:empty { display: none; }
 .git-notice-text code { font: 11px var(--mono); color: var(--fg); }
 .git-notice-text .hint { display: block; margin-top: 3px; color: var(--faint); font-size: 10.5px; }
+/* Harness/model pickers stacked: the sidebar is too narrow for them side by side. */
+.git-agent-picker { display: flex; flex-direction: column; gap: 6px; }
+.git-agent-picker[hidden] { display: none; }
+.git-agent-picker .agent-harness-select,
+.git-agent-picker .agent-model-select { width: 100%; max-width: none; }
 .git-notice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .git-notice-actions:empty { display: none; }
 .git-notice-actions button {
@@ -578,85 +535,125 @@ a.cc-who:hover { color: var(--accent-fg); }
   font: 10.5px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
-.git-clean-state {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 10px; font: 12px var(--ui); color: var(--faint);
-  background: var(--bg); border: 1px dashed var(--line); border-radius: var(--r);
-  user-select: none;
+/* ---------- commit graph (web/src/gitgraph.js) ----------
+   The panel body's last item: it takes the height the commit area leaves and
+   scrolls its own list, down to a floor below which the body scrolls instead.
+   It bleeds to the panel's edges so rows read like the tree's. */
+.git-graph {
+  flex: 1 1 auto; min-height: 150px; display: flex; flex-direction: column;
+  margin: 2px -12px -8px; border-top: 1px solid var(--line);
 }
-.git-clean-state[hidden] { display: none; }
-.git-clean-state svg { color: var(--accent); flex: none; }
+.gg-head {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 6px 0 12px; user-select: none;
+}
+.gg-head .grow { flex: 1; min-width: 0; }
+.gg-title {
+  flex: none; font: 600 11px var(--ui); color: var(--dim);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+/* The ref outgoing/incoming are measured against: without it they are ambiguous. */
+.gg-upstream {
+  flex: 0 1 auto; min-width: 0; font: 10.5px var(--mono); color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gg-tool {
+  flex: none; display: inline-flex; align-items: center; gap: 2px;
+  height: 20px; padding: 0 4px; border-radius: var(--r); color: var(--dim);
+}
+.gg-tool:hover:not(:disabled) { color: var(--fg); background: var(--bg3); }
+.gg-tool:disabled { opacity: .4; cursor: default; }
+.gg-tool:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.gg-tool svg { display: block; }
+.gg-n { font: 600 10px/1 var(--mono); }
+.gg-n:empty { display: none; }
+.gg-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 6px; }
+.gg-empty { padding: 6px 12px; font: 11px var(--ui); color: var(--faint); }
 
-.git-recent-commits {
-  margin-top: 4px; display: flex; flex-direction: column; gap: 2px;
-  border-top: 1px solid var(--line); padding-top: 8px;
+.gg-row, .gg-group {
+  display: flex; align-items: center; gap: 6px; height: 22px;
+  padding: 0 8px 0 4px; white-space: nowrap; user-select: none;
 }
-.git-recent-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 2px;
+.gg-row { cursor: pointer; }
+.gg-row:hover { background: var(--bg3); }
+.gg-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* Lanes: one colour per lane, read from the theme's own palette. */
+.gg-lanes { flex: none; display: block; overflow: hidden; }
+.gg-lanes path, .gg-lanes line { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.gg-node { fill: currentColor; }
+.gg-node-head, .gg-node-merge { fill: var(--bg2); stroke: currentColor; stroke-width: 1.5; }
+.gg-node-head { stroke-width: 2; }
+.gg-row:hover .gg-node-head, .gg-row:hover .gg-node-merge { fill: var(--bg3); }
+/* Adjacent lanes get unlike hues: several themes reuse the accent as --k or --nf. */
+.gg-c0 { color: var(--accent); }
+.gg-c1 { color: var(--s); }
+.gg-c2 { color: var(--m); }
+.gg-c3 { color: var(--nf); }
+.gg-c4 { color: var(--o); }
+.gg-c5 { color: var(--k); }
+
+/* The meta shrinks first, then the subject; badges keep their short names
+   (a tag cut down to "v…" says nothing) and only drop off at the end. */
+.gg-subj {
+  flex: 0 2 auto; min-width: 48px; font-size: 12.5px; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis;
 }
-.git-recent-title {
-  font: 600 11px var(--ui); color: var(--faint); text-transform: uppercase; letter-spacing: 0.5px;
+.gg-in .gg-subj { color: var(--dim); }
+.gg-meta {
+  flex: 0 4 auto; min-width: 0; font-size: 11px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis;
 }
-.git-commits-list {
-  display: flex; flex-direction: column; gap: 2px;
+.gg-refs { flex: 0 0 auto; max-width: 55%; margin-left: auto; display: flex; gap: 3px; overflow: hidden; }
+.gg-ref {
+  flex: none; max-width: 96px; padding: 0 6px;
+  border: 1px solid var(--line); border-radius: 8px;
+  font: 10.5px/15px var(--ui); color: var(--dim);
+  overflow: hidden; text-overflow: ellipsis;
 }
-.git-commits-empty {
-  font: 11px var(--ui); color: var(--faint); text-align: center; padding: 6px 0;
+.gg-ref-head { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.gg-ref-remote { color: var(--faint); }
+.gg-ref-tag { border-style: dashed; }
+/* Shown on hover and focus only: the row has no room for it otherwise. */
+.gg-sha {
+  display: none; flex: none; margin-left: auto; padding: 0 4px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  color: var(--dim); font: 10.5px/1.4 var(--mono); cursor: copy;
 }
-.git-commit-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 3px 6px; border-radius: var(--r);
-  cursor: pointer; user-select: none;
-  transition: background .12s, color .12s;
+.gg-refs + .gg-sha { margin-left: 0; }
+.gg-row:hover .gg-sha, .gg-row:focus-visible .gg-sha { display: inline-block; }
+.gg-sha:hover { color: var(--accent); border-color: var(--accent); }
+
+/* A commit a chat made on its own: ✳ before the subject, and a warning ring
+   round its node until someone marks it reviewed. */
+.gg-agent { flex: none; font: 600 11px/1 var(--ui); color: var(--gi); }
+.gg-agent.unreviewed { color: var(--warn, #e5a50a); }
+.gg-lanes .gg-unreviewed { fill: none; stroke: var(--warn, #e5a50a); stroke-width: 1.5; }
+
+/* "Outgoing · 2 to push" / "Incoming · 3": not commits, so not clickable. */
+.gg-group {
+  font: 600 10.5px var(--ui); color: var(--dim); cursor: default;
+  text-transform: uppercase; letter-spacing: .04em;
 }
-.git-commit-row:hover {
-  background: var(--bg3);
-}
-.git-commit-icon {
-  flex: none; color: var(--accent); opacity: .8;
-}
-.git-commit-row:hover .git-commit-icon {
-  opacity: 1;
-}
-.git-commit-msg-text {
-  flex: 1; min-width: 0; font: 11.5px var(--ui); color: var(--fg);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.4;
-}
-.git-commit-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.git-commit-caret {
-  flex: none; color: var(--faint); transition: transform .12s;
-}
-.git-commit.expanded .git-commit-caret { transform: rotate(90deg); color: var(--fg); }
-.git-commit-sha {
-  flex: none; padding: 0 4px; border: 1px solid transparent; border-radius: var(--r);
-  background: none; color: var(--faint); font: 10.5px/1.5 var(--mono); cursor: copy;
-}
-.git-commit-row:hover .git-commit-sha { color: var(--dim); border-color: var(--line); }
-.git-commit-sha:hover { color: var(--accent) !important; border-color: var(--accent) !important; }
-.git-commit-files {
-  display: flex; flex-direction: column; gap: 1px;
-  margin: 1px 0 4px 13px; padding-left: 8px; border-left: 1px solid var(--line);
-}
-.git-commit-files[hidden] { display: none; }
-.git-commit-meta, .git-commit-note {
-  font: 10.5px/1.5 var(--ui); color: var(--faint); padding: 1px 6px 3px;
+.gg-group-icon { display: inline-flex; color: var(--accent); }
+.gg-group-in .gg-group-icon { color: var(--accent-fg); }
+.gg-group-count { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--faint); }
+
+/* An expanded commit's files sit right of the graph, its lanes running on beside them. */
+.gg-files { position: relative; padding-bottom: 2px; }
+.gg-pass { position: absolute; left: 4px; top: 0; height: 100%; }
+.gg-note {
+  padding: 1px 6px 3px; font: 10.5px/1.5 var(--ui); color: var(--faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* File rows are the shared .up-file ones (commitfiles.js); these only fit
-   them under the commit's indent. */
-.git-commit-files .up-file { padding-left: 6px; border-radius: var(--r); }
-.git-see-all-wrap {
-  padding: 3px 6px 2px;
-}
-.git-see-all-commits {
+.gg-files .up-file, .gg-files .up-more { padding-left: 6px; border-radius: var(--r); }
+
+.gg-foot { display: flex; align-items: center; gap: 12px; padding: 4px 12px 0; }
+.gg-load, .gg-open {
   font: 11px var(--ui); color: var(--faint);
   text-decoration: underline; text-underline-offset: 2px;
-  cursor: pointer; transition: color .15s;
 }
-.git-see-all-commits:hover {
-  color: var(--fg);
-}
+.gg-load:hover, .gg-open:hover { color: var(--fg); }
 
 /* ---------- search panel ---------- */
 .search-form { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -1160,6 +1157,25 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
 .diff-commit-strip .gs.git-A { color: var(--gi); }
 .diff-commit-strip .gs.git-D { color: var(--gd); }
 .dcs-path { min-width: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A chat turn's snapshot or an agent's commit: whose it is, the prompt, and
+   the review toggle. The prompt gives way first. */
+.dcs-turn {
+  flex: 0 1 auto; min-width: 0; max-width: 30%; display: inline-flex; align-items: center; gap: 5px;
+  font: 600 11px var(--ui); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dcs-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.dcs-prompt {
+  flex: 1 1 0; min-width: 0; font: italic 11px var(--ui); color: var(--faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dcs-review {
+  flex: none; height: 20px; padding: 0 8px; border: 1px solid var(--warn, #e5a50a); border-radius: var(--r);
+  background: var(--bg); color: var(--warn, #e5a50a); font: 600 11px var(--ui); cursor: pointer; white-space: nowrap;
+}
+.dcs-review:hover:not(:disabled) { background: color-mix(in srgb, var(--warn, #e5a50a) 12%, transparent); }
+.dcs-review[aria-pressed="true"] { border-color: var(--line); color: var(--gi); }
+.dcs-review[aria-pressed="true"]:hover:not(:disabled) { background: var(--bg4); }
+.dcs-review:disabled { opacity: .5; cursor: default; }
 .diff-commit-strip .grow { flex: 1; }
 .dcs-step {
   flex: none; width: 22px; height: 20px; padding: 0;

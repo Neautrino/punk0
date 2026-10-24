@@ -180,21 +180,23 @@ function renderDiff(d) {
   diffContent.replaceChildren();
   const frag = document.createDocumentFragment();
   if (d.diffRef) {
-    /* Pinned to one commit by the Unpushed sidebar section, or a thread turn
+    /* Pinned to one commit by the git panel's commit graph (a chat turn's
+       snapshot or an agent's commit among them), or a thread turn
        snapshot range (diffBase..diffRef). Its line numbers are that commit's,
        not the working tree's, so nothing here is a review target
        (reviewable=false) -- see anchor() in difftable.js. */
     const hunks = d.diffHunks || [];
+    const label = d.turnLabel || '';
     if (!hunks.length) {
       const p = document.createElement('div');
       p.className = 'diff-empty';
-      p.textContent = (d.turnLabel ? d.turnLabel : 'This commit') + ' made no change to ' + d.name + '.';
+      p.textContent = (label || 'This commit') + ' made no change to ' + d.name + '.';
       diffContent.append(p);
       return;
     }
     frag.append(d.turnFiles ? reviewStrip(d) : commitStrip(d));
-    const title = d.turnLabel ? d.turnLabel : ('In commit ' + d.diffRef.slice(0, 7));
-    const sub = d.turnLabel ? 'snapshot diff for this agent turn' : 'this commit only, not the working tree';
+    const title = label || ('In commit ' + d.diffRef.slice(0, 7));
+    const sub = d.turnLabel ? 'snapshot diff for this agent turn' : turn?.kind === 'turn' ? 'what this chat turn changed' : 'this commit only, not the working tree';
     frag.append(createDiffSection(d, 'commit', title, sub,
       (bodyEl) => appendHunks(bodyEl, hunks, d.diffMode, false)));
     diffContent.append(frag);
@@ -342,7 +344,10 @@ function commitStepTarget(files, i, dir) {
 }
 
 /* Where a pinned tab's file sits in its commit, with ‹ › to step through the
-   rest. The file list is fetched on first need and filled in when it lands. */
+   rest. The file list is fetched on first need and filled in when it lands.
+   When the commit is a chat turn's snapshot or an agent's own commit (the
+   turn ledger, turns.js), the strip leads with the turn and its prompt and
+   carries the "Mark reviewed" toggle. */
 function commitStrip(d) {
   const el = document.createElement('div');
   el.className = 'diff-commit-strip';
@@ -367,7 +372,6 @@ function commitStrip(d) {
   else loadCommitFiles(d.diffRef).then(files => { if (el.isConnected || doc_() === d) fill(files); }, () => el.remove());
   return el;
 }
-
 // The working-tree line number of whichever diff row currently sits at the
 // top of the scrolled viewport -- what "Source" should land on so switching
 // out of diff view keeps you where you were reading, not wherever the
@@ -838,6 +842,12 @@ export function initDiff() {
     if (reviewStep) {
       e.stopPropagation();
       if (!reviewStep.disabled) stepChangedFile(+reviewStep.dataset.reviewStep);
+      return;
+    }
+    const review = e.target.closest('[data-ledger-review]');
+    if (review) {
+      e.stopPropagation();
+      if (!review.disabled) toggleReviewed(review);
       return;
     }
     const step = e.target.closest('[data-commit-step]');

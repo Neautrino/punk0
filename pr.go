@@ -1164,6 +1164,80 @@ func (s *Server) forgeMeta() map[string]any {
 	}
 }
 
+// incomingTTL is how long an incoming pull request list is reused.
+const incomingTTL = 60 * time.Second
+
+// incomingPRs is what GET /api/git/incoming-prs answers. Reason says why
+// the list is not available: no-forge (no remote on a known forge),
+// no-branch (HEAD detached), no-token, or error (the forge refused or did
+// not answer); "" when it is.
+type incomingPRs struct {
+	Available bool        `json:"available"`
+	Base      string      `json:"base"`
+	PRs       []PRSummary `json:"prs"`
+	Reason    string      `json:"reason"`
+}
+
+// incomingCache is the last list fetched, for one repository and branch,
+// under token generation gen.
+type incomingCache struct {
+	key  string
+	gen  int64
+	at   time.Time
+	list incomingPRs
+}
+
+// handleIncomingPRs serves GET /api/git/incoming-prs: the open pull
+// requests into the checked-out branch on the forge origin points at. Lists
+// are reused for incomingTTL, the forge is given 10 s, and only requests to
+// this route wait for one in flight.
+func (s *Server) handleIncomingPRs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		fail(w, http.StatusMethodNotAllowed, "GET only")
+		return
+	}
+	root := s.ix.Root()
+	out := incomingPRs{PRs: []PRSummary{}}
+	if !gitAvailable(root) {
+		out.Reason = "no-forge"
+		writeJSON(w, out)
+		return
+	}
+	if out.Base = gitCurrentBranch(root); out.Base == "" || out.Base == "HEAD" {
+		out.Base, out.Reason = "", "no-branch"
+		writeJSON(w, out)
+		return
+	}
+	provider, repo, err := originRepo(root)
+	if err != nil {
+		out.Reason = "no-forge"
+		writeJSON(w, out)
+		return
+	}
+	key := strings.Join([]string{provider.Name(), repo.Host, repo.Owner, repo.Repo, out.Base}, "\x00")
+	s.incomingMu.Lock()
+	defer s.incomingMu.Unlock()
+	gen := s.incomingGen.Load()
+	if c := s.incoming; c.key == key && c.gen == gen && time.Since(c.at) < incomingTTL {
+		writeJSON(w, c.list)
+		return
+	}
+	if token, _ := provider.ResolveToken(settings.Read(), repo); token == "" {
+		out.Reason = "no-token"
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		prs, err := provider.ListOpenPRs(ctx, repo, token, out.Base)
+		cancel()
+		if err != nil {
+			out.Reason = "error"
+		} else {
+			out.Available, out.PRs = true, prs
+		}
+	}
+	s.incoming = incomingCache{key: key, gen: gen, at: time.Now(), list: out}
+	writeJSON(w, out)
+}
+
 // handleForgeConnect takes a token from the Connect dialog. In a PR review it
 // is checked by reading the PR with it; one the forge rejects is never kept.
 // It is saved to settings unless that would replace a token saved for

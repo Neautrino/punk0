@@ -87,6 +87,13 @@ type Server struct {
 
 	lastReq atomic.Int64 // unix nanos of the most recent request
 
+	// incoming caches /api/git/incoming-prs (pr.go) for incomingTTL; the
+	// mutex is held across a forge request so polls never stack them. A
+	// token saved through the Connect dialog bumps incomingGen, dropping it.
+	incomingMu  sync.Mutex
+	incoming    incomingCache
+	incomingGen atomic.Int64
+
 	// streamsDone closes when the HTTP server starts shutting down, so event
 	// streams end their responses cleanly instead of being cut when we exit.
 	streamsDone chan struct{}
@@ -169,13 +176,16 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/git/discard-file"), s.handleGitDiscardFile)
 	s.mux.HandleFunc(s.routePath("/api/git/commit"), s.handleGitCommit)
 	s.mux.HandleFunc(s.routePath("/api/git/commit-message"), s.handleGitCommitMessage)
+	s.mux.HandleFunc(s.routePath("/api/git/commit-plan"), s.handleGitCommitPlan)
+	s.mux.HandleFunc(s.routePath("/api/git/commit-plan/apply"), s.handleGitCommitPlanApply)
+	s.mux.HandleFunc(s.routePath("/api/git/undo-commit"), s.handleGitUndoCommit)
+	s.mux.HandleFunc(s.routePath("/api/git/preflight"), s.handleGitPreflight)
 	s.mux.HandleFunc(s.routePath("/api/git/push"), s.handleGitPush)
 	s.mux.HandleFunc(s.routePath("/api/git/pull"), s.handleGitPull)
 	s.mux.HandleFunc(s.routePath("/api/git/sync-agent"), s.handleGitSyncAgent)
 	s.mux.HandleFunc(s.routePath("/api/git/sync-state"), s.handleGitSyncState)
 	s.mux.HandleFunc(s.routePath("/api/git/abort"), s.handleGitAbort)
 	s.mux.HandleFunc(s.routePath("/api/git/log"), s.handleGitLog)
-	s.mux.HandleFunc(s.routePath("/api/unpushed"), s.handleUnpushed)
 	s.mux.HandleFunc(s.routePath("/api/commitfiles"), s.handleCommitFiles)
 	s.mux.HandleFunc(s.routePath("/api/commitdetail"), s.handleCommitDetail)
 	s.mux.HandleFunc(s.routePath("/api/search"), s.handleSearch)
@@ -222,6 +232,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/pr/merge"), s.handlePRMerge)
 	s.mux.HandleFunc(s.routePath("/api/pr/merge-message"), s.handlePRMergeMessage)
 	s.mux.HandleFunc(s.routePath("/api/forge/connect"), s.handleForgeConnect)
+	s.mux.HandleFunc(s.routePath("/api/git/incoming-prs"), s.handleIncomingPRs)
 	s.mux.HandleFunc(s.routePath("/api/session"), s.handleSession)
 }
 
@@ -1988,45 +1999,133 @@ func (s *Server) handleGitDiscardFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// handleGitCommit commits whatever is currently staged (POST {message}).
+// gitOrFail refuses a git action outside a repository (or under -no-git).
+func gitOrFail(w http.ResponseWriter, root string) bool {
+	if gitAvailable(root) {
+		return true
+	}
+	fail(w, http.StatusBadRequest, "not a git repository")
+	return false
+}
+
+// pushBoundary is the rev HEAD's commits count as pushed against, and how
+// to name it: the upstream (@{u}), or in a PR review the PR head as last
+// pushed. Both are "" when there is none.
+func (s *Server) pushBoundary(root string) (rev, label string) {
+	if s.pr != nil {
+		s.pr.mu.Lock()
+		head, branch, number := s.pr.remoteHead(), s.pr.meta.HeadRef, s.pr.meta.Number
+		s.pr.mu.Unlock()
+		if !validSHA(head) {
+			return "", ""
+		}
+		return head, fmt.Sprintf("PR #%d head (%s)", number, branch)
+	}
+	up := gitUpstreamRef(root)
+	if up == "" {
+		return "", ""
+	}
+	return "@{u}", up
+}
+
+// headPushed reports whether HEAD is already on the push boundary, so
+// rewriting it (amend, undo) would rewrite published history. With no
+// boundary nothing is published yet.
+func (s *Server) headPushed(root string) bool {
+	rev, _ := s.pushBoundary(root)
+	return rev != "" && gitIsAncestor(root, "HEAD", rev)
+}
+
+// commitMessageInstruction is the user's git.commitMessageInstruction
+// setting, "" when unset.
+func commitMessageInstruction() string {
+	if cfg := settings.Read(); cfg.GitCommitMessageInstruction != nil {
+		return strings.TrimSpace(*cfg.GitCommitMessageInstruction)
+	}
+	return ""
+}
+
+// handleGitCommit commits what is staged (POST {message, amend}). Nothing is
+// ever staged on the user's behalf: committing everything goes through a
+// reviewed commit plan instead. amend rewrites HEAD with the index as it is
+// (an empty message keeps HEAD's), refused once HEAD is pushed.
 func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
 	}
 	var body struct {
 		Message string `json:"message"`
+		Amend   bool   `json:"amend"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil || strings.TrimSpace(body.Message) == "" {
-		fail(w, http.StatusBadRequest, "message is required")
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
 	root := s.ix.Root()
-	if len(gitStagedPaths(root)) == 0 && gitHasUncommittedChanges(root) {
-		_ = gitStage(root, ".")
+	if !gitOrFail(w, root) {
+		return
 	}
-	if err := gitCommit(root, strings.TrimSpace(body.Message)); err != nil {
+	msg := strings.TrimSpace(body.Message)
+	var err error
+	if body.Amend {
+		if _, ok := gitHeadParents(root); !ok {
+			fail(w, http.StatusConflict, "there is no commit to amend")
+			return
+		}
+		if s.headPushed(root) {
+			fail(w, http.StatusConflict, "the last commit is already pushed")
+			return
+		}
+		err = gitAmend(root, msg)
+	} else {
+		if msg == "" {
+			fail(w, http.StatusBadRequest, "message is required")
+			return
+		}
+		if len(gitStagedPaths(root)) == 0 {
+			fail(w, http.StatusBadRequest, "nothing staged to commit")
+			return
+		}
+		err = gitCommit(root, msg)
+	}
+	if err != nil {
 		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	if s.gitWatcher != nil {
 		s.gitWatcher.Trigger()
 	}
-	s.tel.Track("git_commit", nil)
-	writeJSON(w, map[string]any{"ok": true})
+	s.tel.Track("git_commit", map[string]any{"amend": body.Amend})
+	hash, subject := gitHeadSummary(root)
+	writeJSON(w, map[string]any{"ok": true, "hash": hash, "subject": subject})
 }
 
 // handleGitCommitMessage dispatches the selected coding harness to write a
-// commit message for the currently staged diff, honoring the
-// git.commitMessageInstruction setting. Returns an agent job the frontend
-// polls via the existing /api/agent/job, the same as an inline edit.
+// commit message for the staged diff (POST), honoring the
+// git.commitMessageInstruction setting, and returns an agent job the
+// frontend polls via /api/agent/job. GET ?job=ID reads the finished job's
+// message.
 func (s *Server) handleGitCommitMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		answer, ok := s.promptJobAnswer(w, r)
+		if !ok {
+			return
+		}
+		msg := parseCommitMessage(answer)
+		if msg == "" {
+			fail(w, http.StatusUnprocessableEntity, "the harness returned an empty message")
+			return
+		}
+		writeJSON(w, map[string]any{"message": msg})
+		return
+	}
 	if !localPost(w, r) {
 		return
 	}
 	if !s.agentOrFail(w) {
 		return
 	}
-	// Without a harness to run, leave the index as it is.
+	// Without a harness to run, refuse before reading the repository at all.
 	if s.agent.Name() == "" {
 		fail(w, http.StatusBadRequest, errAgentNone.Error())
 		return
@@ -2034,26 +2133,16 @@ func (s *Server) handleGitCommitMessage(w http.ResponseWriter, r *http.Request) 
 	root := s.ix.Root()
 	files := gitStagedFiles(root)
 	if len(files) == 0 {
-		// Auto-stage all uncommitted changes if nothing is staged
-		if gitHasUncommittedChanges(root) {
-			_ = gitStage(root, ".")
-			files = gitStagedFiles(root)
-			if s.gitWatcher != nil {
-				s.gitWatcher.Trigger()
-			}
-		}
-	}
-	if len(files) == 0 {
 		fail(w, http.StatusBadRequest, "nothing staged to generate a message for")
 		return
 	}
-	stat := gitStagedStat(root)
-	diff := gitStagedDiff(root)
-	instruction := ""
-	if cfg := settings.Read(); cfg.GitCommitMessageInstruction != nil {
-		instruction = strings.TrimSpace(*cfg.GitCommitMessageInstruction)
-	}
-	job, err := s.agent.StartPrompt("commit message", commitMessagePrompt(files, stat, diff, instruction))
+	prompt := commitMessagePrompt(files, gitStagedStat(root), gitStagedDiff(root), commitMessageInstruction())
+	s.startPromptJob(w, "commit message", prompt)
+}
+
+// startPromptJob dispatches a text-only prompt and answers with its job.
+func (s *Server) startPromptJob(w http.ResponseWriter, label, prompt string) {
+	job, err := s.agent.StartPrompt(label, prompt)
 	if err != nil {
 		code := http.StatusBadGateway
 		if errors.Is(err, errAgentNone) {
@@ -2063,6 +2152,245 @@ func (s *Server) handleGitCommitMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, job)
+}
+
+// promptJobAnswer returns the answer (stdout) of the finished prompt job
+// ?job=ID, failing the request while it runs or when the answer can't be
+// used: the job failed, or it edited files when it was only asked to write.
+func (s *Server) promptJobAnswer(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if !s.agentOrFail(w) {
+		return "", false
+	}
+	id, err := strconv.ParseInt(r.URL.Query().Get("job"), 10, 64)
+	if err != nil || id <= 0 {
+		fail(w, http.StatusBadRequest, "job is required")
+		return "", false
+	}
+	job := s.agent.Job(id)
+	switch {
+	case job == nil:
+		fail(w, http.StatusNotFound, "unknown job")
+	case job.Running:
+		fail(w, http.StatusConflict, "still running")
+	case job.Error != "":
+		fail(w, http.StatusUnprocessableEntity, job.Error)
+	case len(job.Changed) > 0:
+		fail(w, http.StatusUnprocessableEntity, "the harness edited files instead of only answering: "+strings.Join(job.Changed, ", "))
+	default:
+		return job.Stdout, true
+	}
+	return "", false
+}
+
+// handleGitCommitPlan dispatches the harness to group every uncommitted
+// change into one or more commits for the user to review (POST {hint}); px0
+// commits them itself through /api/git/commit-plan/apply. Only with nothing
+// staged: a staged set is a commit the user already chose. GET ?job=ID
+// reads the finished plan, checked against what is changed now.
+func (s *Server) handleGitCommitPlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		answer, ok := s.promptJobAnswer(w, r)
+		if !ok {
+			return
+		}
+		plan, err := parseCommitPlan(answer, gitChangedPaths(s.ix.Root()))
+		if err != nil {
+			fail(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+		writeJSON(w, plan)
+		return
+	}
+	if !localPost(w, r) {
+		return
+	}
+	if !s.agentOrFail(w) {
+		return
+	}
+	if s.agent.Name() == "" {
+		fail(w, http.StatusBadRequest, errAgentNone.Error())
+		return
+	}
+	var body struct {
+		Hint string `json:"hint"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	root := s.ix.Root()
+	if !gitOrFail(w, root) {
+		return
+	}
+	if gitHasStaged(root) {
+		fail(w, http.StatusConflict, "stage nothing, or commit the staged files first")
+		return
+	}
+	changes := gitChangedPaths(root)
+	if len(changes) == 0 {
+		fail(w, http.StatusBadRequest, "nothing to commit")
+		return
+	}
+	var untracked []string
+	for _, c := range changes {
+		if c.Status == "??" {
+			untracked = append(untracked, c.Path)
+		}
+	}
+	prompt := commitPlanPrompt(changes, gitDiffStat(root, "HEAD"), gitPromptDiff(root, "HEAD"),
+		gitUntrackedHeads(root, untracked), commitMessageInstruction(), strings.TrimSpace(body.Hint))
+	s.startPromptJob(w, "commit plan", prompt)
+}
+
+// handleGitCommitPlanApply commits a reviewed plan (POST {commits:[{message,
+// files}]}): each group committed in order with `git commit --only`, its
+// untracked files added first, so whatever else is staged stays staged and
+// out of the plan's commits. A group that fails has its added files unstaged
+// again and the rest aren't attempted; what was committed stays, and the
+// answer says how far it got.
+func (s *Server) handleGitCommitPlanApply(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Commits []struct {
+			Message string   `json:"message"`
+			Files   []string `json:"files"`
+		} `json:"commits"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if len(body.Commits) == 0 {
+		fail(w, http.StatusBadRequest, "the plan has no commits")
+		return
+	}
+	root := s.ix.Root()
+	if !gitOrFail(w, root) {
+		return
+	}
+	status := map[string]string{}
+	for _, c := range gitChangedPaths(root) {
+		status[c.Path] = c.Status
+	}
+	planned := map[string]bool{}
+	for _, g := range body.Commits {
+		if strings.TrimSpace(g.Message) == "" || len(g.Files) == 0 {
+			fail(w, http.StatusBadRequest, "every commit needs a message and files")
+			return
+		}
+		for _, p := range g.Files {
+			if _, ok := status[p]; !ok {
+				fail(w, http.StatusBadRequest, p+" has no changes to commit")
+				return
+			}
+			if planned[p] {
+				fail(w, http.StatusBadRequest, p+" is in more than one commit")
+				return
+			}
+			planned[p] = true
+		}
+	}
+	type committed struct {
+		Hash    string `json:"hash"`
+		Subject string `json:"subject"`
+	}
+	done := []committed{}
+	defer func() {
+		if s.gitWatcher != nil {
+			s.gitWatcher.Trigger()
+		}
+	}()
+	for _, g := range body.Commits {
+		var untracked []string
+		for _, p := range g.Files {
+			if status[p] == "??" {
+				untracked = append(untracked, p)
+			}
+		}
+		var err error
+		if len(untracked) > 0 {
+			err = gitStagePaths(root, untracked)
+		}
+		if err == nil {
+			err = gitCommitOnly(root, strings.TrimSpace(g.Message), g.Files)
+		}
+		if err != nil {
+			if len(untracked) > 0 {
+				_ = gitUnstagePaths(root, untracked)
+			}
+			writeJSON(w, map[string]any{"ok": false, "done": done, "error": err.Error()})
+			return
+		}
+		hash, subject := gitHeadSummary(root)
+		done = append(done, committed{hash, subject})
+	}
+	s.tel.Track("git_commit_plan", map[string]any{"commits": len(done)})
+	writeJSON(w, map[string]any{"ok": true, "done": done})
+}
+
+// handleGitUndoCommit takes the last commit back (POST): the branch moves
+// back one commit with its changes left staged, and the message comes back
+// for the message box. Refused for a pushed commit, a merge, or the first
+// commit, which a soft reset can't take back cleanly.
+func (s *Server) handleGitUndoCommit(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	root := s.ix.Root()
+	if !gitOrFail(w, root) {
+		return
+	}
+	parents, ok := gitHeadParents(root)
+	switch {
+	case !ok:
+		fail(w, http.StatusConflict, "there is no commit to undo")
+		return
+	case s.headPushed(root):
+		fail(w, http.StatusConflict, "the last commit is already pushed")
+		return
+	case len(parents) > 1:
+		fail(w, http.StatusConflict, "a merge commit can't be undone")
+		return
+	case len(parents) == 0:
+		fail(w, http.StatusConflict, "the first commit can't be undone")
+		return
+	}
+	msg, err := gitUndoCommit(root)
+	if err != nil {
+		fail(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if s.gitWatcher != nil {
+		s.gitWatcher.Trigger()
+	}
+	s.tel.Track("git_undo_commit", nil)
+	writeJSON(w, map[string]any{"ok": true, "message": msg})
+}
+
+// handleGitPreflight flags paths about to be committed that probably
+// shouldn't be (GET ?scope=staged|all): credentials and files over 1 MiB.
+// Empty outside a repository, like the other git reads.
+func (s *Server) handleGitPreflight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	root := s.ix.Root()
+	var paths []string
+	switch r.URL.Query().Get("scope") {
+	case "staged":
+		paths = gitStagedFiles(root)
+	case "all":
+		for _, c := range gitChangedPaths(root) {
+			paths = append(paths, c.Path)
+		}
+	default:
+		fail(w, http.StatusBadRequest, "scope must be staged or all")
+		return
+	}
+	writeJSON(w, map[string]any{"warnings": gitPreflight(root, paths)})
 }
 
 // handleGitPush pushes the current branch to its remote -- or, in a PR
@@ -2367,63 +2695,29 @@ func (s *Server) handleGitAbort(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// handleGitLog returns recent commits from HEAD (default 5).
+// handleGitLog returns the commit graph: up to limit (default 30, max 200)
+// commits from HEAD and its push boundary, so incoming commits are drawn
+// too, each marked outgoing (unpushed) or incoming. upstream names the
+// boundary, "" when there is none -- no guessed fallback branch, since
+// measuring against the wrong ref is worse than marking nothing.
 func (s *Server) handleGitLog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		fail(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	limit := 5
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 50 {
-			limit = n
-		}
+	limit := 30
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		limit = min(n, 200)
 	}
-	branch := gitCurrentBranch(s.ix.Root())
-	commits := gitRecentCommits(s.ix.Root(), limit)
-	commitsURL := gitCommitsWebURL(s.ix.Root(), branch)
+	root := s.ix.Root()
+	rev, upstream := s.pushBoundary(root)
+	commits, more := gitGraphLog(root, rev, limit)
 	writeJSON(w, map[string]any{
 		"commits":    commits,
-		"commitsUrl": commitsURL,
-	})
-}
-
-// handleUnpushed lists the commits that exist locally but not on the tracking
-// branch (@{u}..HEAD), newest first, plus the name of that tracking branch so
-// the sidebar can say what the list is measured against. available is false
-// (200, empty list) when git is off, no upstream is configured, or nothing is
-// ahead -- there is no guessed fallback branch, since measuring against the
-// wrong ref is worse than showing nothing.
-func (s *Server) handleUnpushed(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	limit := 0
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil {
-			limit = n
-		}
-	}
-	var upstream string
-	var commits []UnpushedCommit
-	if s.pr != nil {
-		// Detached PR checkout: your commits are everything past the PR head.
-		s.pr.mu.Lock()
-		head, branch := s.pr.remoteHead(), s.pr.meta.HeadRef
-		s.pr.mu.Unlock()
-		commits = gitCommitsSince(s.ix.Root(), head, limit)
-		upstream = fmt.Sprintf("PR #%d head (%s)", s.pr.meta.Number, branch)
-	} else {
-		upstream, commits = gitUnpushedCommits(s.ix.Root(), limit)
-	}
-	if commits == nil {
-		commits = []UnpushedCommit{}
-	}
-	writeJSON(w, map[string]any{
-		"available": upstream != "" && len(commits) > 0,
-		"upstream":  upstream,
-		"commits":   commits,
+		"commitsUrl": gitCommitsWebURL(root, gitCurrentBranch(root)),
+		"upstream":   upstream,
+		"head":       gitHeadSHA(root),
+		"more":       more,
 	})
 }
 
