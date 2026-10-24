@@ -136,7 +136,7 @@ async function loadFile(f) {
     const j = res.data;
     f.doc = {
       lang: j.lang, total: j.total, lines: new Array(j.total), chunks: new Set(), pending: new Set(),
-      eol: j.eol || '', encoding: j.encoding || '', added: j.added || 0, deleted: j.deleted || 0,
+      eol: j.eol || '', encoding: j.encoding || '', added: j.linesAdded || 0, deleted: j.linesDeleted || 0,
       lspMissing: j.lsp?.missing || '',
     };
     takeChunk(f.doc, 0, j);

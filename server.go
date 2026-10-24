@@ -1379,7 +1379,9 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		"start": start, "lines": lines, "size": st.Size(),
 		"exact": exact, "refine": !exact && coming,
 		"eol": d.EOL, "encoding": d.Encoding,
-		"added": add, "deleted": del,
+		// linesAdded/linesDeleted, not added/deleted: "deleted" is the boolean
+		// the deleted-file response above sets, and a count would read as it.
+		"linesAdded": add, "linesDeleted": del,
 		"markdown":      render.IsMarkdown(rel),
 		"table":         table.IsTable(rel),
 		"diffAvailable": diffAvail,

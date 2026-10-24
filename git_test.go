@@ -346,15 +346,19 @@ func TestGitGutter(t *testing.T) {
 		t.Errorf("f.go diffAvailable = %v, want true", fileBody["diffAvailable"])
 	}
 	// bravo replaced, a line inserted, golf removed: +2 -2, as git --numstat.
-	if fileBody["added"] != 2.0 || fileBody["deleted"] != 2.0 {
-		t.Errorf("f.go added/deleted = %v/%v, want 2/2", fileBody["added"], fileBody["deleted"])
+	if fileBody["linesAdded"] != 2.0 || fileBody["linesDeleted"] != 2.0 {
+		t.Errorf("f.go linesAdded/linesDeleted = %v/%v, want 2/2", fileBody["linesAdded"], fileBody["linesDeleted"])
+	}
+	// A file that lost lines still exists: "deleted" means the file is gone.
+	if _, ok := fileBody["deleted"]; ok {
+		t.Errorf("f.go deleted = %v, want absent for a file on disk", fileBody["deleted"])
 	}
 	_, cleanBody := get(t, s, "/api/file?path=clean.go")
 	if cleanBody["diffAvailable"] != false {
 		t.Errorf("clean.go diffAvailable = %v, want false", cleanBody["diffAvailable"])
 	}
-	if cleanBody["added"] != 0.0 || cleanBody["deleted"] != 0.0 {
-		t.Errorf("clean.go added/deleted = %v/%v, want 0/0", cleanBody["added"], cleanBody["deleted"])
+	if cleanBody["linesAdded"] != 0.0 || cleanBody["linesDeleted"] != 0.0 {
+		t.Errorf("clean.go linesAdded/linesDeleted = %v/%v, want 0/0", cleanBody["linesAdded"], cleanBody["linesDeleted"])
 	}
 }
 
@@ -2531,8 +2535,8 @@ func TestDiffWholeFiles(t *testing.T) {
 	if h["oldStart"] != 0.0 || h["newStart"] != 1.0 || len(rows) != 1 || r["type"] != "add" || r["text"] != "untracked" {
 		t.Errorf("untracked hunk = %v, want @@ -0,0 +1,1 @@ adding 'untracked'", h)
 	}
-	if _, file := get(t, s, "/api/file?path=untr.go"); file["diffAvailable"] != true || file["added"] != 1.0 {
-		t.Errorf("untracked /api/file diffAvailable=%v added=%v, want true/1", file["diffAvailable"], file["added"])
+	if _, file := get(t, s, "/api/file?path=untr.go"); file["diffAvailable"] != true || file["linesAdded"] != 1.0 {
+		t.Errorf("untracked /api/file diffAvailable=%v linesAdded=%v, want true/1", file["diffAvailable"], file["linesAdded"])
 	}
 
 	if _, body = get(t, s, "/api/diff?path=add.go"); whole(body) != "added [unstage discard]" {
