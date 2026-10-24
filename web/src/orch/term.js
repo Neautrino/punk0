@@ -95,9 +95,27 @@ function boot() {
 
     const send = data => sock?.readyState === WebSocket.OPEN && sock.send(data);
     const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
-    term.onData(s => (ended ? connect() : send(enc.encode(s))));
+    term.onData(s => {
+      if (ended) return connect();
+      if (Date.now() - claimed > 1000) reclaim(); // typing here makes this the latest viewer
+      send(enc.encode(s));
+    });
     term.onBinary(s => send(Uint8Array.from(s, c => c.charCodeAt(0))));
     term.onResize(sendSize);
+    // Other pages (the editor's Terminal pane) may show this tab too, and its
+    // PTY has one size: the viewer that reported last (term.go). Report again
+    // whenever this one is used, so the agent draws at this pane's width.
+    let claimed = 0;
+    const reclaim = () => {
+      if (!termEl.clientWidth || !termEl.clientHeight) return;
+      fit.fit();
+      sendSize();
+      claimed = Date.now();
+    };
+    termEl.addEventListener('pointerdown', reclaim);
+    term.textarea?.addEventListener('focus', reclaim);
+    addEventListener('focus', reclaim);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reclaim());
     // xterm.js has no kitty keyboard protocol: send Shift+Enter as ESC CR
     // (Alt+Enter), which Claude Code reads as a newline.
     term.attachCustomKeyEventHandler(e => {

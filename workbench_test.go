@@ -900,4 +900,53 @@ func TestWorkspaceTabsList(t *testing.T) {
 	if len(res.Tabs) != 1 || res.Tabs[0].Kind != "shell" {
 		t.Fatalf("expected 1 shell tab, got %+v", res.Tabs)
 	}
+
+	// In editor mode, the client queries using wbItemID("dir", dir):
+	dirID := wbItemID("dir", repo)
+	var resDir struct {
+		Tabs []struct {
+			ID   string `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"tabs"`
+	}
+	getJSON(t, wb, "/api/workspaces/"+dirID+"/tabs", &resDir)
+	if len(resDir.Tabs) != 1 || resDir.Tabs[0].Kind != "shell" {
+		t.Fatalf("expected 1 shell tab via dirID, got %+v", resDir.Tabs)
+	}
+
+	// Add an agent tab via dirID
+	wClaude := reqJSON(t, wb, "POST", "/api/workspaces/"+dirID+"/tabs", `{"kind":"claude"}`)
+	if wClaude.Code != http.StatusOK {
+		t.Fatalf("add claude tab via dirID: %d %s", wClaude.Code, wClaude.Body.String())
+	}
+
+	var claudeTab struct {
+		ID   string `json:"id"`
+		Kind string `json:"kind"`
+	}
+	json.Unmarshal(wClaude.Body.Bytes(), &claudeTab)
+
+	// Add another agent tab (codex) via dirID
+	wCodex := reqJSON(t, wb, "POST", "/api/workspaces/"+dirID+"/tabs", `{"kind":"codex"}`)
+	if wCodex.Code != http.StatusOK {
+		t.Fatalf("add codex tab via dirID: %d %s", wCodex.Code, wCodex.Body.String())
+	}
+
+	// Verify all 3 tabs are listed
+	getJSON(t, wb, "/api/workspaces/"+dirID+"/tabs", &resDir)
+	if len(resDir.Tabs) != 3 {
+		t.Fatalf("expected 3 tabs, got %d", len(resDir.Tabs))
+	}
+
+	// Remove claude tab
+	wDel := reqJSON(t, wb, "DELETE", "/api/tabs/"+claudeTab.ID, "")
+	if wDel.Code != http.StatusOK {
+		t.Fatalf("delete tab: %d %s", wDel.Code, wDel.Body.String())
+	}
+
+	// Verify remaining 2 tabs
+	getJSON(t, wb, "/api/workspaces/"+dirID+"/tabs", &resDir)
+	if len(resDir.Tabs) != 2 {
+		t.Fatalf("expected 2 tabs after deletion, got %d", len(resDir.Tabs))
+	}
 }

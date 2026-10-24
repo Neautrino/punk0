@@ -882,6 +882,14 @@ func (r *Records) workspaceLocked(id string) (*Project, int) {
 			return p, i
 		}
 	}
+	for _, p := range r.projects {
+		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return wbItemID("dir", w.Dir) == id }); i >= 0 {
+			return p, i
+		}
+		if wbItemID("dir", p.Dir) == id && len(p.Workspaces) > 0 {
+			return p, 0
+		}
+	}
 	return nil, -1
 }
 

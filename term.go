@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,10 +56,20 @@ type Shell struct {
 	// nanoseconds; the idle reaper stops a tab nobody and nothing has used.
 	lastIO atomic.Int64
 
-	mu      sync.Mutex // guards out, viewers, exited
+	mu      sync.Mutex // guards out, viewers, sizes, exited
 	out     ring
 	viewers map[chan []byte]struct{}
-	exited  bool
+	// sizes is each viewer's last reported size, least recently reported
+	// first. One PTY has one size, so the viewer that reported last (a client
+	// reports again when focused) gets it, as tmux's window-size latest does;
+	// when that viewer detaches, the next most recent one's size comes back.
+	sizes  []viewerSize
+	exited bool
+}
+
+type viewerSize struct {
+	v          chan []byte
+	cols, rows uint16
 }
 
 // tabProcess is the program, arguments and environment startShell runs:
@@ -220,6 +231,7 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 	defer func() {
 		s.mu.Lock()
 		s.dropLocked(v)
+		s.forgetSizeLocked(v)
 		s.mu.Unlock()
 	}()
 
@@ -227,7 +239,7 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 	defer cancel()
 	go func() {
 		defer cancel()
-		s.input(ctx, conn)
+		s.input(ctx, conn, v)
 	}()
 
 	if len(backlog) > 0 && conn.Write(ctx, websocket.MessageBinary, backlog) != nil {
@@ -253,9 +265,9 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-// input writes browser keystrokes into the PTY and applies resizes until the
-// websocket closes.
-func (s *Shell) input(ctx context.Context, conn *websocket.Conn) {
+// input writes browser keystrokes into the PTY and applies viewer v's resizes
+// until the websocket closes.
+func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte) {
 	for {
 		typ, data, err := conn.Read(ctx)
 		if err != nil {
@@ -270,8 +282,30 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn) {
 		}
 		var msg struct{ Cols, Rows uint16 }
 		if json.Unmarshal(data, &msg) == nil && msg.Cols > 0 && msg.Rows > 0 {
-			setPTYSize(s.ptmx, msg.Cols, msg.Rows)
+			s.mu.Lock()
+			if _, live := s.viewers[v]; live { // a detached viewer's size must not come back
+				s.sizes = append(slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v }),
+					viewerSize{v, msg.Cols, msg.Rows})
+				setPTYSize(s.ptmx, msg.Cols, msg.Rows)
+			}
+			s.mu.Unlock()
 		}
+	}
+}
+
+// forgetSizeLocked drops detaching viewer v's size; if v had the PTY's size,
+// the most recent remaining viewer's size is applied, so a narrow viewer that
+// closes does not leave the others drawing at its width.
+func (s *Shell) forgetSizeLocked(v chan []byte) {
+	n := len(s.sizes)
+	if n == 0 {
+		return
+	}
+	wasCurrent := s.sizes[n-1].v == v
+	s.sizes = slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v })
+	if wasCurrent && len(s.sizes) > 0 && !s.exited {
+		z := s.sizes[len(s.sizes)-1]
+		setPTYSize(s.ptmx, z.cols, z.rows)
 	}
 }
 

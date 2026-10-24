@@ -150,6 +150,7 @@ export const LH = 20, CHUNK = 1000, OVERSCAN = 24;
  * @property {string} [version]
  * @property {string} [workspace]
  * @property {string} [workspaceId]
+ * @property {string} [workbench]
  * @property {number} [files]
  * @property {number} [indexMs]
  * @property {boolean} [git]
