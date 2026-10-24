@@ -19,8 +19,8 @@ This directory provides comprehensive documentation for all px0 user-facing feat
 | **Pull Request Review** | `px0 <pr-url>`, `Alt+R` | GitHub, GitLab, Gitea/Forgejo and Bitbucket Cloud: full-tree checkout, merge-base diffing, draft comments with Approve / Request Changes / Comment, AI conflict resolution, merging, and committing/pushing/pulling straight from the checkout | [Pull Request Review](github-pr-review.md) · [Getting Started](pr-review-getting-started.md) |
 | **Tips & Tricks System** | `?` / `#btn-help` | Interactive floating tip widget, inspector tab, and offline fallbacks for feature discoverability | [Tips System](tips-system.md) |
 | **Direct File Editing** | `Cmd/Ctrl+E`, `Cmd/Ctrl+S` | Edit and save a file in the browser, in-editor find (`Cmd/Ctrl+F`), create new files and folders, word wrap and unsaved-change protection | [File Editing](file-editing.md) |
-| **Coding Agent Editing** | `Alt+E`, Right-click | Delegating edits to Claude Code, Gemini CLI, Cursor Agent, and more | [Agent Editing](agent-editing.md) |
-| **Threads** | `Alt+T` | Long-running, multi-turn conversations with your coding harness that can read and change any file, with isolated per-turn worktree snapshots and turn reversion | [Threads](threads.md) |
+| **Editor Terminal & Quick Edit** | `Alt+T`, `Cmd/Ctrl+K`, `Alt+L` | The workspace's shell and agent tabs in the editor's right inspector, a floating pill over code selections, and Quick Edit: one harness run on the selected lines with a -/+ preview before anything is written | [Editor Terminal & Quick Edit](editor-terminal-and-quick-edit.md) |
+| **Coding Harnesses** | Git panel **✦**, ⚡ Batch Apply | The installed harness (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent) behind Quick Edit, AI commit messages and plans, AI rebase/merge and PR Batch Apply | [Agent Editing](agent-editing.md) |
 | **Semantic Code Intelligence** | `F12`, `Shift+F12`, `Alt+Shift+H` | Go to Definition, Find References, Call Trails, inline diagnostics (`publishDiagnostics`), and Hover docs | [LSP & Intelligence](lsp-code-intelligence.md) |
 | **Markdown Preview** | `Alt+M` | Full GFM preview, Mermaid diagrams, syntax-highlighted code fences, and scroll sync | [Markdown Preview](markdown-preview.md) |
 | **CSV / TSV Table View** | `Alt+M` | Data files open as a table with a sticky header and source-line gutter | [Table View](table-view.md) |
@@ -28,7 +28,7 @@ This directory provides comprehensive documentation for all px0 user-facing feat
 | **Settings & Preferences** | `Cmd/Ctrl+,` | Graphical form editor, raw JSON sync, and instant live preview | [Settings & Configuration](settings-and-configuration.md) |
 | **Syntax Highlighting** | Automatic | Viewport-windowed Chroma lexing for ~280 languages | [Syntax Highlighting](syntax-highlighting.md) |
 | **Themes & Styling** | Settings / Palette | 14 built-in dark and light themes powered by CSS tokens | [Themes & Styling](themes-and-styling.md) |
-| **Selection Actions** | `Alt+C`, `Alt+A`, `Alt+U` | Copy reference, format LLM context, find usages, and edit | [Selection Actions](selection-actions.md) |
+| **Selection Actions** | `Cmd/Ctrl+K`, `Alt+L`, `Alt+C`, `Alt+A`, `Alt+U` | Quick Edit, add to the agent's chat, copy reference, copy with context, find usages | [Selection Actions](selection-actions.md) |
 | **Virtualized Scroller** | Automatic | Virtual DOM rendering ~60 rows with idle memory scavenging | [Editor Virtualization](editor-virtualization.md) |
 | **Remote Workspaces** | CLI flags | Zero-config remote browsing over Tailscale, SSH-free operation | [Remote Workspaces](remote-workspaces.md) |
 | **Vim Keybindings** | Toggle in Settings | Modal normal, visual, and motion modes for keyboard navigation | [Vim Mode](vim-mode.md) |
@@ -68,13 +68,13 @@ Modern developers spend substantial time verifying diffs and reviewing code gene
 
 ---
 
-## 4. Coding Agent Editing & Delegation
+## 4. Coding Agents in the Editor
 
-px0 intentionally omits a heavyweight text editor in favor of direct collaboration with the user's preferred coding agents:
+px0 intentionally omits a heavyweight text editor in favor of working alongside the coding agents you already use:
 
-- **[Editing with Coding Agents](agent-editing.md)**: Select any code block in a source file or git diff, press `Alt+E` (or right-click), describe the required change, and px0 delegates the task directly to your chosen agent harness (Claude Code, Gemini CLI, Cursor Agent, Antigravity, OpenCode, Codex, Aider, or Goose). Execution progress streams to the launch terminal, while px0 automatically detects file changes and reloads tabs in place upon completion.
-- **[Threads](threads.md)**: For questions and multi-file work, select code and press `Alt+T` to open a long-running conversation in the right sidebar. The harness can read and change any file, replies stream in with the files each turn touched, and every message continues the same conversation. Threads are saved and survive restarts.
-- **[Selection Toolbar & Context Actions](selection-actions.md)**: High-ergonomic footer toolbar providing instant buttons to copy canonical path:line references (`Alt+C`), copy formatted code snippets with surrounding context tailored for LLM chat windows (`Alt+A`), find usages (`Alt+U`), and dispatch inline edits (`Alt+E`).
+- **[Editor Terminal, Selection Pill & Quick Edit](editor-terminal-and-quick-edit.md)**: The right inspector's **Terminal** tab (`Alt+T`) shows the workspace's shell and agent tabs, the same ones the agents page shows, with `+ Agent` and `+ Shell` to start more. Selecting code shows a pill with **✦ Quick Edit** (`Cmd/Ctrl+K`), **Add to Chat** (`Alt+L`, sends the selection to the agent in the active terminal tab) and **Copy Ref** (`Alt+C`). Quick Edit runs your coding harness once on the selected lines and shows a -/+ preview; nothing is written until you accept it.
+- **[Coding Harnesses](agent-editing.md)**: Which harnesses px0 detects (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent), how you pick one, and the features that run it: Quick Edit, AI commit messages and plans, AI rebase/merge, the PR merge message and PR Batch Apply. Changed files reload in place when a run finishes.
+- **[Selection Toolbar & Context Actions](selection-actions.md)**: The pill, the footer selection bar and the right-click menu: Quick Edit, Add to Chat (`Alt+L`), copy `path:line` references (`Alt+C`), copy code with its path and lines for an LLM (`Alt+A`), and find usages (`Alt+U`).
 
 ---
 

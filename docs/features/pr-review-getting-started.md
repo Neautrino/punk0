@@ -6,7 +6,7 @@ It works the same on **GitHub**, **GitLab** (gitlab.com and self-hosted), **Gite
 
 **What you need**
 - `git` installed.
-- For conflict resolution, AI commit messages and batch-applying comments: a coding harness px0 supports (Claude Code, Gemini CLI, Cursor Agent, Codex, and others; see [Editing with Coding Agents](agent-editing.md)). Everything else works without one.
+- For conflict resolution, AI commit messages and batch-applying comments: a coding harness px0 supports (Claude Code, Codex, OpenCode, Antigravity or Cursor Agent; see [Editing with Coding Agents](agent-editing.md)). Everything else works without one.
 
 ---
 
@@ -23,7 +23,7 @@ px0 https://bitbucket.org/workspace/repo/pull-requests/9
 
 px0 checks out the PR into a temporary directory and opens it in your browser. Run it from inside a clone of the repository if you have one: px0 then adds a worktree to that clone instead of cloning again, which is much faster for large repositories.
 
-You can also open a PR from a running px0 (`Cmd/Ctrl+K` → **Git: Open Pull Request…**) or from the [workbench](workbench.md).
+You can also open a PR from a running px0 (`Cmd/Ctrl+Shift+K` → **Git: Open Pull Request…**) or from the [workbench](workbench.md).
 
 > [!NOTE]
 > The checkout is temporary. It is removed when px0 exits, so push any commits you want to keep (step 4).
@@ -84,7 +84,7 @@ Tokens are saved in your px0 settings file (`~/.px0/settings.json`, or `$XDG_CON
 ## 3. Review
 
 - **See the change in context.** The sidebar's **Changes** view lists the files the PR touches; `Cmd/Ctrl+D` toggles a file's diff against the PR's merge-base. Go to definition (`F12`), find references, and search all work across the whole repository, not just the diff.
-- **Comment on a line.** Select lines and press `Alt+R` (or hover a line number and pick **Add Review Comment**). Comments are drafts until you submit them, and they survive closing px0.
+- **Comment on a line.** Select lines and press `Alt+R` (or click **Comment** on a line number in the diff and pick **Add Review Comment**). Comments are drafts until you submit them, and they survive closing px0.
 - **Read and reply to the discussion.** The **Comments** panel at the bottom shows the PR's existing conversation and inline threads; reply in place.
 - **Submit.** Write an optional summary in the PR bar, then **Submit Review**, **Request Changes**, or **Approve**. Your drafts go with it. Approve and Request Changes appear when your token has push access.
 
@@ -94,7 +94,7 @@ Tokens are saved in your px0 settings file (`~/.px0/settings.json`, or `$XDG_CON
 
 The checkout is a real git worktree with the full git panel:
 
-- Edit a file (`Cmd/Ctrl+E`), or ask your coding harness to (`Alt+E` on a selection).
+- Edit a file (`Cmd/Ctrl+E`), rewrite a selection with your coding harness (**Quick Edit**, `Cmd/Ctrl+K` in the source view), or hand it to the agent in the editor's terminal (`Alt+L`).
 - **⚡ Batch Apply** turns all your draft comments into code changes in one go.
 - Stage, then press **✦** for an AI-written message or write your own, commit, then **Push to PR**. The push goes to the PR's own branch, even when it comes from a fork.
 - If someone pushes to the PR while you review, **Pull** brings their commits in.

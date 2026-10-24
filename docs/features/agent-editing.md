@@ -1,101 +1,80 @@
 # Editing with Coding Agents
 
-px0 is intentionally designed as a read-optimized viewer rather than a traditional text editor. Small direct edits are possible too (see [File Editing](file-editing.md)). When code needs to be modified, px0 allows you to select lines in either the source viewer or the visual diff view and delegate the edit directly to your local CLI coding agent.
+px0 is a reader first. Small direct edits are possible (see [File Editing](file-editing.md)), and longer agent sessions run in the [editor's Terminal tab](editor-terminal-and-quick-edit.md). For one-shot jobs, px0 runs the CLI coding harness already installed on your machine and uses its answer: a rewrite of selected lines, a commit message, a rebase, or a batch of review comments applied to the code.
 
 ---
 
 ## Overview & Core Purpose
 
-In modern AI-native development workflows, developers spend less time typing repetitive syntax and more time reviewing, directing, and guiding intelligent agents. Traditional IDEs carry massive authoring baggage—gigabytes of Electron RAM, plugin conflicts, and heavy text manipulation engines.
+px0 does not ship a model or an API key. It finds the coding harnesses you already have (Claude Code, Cursor Agent, Antigravity, OpenCode, Codex), lets you pick one, and runs it headless when a feature needs it. The same harness and model serve every feature below, so choosing them once is enough.
 
-px0 decouples code viewing from code authoring. It provides a sub-millisecond, low-resource reading experience (~20–30 MB RSS) while seamlessly integrating with whichever CLI coding agent you already run on your machine (such as Claude Code, Gemini CLI, Cursor Agent, Antigravity, OpenCode, Codex, Aider, or Goose). You select the code, provide an instruction, and px0 coordinates the background execution, streams the progress to your terminal, and automatically refreshes modified files upon completion.
+| Feature | What the harness does | Where it runs | Guide |
+| :--- | :--- | :--- | :--- |
+| **Quick Edit** | Rewrites the selected lines from your instruction; you review a -/+ preview before anything is written | An empty temporary folder, 30 s limit | [Editor Terminal & Quick Edit](editor-terminal-and-quick-edit.md) |
+| **Commit message** | Writes a message for the staged diff (the git panel's **✦**) | The workspace | [Git Integration](git-integration.md) |
+| **Commit plan** | With nothing staged, plans one or more commits for you to review and edit (**✦**) | The workspace | [Git Integration](git-integration.md) |
+| **Rebase / Merge with AI** | Replays or merges diverged history, resolving conflicts | The workspace | [Git Integration](git-integration.md) |
+| **PR merge message** | Rewrites the commit message for a squash merge | The workspace | [Pull Request Review](github-pr-review.md) |
+| **PR Batch Apply** | Applies every located draft review comment to the code in one run | The workspace | [Pull Request Review](github-pr-review.md) |
 
 ---
 
 ## Supported Harnesses & Models
 
-px0 auto-detects and integrates with all leading terminal coding harnesses:
+px0 detects these harnesses on `PATH` and in the directories they usually install into (`~/.local/bin`, npm's global prefix, and so on):
 
-| Harness | Default Model | Execution Template |
-| :--- | :--- | :--- |
-| **Claude Code** | `haiku` | `claude --permission-mode acceptEdits --model haiku -p {prompt}` |
-| **Gemini CLI** | `gemini-2.5-flash-lite` | `gemini --approval-mode auto_edit -m gemini-2.5-flash-lite -p {prompt}` |
-| **Cursor Agent** | `gemini-3.6-flash-minimal` | `cursor-agent --force --model gemini-3.6-flash-minimal -p {prompt}` |
-| **Antigravity** | `gemini-3.6-flash-low` | `agy --dangerously-skip-permissions --mode accept-edits --model gemini-3.6-flash-low -p {prompt}` |
-| **OpenCode** | `opencode/big-pickle` | `opencode run -m opencode/big-pickle {prompt}` |
-| **OpenAI Codex** | `gpt-5-codex` | `codex exec --ask-for-approval never -m gpt-5-codex {prompt}` |
-| **Aider** | `claude-3-7-sonnet` | `aider --yes-always --no-auto-commits --model claude-3-7-sonnet --message {prompt}` |
-| **Goose** | `gpt-4o` | `goose run --no-session --model gpt-4o -t {prompt}` |
+| Harness | Command run (headless) |
+| :--- | :--- |
+| **Claude Code** (`claude`) | `claude --permission-mode acceptEdits [--model M] -p {prompt}` |
+| **Cursor Agent** (`cursor-agent`) | `cursor-agent --force [--model M] -p {prompt}` |
+| **Antigravity** (`agy`) | `agy --dangerously-skip-permissions --mode accept-edits [--model M] -p {prompt}` |
+| **OpenCode** (`opencode`) | `opencode run [-m M] {prompt}` |
+| **OpenAI Codex** (`codex`) | `codex exec --skip-git-repo-check --sandbox workspace-write [-m M] {prompt}` |
 
-By default, px0 selects fast and cost-effective models for each harness, but allows you to select any supported model directly from the harness menu.
+The model list for each harness comes from the harness itself. With no model picked, the harness uses its own default. Any other tool works through a command template containing `{prompt}` (see Configuration below).
 
 ---
 
-## How an Agent Edit Works
+## Choosing a Harness
 
-1. **Select Code**: Highlight the lines of code you wish to change in either the source code viewer or the visual git diff view.
-2. **Trigger Composer**: Press **`Alt+E`**, right-click to open the context menu, click **Edit Inline** in the footer selection bar, or click the thread icon that appears beside a line number and choose **Edit Inline**. The comment box opens at the top of the **Threads** pane in the right sidebar, which slides open if it was closed.
-3. **Configure Harness (First Time)**: Choose your preferred coding harness and model. Your choice is saved globally in `~/.px0/settings.json`, never in your repository files.
-4. **Write a Comment**: Type what needs to change (e.g., *"Handle nil pointer return in error check"* or *"Refactor to use sync.Once"*). Then either **Add comment** (`Enter`) to keep it for a batch, or **Apply now** (`Ctrl/Cmd+Enter`) to run just that one straight away.
-5. **Real-Time Streaming**: px0 sends the file path, line range, selected code, and prompt to the harness. Progress and agent thought output stream in real time to the terminal stdout where px0 was launched.
-6. **Saved as a Thread**: Every edit you apply is recorded as a [thread](threads.md), labelled `inline` or `batch` in the Threads list. While an edit runs, its box and the batch bar offer **View thread** to watch it live. Open it later to see what the agent replied and which files it changed, or to ask a follow-up.
-7. **Automatic Document Reload**: When the harness finishes writing to disk, px0 automatically detects the modified files, refreshes the open tabs in place, updates git gutters, and preserves your scroll position. Source views stay source views; diff views stay diff views.
+Detection alone never runs anything: nothing is sent to a harness until you pick one. The harness and model selects appear where an AI action is offered, for example in the git panel's notice card for Rebase / Merge with AI and in the PR merge dialog; Settings (`Cmd/Ctrl+,`) has the harness too, as **Coding Harness** (`agent.harness`). Changing it in one place changes it everywhere, and the choice is saved in `~/.px0/settings.json` (or `$XDG_CONFIG_HOME/px0/settings.json`), never in your repository.
+
+Until a harness is picked, the selects read **pick a harness** and AI actions are refused with an error.
 
 ---
 
-## Batching Comments
+## How a Workspace Run Works
 
-You can queue several comments and apply them together, in one coordinated run:
+Commit messages and plans, Rebase / Merge with AI, the PR merge message and PR Batch Apply run the harness in the workspace:
 
-1. Write a comment and press **Add comment** (`Enter`). The box folds down to a single line showing your text. Click it to edit it again.
-2. Select other code (or click the thread icon beside another line, then **Edit Inline**) and add another comment.
-3. The **Batch** bar at the top of the Threads pane counts your comments and offers **Apply all (N)** (`Ctrl/Cmd+Shift+Enter`). Its harness and model selectors apply to the whole batch. **Clear All** discards every comment.
+1. px0 composes the prompt (the staged diff, the conflicting commits, or each review comment with the code it points at) and starts the harness with the workspace as its working directory and stdin closed.
+2. Progress streams to the terminal where px0 was launched, prefixed per harness.
+3. When the harness exits, px0 compares `git status` (with each modified file's size and modification time) before and after the run to find every file it touched, including ones it was never pointed at.
+4. Changed files reload in place: open tabs keep their view (source stays source, diff stays diff), scroll position and cursor; git badges and gutters update.
 
-The bar appears as soon as the first box opens, so the batch is always in view. A batch runs as one thread whose first message lists every comment with its code, so the agent can coordinate the changes.
-
----
-
-## Multi-Edit Concurrency & Safety Guards
-
-- **Non-Overlapping Concurrency**: Multiple agent edits can run simultaneously across different files or non-overlapping line ranges within the same file. Each edit runs in its own isolated composer box.
-- **Overlap Prevention**: If you attempt to dispatch an edit that overlaps with lines already being edited by an in-flight agent, px0 blocks the request with a warning. This prevents competing harnesses from producing conflicted or unreviewable code.
-- **Tab Close Guard**: Closing a browser tab while an agent edit is actively running prompts for confirmation, ensuring harnesses are never abandoned mid-execution.
-- **Inline Error Recovery**: If an agent process fails (for example, due to an expired API key or invalid CLI argument), the error message along with process stdout and stderr is rendered inline beneath your instruction. Your instruction remains preserved so you can tweak and retry without retyping.
-- **Network Sandboxing**: Agent execution is only accepted when px0 is accessed via `localhost` or direct IP address. Access through remote hostnames or public tunnel domains rejects agent commands by default to prevent unauthorized execution.
+Quick Edit is different: it runs outside the workspace and only returns text. px0 writes the replacement itself, and only when you accept it. See [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit).
 
 ---
 
-## Beyond Code: Commit Messages
+## Safety
 
-The same harness and model you pick here are also used by the sidebar git panel's **✦** button, which asks the harness to write a commit message for your staged changes (or, with nothing staged, to plan the commits for your review) instead of editing code — see [Git Awareness: Stage, Commit, Push, Pull](git-integration.md).
-
----
-
-## Keyboard Shortcuts & Controls
-
-| Shortcut | Context | Action |
-| :--- | :--- | :--- |
-| `Alt+E` | Code Selected | Open Agent Edit Composer |
-| Right-Click | Code Selected | Choose "Edit with Agent" from context menu |
-| Selection Bar | Code Selected | Click "Edit with Agent" button in footer |
-| `Enter` | Composer Input | Dispatch instruction to agent harness |
-| `Esc` | Composer Input | Cancel composer and dismiss prompt |
-| Footer Badge | Status Bar | Click to switch active harness or model |
+- **Local only**: AI actions are accepted only when px0 is reached through `localhost` or an IP address. Requests through a hostname, such as a public tunnel or reverse proxy, are refused.
+- **No overlapping batch runs**: a PR Batch Apply whose comments cover lines that a running batch is still changing is refused.
+- **Errors are shown, not hidden**: a failed run reports the harness's own error (an expired login, a bad flag) with its output.
+- **Time limit**: a workspace run is stopped after 10 minutes; Quick Edit after 30 seconds. Whatever a stopped workspace run already wrote stays.
 
 ---
 
 ## Configuration Options
 
-Agent preferences are managed in Settings (`Cmd/Ctrl+,`) or stored in `~/.px0/settings.json`:
-
-- **Agent: Harness** (`agent.harness`): The default CLI tool to execute (`claude`, `gemini`, `cursor-agent`, `agy`, `opencode`, `codex`, `aider`, `goose`).
-- **Agent: Timeout Seconds** (`agent.timeoutSeconds`): Maximum execution time before px0 terminates the background process (defaults to `120` seconds, range `10`–`600`).
-- **CLI Flags**:
-  - `px0 -agent <name>`: Force a specific agent harness for the current session.
-  - `px0 -no-agent`: Completely disable agent editing capabilities.
+- **`agent.harness`** (stored as `agent` in `settings.json`): the chosen harness, a preset name or a command template. `models` holds the model picked for each harness. The selects write both.
+- **`git.commitMessageInstruction`**: extra instructions for commit messages (Settings, `Cmd/Ctrl+,`).
+- **CLI flags**:
+  - `px0 -agent <name>`: pin a harness for this run; the selects show it as fixed. A command template works too: `px0 -agent "claude -p --permission-mode acceptEdits {prompt}"`.
+  - `px0 -no-agent`: turn off every harness-backed feature.
 
 ---
 
 ## Technical Architecture Deep Dive
 
-For in-depth details on process spawning, headless argument construction, PID tracking, process group termination, and in-place document reconciliation, see [Harness Editing & Agent Dispatch Internals](../internals/agent-editing.md).
+For harness discovery, the invocation contract, change detection, the reload path and the HTTP endpoints, see [Harness Editing & Agent Dispatch Internals](../internals/agent-editing.md).

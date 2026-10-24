@@ -51,7 +51,7 @@ In progress, moving over from the `scratch` branch.
 
 **02 · Terminal tabs** — Shell and Claude Code tabs beside your files; Claude tabs resume their own chat when reopened.
 
-**03 · Agent actions in the terminal** — "Edit with agent", AI commit messages and AI rebase run in the workspace's Claude tab, where you can watch and steer them.
+**03 · Agents beside the code** — The editor's right inspector opens on a Terminal tab with the workspace's shell and agent tabs (`Alt+T`). Select code to get a pill: **Add to Chat** (`Alt+L`) sends it to the agent in the active tab, and **Quick Edit** (`Cmd/Ctrl+K`) has your coding harness rewrite the lines and shows a -/+ preview before anything is written. See [Editor Terminal & Quick Edit](docs/features/editor-terminal-and-quick-edit.md).
 
 **04 · Shells that outlive the browser** — Closing or reloading the page keeps every tab running; reconnecting replays recent output.
 
@@ -63,14 +63,15 @@ In progress, moving over from the `scratch` branch.
 
 **07 · Code intelligence** — Go to definition, find references, call trails and hover docs through language servers.
 
-**08 · Viewer** — ~280 languages via Chroma, 400,000-line files without lag, Markdown with Mermaid, CSV/TSV tables, images, 14 themes, Vim keybindings, quick edits (`Cmd/Ctrl+E`).
+**08 · Viewer** — ~280 languages via Chroma, 400,000-line files without lag, Markdown with Mermaid, CSV/TSV tables, images, 14 themes, Vim keybindings, in-browser editing (`Cmd/Ctrl+E`).
 
 **09 · Remote mode** — Serve from a server or VM with `-host 0.0.0.0`. Anyone who can reach the address can browse and edit files; terminal tabs are served only while punk0 listens on loopback. Expose it only over trusted networks.
 
 ## What's different from px0
 
-- **Removed:** Threads. Claude Code tabs replace them.
-- **Changed:** agent actions run in a visible terminal instead of a background process.
+- **Removed:** Threads and Edit Inline (with its comment batching). Agent tabs in the editor's Terminal, Add to Chat (`Alt+L`) and Quick Edit (`Cmd/Ctrl+K` on a selection) replace them. PR Batch Apply stays.
+- **Changed shortcuts:** `Alt+T` focuses the editor's Terminal tab; `Cmd/Ctrl+K` is Quick Edit when code is selected and Quick Open otherwise; `Cmd/Ctrl+Shift+K` opens the command palette. `Alt+E` and `Cmd/Ctrl+Shift+Enter` are gone.
+- **Changed:** in a PR review's diff, line numbers carry a **Comment** button instead of the hover thread icon.
 
 ## Development
 

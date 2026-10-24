@@ -74,7 +74,7 @@ When hosted behind reverse proxies or multi-tenant review platforms, px0 support
 
 px0 is structured into decoupled core files and modular `internal/` packages:
 
-- **Root Package (`px0`)**: Contains the CLI entrypoint ([`main.go`](../../main.go)), HTTP routing and middleware ([`server.go`](../../server.go)), filesystem indexing and tree walk ([`index.go`](../../index.go)), search pipeline ([`search.go`](../../search.go)), Git operations and watcher ([`git.go`](../../git.go)), LSP client and supervisor ([`lsp.go`](../../lsp.go)), agent harnesses and multi-turn threads ([`agent.go`](../../agent.go)), PR review lifecycle ([`pr.go`](../../pr.go)), forge providers ([`forge.go`](../../forge.go)), and multi-repo workbench ([`workbench.go`](../../workbench.go)).
+- **Root Package (`px0`)**: Contains the CLI entrypoint ([`main.go`](../../main.go)), HTTP routing and middleware ([`server.go`](../../server.go)), filesystem indexing and tree walk ([`index.go`](../../index.go)), search pipeline ([`search.go`](../../search.go)), Git operations and watcher ([`git.go`](../../git.go)), LSP client and supervisor ([`lsp.go`](../../lsp.go)), coding harness jobs ([`agent.go`](../../agent.go)), Quick Edit and its guarded line replacement ([`quickedit.go`](../../quickedit.go), [`replace.go`](../../replace.go)), PR review lifecycle ([`pr.go`](../../pr.go)), forge providers ([`forge.go`](../../forge.go)), and multi-repo workbench ([`workbench.go`](../../workbench.go)).
 - **`internal/fuzzy`**: Two-pass bounded fuzzy path finder and score ranking.
 - **`internal/ignore`**: Gitignore rule parsing and fast path glob matching.
 - **`internal/render`**: Windowed Chroma syntax highlighting, markdown rendering, and diff coloring.
@@ -98,6 +98,7 @@ px0 is structured into decoupled core files and modular `internal/` packages:
 | `/api/tree`           | `GET`  | Directory contents for the sidebar file explorer (`?dir=path`)          | JSON array of `Node` objects               |
 | `/api/file`           | `GET`  | Windowed, highlighted source file lines (`?path=...&start=0&count=500`) | JSON (`{lines, total, refine, markdown}`)  |
 | `/api/file/save`      | `POST` | Write edited file content, creating parent folders                      | JSON (`{ok, path, size}`)                  |
+| `/api/file/replace`   | `POST` | Replace lines `l1..l2` only while they still read `original` (Quick Edit's Accept); keeps the file's line endings | JSON (`{ok: true}`), `409` when the lines changed on disk |
 | `/api/fs/new`         | `POST` | Create an empty file or a folder (`409` if it exists)                   | JSON (`{ok, path, type}`)                  |
 | `/api/close`          | `POST` | Release cached document handles and LSP files when tab closes          | JSON (`{ok: true}`)                        |
 | `/api/raw`            | `GET`  | Raw file content for copies and preview assets (attachment; nosniff)    | `application/octet-stream` or `image/*`    |
@@ -144,19 +145,10 @@ px0 is structured into decoupled core files and modular `internal/` packages:
 | `/api/lsp/servers`    | `GET`  | Lists relevant language servers for workspace with status and metrics   | JSON (`{enabled, anyRunning, servers}`)    |
 | `/api/agent/harnesses`| `GET`  | Detected coding harnesses and current choice                            | JSON (`{harnesses, selected, pinned, ...}`)|
 | `/api/agent/select`   | `POST` | Choose and remember a harness (`?name=...`)                             | JSON (`{harnesses, selected, pinned, ...}`)|
-| `/api/agent/edit`     | `POST` | Dispatch an instruction to the harness for a line range                 | JSON job snapshot                          |
-| `/api/agent/batch`    | `POST` | Dispatch a batch edit instruction across multiple ranges/files          | JSON job snapshot                          |
+| `/api/agent/batch`    | `POST` | Run anchored instructions across ranges/files as one job (PR Batch Apply) | JSON job snapshot                          |
 | `/api/agent/job`      | `GET`  | Snapshot of job output and changed files                                | JSON job snapshot                          |
 | `/api/agent/cancel`   | `POST` | Stop running harness job                                                | JSON (`{cancelled: true}`)                 |
-| `/api/threads`        | `GET`  | List thread summaries for workspace                                     | JSON array of thread summaries             |
-| `/api/threads/get`    | `GET`  | Fetch thread details and turn history (`?id=...`)                       | JSON thread object                         |
-| `/api/threads/create` | `POST` | Create a new thread and run first turn                                  | JSON thread object                         |
-| `/api/threads/send`   | `POST` | Post follow-up message to an existing thread                            | JSON thread object                         |
-| `/api/threads/cancel` | `POST` | Cancel active turn on thread                                            | JSON (`{ok: true}`)                        |
-| `/api/threads/scope`  | `POST` | Update thread review scope in PR mode (`pr`, `mine`, `selection`)       | JSON (`{ok: true}`)                        |
-| `/api/threads/delete` | `POST` | Delete thread by ID                                                     | JSON (`{ok: true}`)                        |
-| `/api/threads/revert` | `POST` | Revert file changes made by a specific turn                             | JSON (`{ok, thread, reverted}`)            |
-| `/api/threads/stream` | `GET`  | SSE event feed for thread updates and turn outputs                      | `text/event-stream`                        |
+| `/api/quick-edit`     | `POST` | Run the harness once in an empty temp folder on `{path, l1, l2, selection, instruction}`; writes nothing | JSON (`{ok, replacement}`)                 |
 | `/api/settings`       | `GET` / `POST` | Read or update workspace/global configuration                   | JSON settings schema and values            |
 | `/api/pr/meta`        | `GET`  | PR metadata, merge-base, head SHA, and diffstat                         | JSON PR metadata                           |
 | `/api/pr/comments`    | `GET`  | Draft comments for active PR review session                             | JSON array of comments                     |
@@ -171,6 +163,16 @@ px0 is structured into decoupled core files and modular `internal/` packages:
 | `/api/pr/merge-message` | `POST`| Dispatch harness to generate PR merge/squash message                    | JSON job snapshot                          |
 | `/api/forge/connect`  | `POST` | Test and persist forge API access token                                 | JSON (`{ok, user, host}`)                  |
 | `/api/session`        | `GET` / `POST` | Load or persist workspace UI session state (tabs, scroll, drafts) | JSON session data                        |
+
+The editor's Terminal tab talks to the parent `punk0` (the orchestrator), not to its own child process. The routes it uses are documented in [Orchestrator](workbench.md):
+
+| Endpoint (parent)              | Method | Purpose                                                         | Response Format                            |
+| ------------------------------ | ------ | --------------------------------------------------------------- | ------------------------------------------ |
+| `/api/workspaces/{id}/tabs`    | `GET`  | The workspace's terminal tabs, for the chips                    | JSON (`{tabs: [{id, kind, name, running, status}]}`) |
+| `/api/workspaces/{id}/tabs`    | `POST` | Add a shell or agent tab (`{kind}`)                             | JSON tab record                            |
+| `/api/tabs/{id}`               | `DELETE` | Close a tab                                                   | JSON                                       |
+| `/api/tabs/{id}/term`          | `GET`  | Websocket to the tab's PTY (loopback only)                      | websocket                                  |
+| `/api/tabs/{id}/send`          | `POST` | Type `{text}` into the tab's agent prompt (Add to Chat)          | JSON (`{ok: true}`), `409` when busy or not running |
 
 ## 4. Memory Management & Proactive Scavenging
 

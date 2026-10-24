@@ -20,8 +20,8 @@ Detailed walkthroughs of all px0 features, capabilities, developer workflows, an
 - **[Pull Request Review](features/github-pr-review.md)**: Full-tree PR checkout, merge-base diffs, review verdicts, AI conflict resolution and merging, across four forges (`px0 <pr-url>`).
 - **[Git Awareness & Visual Diff Viewer](features/git-integration.md)**: Status badges, dirty ancestor trees, gutter markers, side-by-side / unified diffs with intra-line character highlights (`Cmd/Ctrl+D`), and sidebar git panel with AI commit messages and AI rebase/merge.
 - **[Direct File Editing & Creation](features/file-editing.md)**: In-browser edit and save (`Cmd/Ctrl+E`, `Cmd/Ctrl+S`), new files and folders.
-- **[Editing with Coding Agents](features/agent-editing.md)**: Delegating code changes to Claude Code, Gemini CLI, Cursor Agent, Antigravity, OpenCode, Codex, Aider, and Goose.
-- **[Threads](features/threads.md)**: Multi-turn agent conversations with file access, live turn diffs, and persistent history (`Alt+T`).
+- **[Editor Terminal, Selection Pill & Quick Edit](features/editor-terminal-and-quick-edit.md)**: The workspace's shell and agent tabs in the editor's right inspector (`Alt+T`), a floating pill over code selections, Add to Chat (`Alt+L`), and Quick Edit with a -/+ preview (`Cmd/Ctrl+K`).
+- **[Editing with Coding Agents](features/agent-editing.md)**: The coding harnesses px0 runs (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent) and the features that use them: Quick Edit, AI commit messages and plans, AI rebase/merge, PR Batch Apply.
 - **[LSP & Semantic Code Intelligence](features/lsp-code-intelligence.md)**: Go to Definition (`F12`), References (`Shift+F12`), Call Trails (`Alt+Shift+H`), and Hover cards.
 - **[Rendered Markdown Preview](features/markdown-preview.md)**: GFM rendering, syntax-highlighted code fences with copy buttons, and synchronized scrolling (`Alt+M`).
 - **[CSV & TSV Table View](features/table-view.md)**: Pin headers, line numbering, and parse tabular data cleanly (`Alt+M`).
@@ -30,7 +30,7 @@ Detailed walkthroughs of all px0 features, capabilities, developer workflows, an
 - **[Settings & Preferences System](features/settings-and-configuration.md)**: Graphical form editor (`Cmd/Ctrl+,`), raw JSON synchronization, and live previews.
 - **[Syntax Highlighting & Language Support](features/syntax-highlighting.md)**: Windowed Chroma lexing for ~280 languages, rainbow brackets, and occurrence highlighting.
 - **[Themes & Visual Customization](features/themes-and-styling.md)**: 14 built-in dark and light themes powered by CSS variables.
-- **[Selection Toolbar & Context Actions](features/selection-actions.md)**: Copy Reference (`Alt+C`), Copy for Agent (`Alt+A`), Find Usages (`Alt+U`), and Edit (`Alt+E`).
+- **[Selection Toolbar & Context Actions](features/selection-actions.md)**: Quick Edit (`Cmd/Ctrl+K`), Add to Chat (`Alt+L`), Copy Reference (`Alt+C`), Copy with Context (`Alt+A`), and Find Usages (`Alt+U`).
 - **[Editor Virtualization & Memory Scavenger](features/editor-virtualization.md)**: Virtual DOM row recycling and 15-second idle RAM recovery.
 - **[Remote Workspaces & Cloud Inspection](features/remote-workspaces.md)**: Zero-config remote browsing over Tailscale/VPNs and CLI line opening.
 - **[Vim Keybindings & Modal Navigation](features/vim-mode.md)**: Modal Normal, Visual, and Motion modes for keyboard-centric workflows.
@@ -49,7 +49,6 @@ In-depth technical write-ups covering px0's Go server runtime, concurrency pipel
 - **[Git Awareness & Porcelain Diffing](internals/git-integration.md)**
 - **[Pull Request Review & Forge Providers](internals/github-pr-review.md)**
 - **[Harness Editing & Agent Dispatch](internals/agent-editing.md)**
-- **[Threads & Multi-Turn Conversations](internals/threads.md)**
 - **[Direct File Editing & Creation](internals/file-editing.md)**
 - **[Editor Virtualization & Caret Engine](internals/editor-virtualization.md)**
 - **[Image Viewer Architecture](internals/image-viewer.md)**

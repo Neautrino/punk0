@@ -212,7 +212,7 @@ The file also has `tabs`, `active` and `openDirs` fields, and `/api/session` sti
 - `POST /api/pr/comments/delete`: Deletes a draft by ID.
 
 ### Batch Apply with Coding Agents (`⚡ Batch Apply`)
-Users can delegate all drafted PR comments directly to an AI coding agent (Claude Code, Gemini CLI, Cursor Agent, Antigravity, etc.). The agent harness receives the comments as targeted editing instructions and modifies the worktree files directly.
+**⚡ Batch Apply** (`batchApplyComments()` in `pr.js`) sends every draft that has a path and line to `POST /api/agent/batch` as `{edits: [{path, l1: line, l2: line, instruction: body}]}`. The server runs them as one workspace job of the selected harness (`agentManager.StartEdit`, see [Harness Editing & Agent Dispatch](agent-editing.md) §5), which edits the worktree files directly. `pollPRBatch()` polls `/api/agent/job?id=` and shows the elapsed seconds on the button. On success `reloadWorkspace()` reloads changed files and the comments are re-fetched; on failure the error is shown and any files the harness did change are reloaded.
 
 ### Formal Review Submission
 - `POST /api/pr/submit`: Requires auth token.
@@ -265,9 +265,9 @@ The git panel's agent rebase/merge flow ([git-integration internals](git-integra
 
 ## 8. Frontend Integration
 
-- **Hover Line Thread Icon (`web/src/linecomment.js`)**:
-  - Displays a thread icon (a CSS-masked speech bubble on `.line-btn`) when hovering over line numbers in source or diff views.
-  - Clicking calls `openLineMenu()` in `selbar.js`, the selection menu aimed at one line. Rows that are part of the PR's diff pass a `fromDiff` description with the diff side, which is what enables **Add Review Comment** there; other rows get only the local actions.
+- **Review Comment Button (`web/src/linecomment.js`)**:
+  - In a PR review's diff, `difftable.js` (`reviewButton`) puts a **Comment** button (`.line-btn`) on each line number of a row the forge can anchor a comment to. Source rows carry no button.
+  - Clicking calls `openLineMenu()` in `selbar.js`, the selection menu aimed at that line (or at the selected range, when a selection covers the line). The row's `fromDiff` description with the diff side is what enables **Add Review Comment** there.
 - **PR Header Bar (`web/src/pr.js`)**:
   - Renders PR number, title, author, branch refs, and draft count badge.
   - Toggles `#pr-merged-badge` (purple pill) when `meta.merged` is true.

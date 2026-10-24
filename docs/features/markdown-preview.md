@@ -40,7 +40,7 @@ When reviewing architectural design documents, specifications, or READMEs genera
 ### Seamless Source Editing
 If you spot a typo or want to modify a section:
 1. Press **`Alt+M`** to switch to raw source view. The editor places your caret at the exact corresponding line.
-2. Select the text and press **`Alt+E`** to dispatch an edit to your coding agent.
+2. Select the text and press **`Cmd/Ctrl+K`** to rewrite it with [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit), or **`Cmd/Ctrl+E`** to edit it by hand.
 3. Press **`Alt+M`** again to return to preview mode and review the updated formatting.
 
 ---

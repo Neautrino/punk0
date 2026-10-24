@@ -38,7 +38,7 @@ The sidebar's git panel is the one part of this feature that *does* write to the
   - **Unified**: View changes inline with consecutive additions and deletions.
 - **Intra-Line Character Diff Highlighting**: Powered by a token-level Myers diff algorithm with sub-character refinement. Exact modified characters and words are highlighted with distinct contrast within changed lines across both split and unified layouts, while insertion carets pinpoint where text was inserted relative to counterpart lines.
 - **Whitespace Diff Filtering**: Toggle whitespace trimming to hide trivial indentation and trailing space differences when reviewing significant logic changes.
-- **Direct Agent Editing from Diffs**: Select any modified or added line in the diff view and trigger an AI agent edit (`Alt+E`) to refine or correct the change on the spot.
+- **Hand a Diff to Your Agent**: Select any modified or added lines in the diff view and press `Alt+L` to send them, with their working-tree path and line numbers, to the agent in the editor's [Terminal tab](editor-terminal-and-quick-edit.md).
 - **Battery and Focus Awareness**: The live stream automatically suspends when the browser tab is hidden (`document.visibilityState === 'hidden'`), conserving CPU cycles and laptop battery. When you switch back to px0, it instantly reconnects and queries `/api/git/refresh` to catch any changes made while the window was in the background.
 - **Per-File Stage Tick**: Every changed row in the file tree carries a small tick button next to its status badge. Clicking it stages or unstages that file (`git add` / `git reset`) without opening a terminal; the tick updates live as the same status stream that drives the badges reconciles it.
 - **Git Panel (Source Control)**: A resizable panel at the bottom of the sidebar, laid out like VS Code's Source Control. The head row shows the branch, `↑ahead ↓behind` (or *unpublished* for a branch with no upstream), the upstream it tracks, and a `staged / changed` count that switches the sidebar to the changed files when clicked; a key icon appears there when the remote's forge has no token yet. Below it sit the commit message box (always visible, except with a turn ledger — see **Commit by Chat Turn**; **`Cmd/Ctrl+Enter`** inside it runs the primary action), a harness/model chip with a gear for the AI instructions, warnings for staged files that look like secrets (`.env`, keys, credentials) or are over 1 MiB, and one primary button whose label says what comes next: **Commit N staged**, **Commit turn N**, **✦ Commit N changes**, **Push ↑N** (**Publish branch**, **Push to PR ↑N**), **Pull ↓N**, **Sync ↑N ↓M**, **Force-push** after a PR rebase, or a disabled **Up to date**. Its **▾** menu holds ✦ Write message, ✦ Plan commits…, Commit & Push, Commit all as one with AI, Stage all, Amend last commit, Undo last commit, Pull, and Push. Commit only ever commits what is staged (or, by turn, exactly that turn's files); nothing is staged for you.
@@ -58,11 +58,11 @@ The sidebar's git panel is the one part of this feature that *does* write to the
 ## Developer Workflows & Practical Value
 
 ### Continuous Auditing of AI Agent Edits
-When an AI coding agent (Claude Code, Gemini CLI, Cursor Agent, Antigravity, Aider) edits your code in the background:
+When an AI coding agent (Claude Code, Codex, Cursor Agent, Antigravity, OpenCode) edits your code in the background:
 1. Switch to the **Git Changes** view in the sidebar to isolate touched files.
 2. Status badges and gutter markers update in real time as the agent writes to disk.
 3. Open any modified file and press **`Cmd/Ctrl+D`** to review side-by-side changes against `HEAD`.
-4. If an edit needs refinement, select the relevant lines directly inside the diff view and press `Alt+E` to prompt the agent with a targeted correction.
+4. If an edit needs refinement, select the relevant lines inside the diff view and press `Alt+L` to send them to the agent in the editor's terminal with a correction, or switch to the source view (`Cmd/Ctrl+D`) and use [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit) (`Cmd/Ctrl+K`).
 
 ### Terminal Interaction Without Stale Views
 When managing branches or staging files from your terminal:
@@ -166,7 +166,7 @@ Git behavior can be customized in Settings (`Cmd/Ctrl+,`):
 - **Diff Editor: Render Side-by-Side** (`diffEditor.renderSideBySide`): Default layout for the diff view (`true` for split, `false` for unified).
 - **Diff Editor: Ignore Trim Whitespace** (`diffEditor.ignoreTrimWhitespace`): Ignore leading and trailing whitespace diffs (defaults to `true`).
 - **Commit Message Instructions** (`git.commitMessageInstruction`): Free-text instructions appended to the prompts **✦** sends to your coding harness, for a message and for a commit plan alike (e.g. *"Follow Conventional Commits"* or *"Reference the ticket number in the branch name"*). Defaults to empty. This setting renders as a multi-line textarea in the Settings UI; the gear next to the harness chip opens it.
-- **Coding Harness & Model**: **✦** uses the same globally selected harness and model as inline agent edits (`agent.harness`, and its persisted model) — see [Editing with Coding Agents](agent-editing.md).
+- **Coding Harness & Model**: **✦** uses the same globally selected harness and model as Quick Edit and PR Batch Apply (`agent.harness`, and its persisted model) — see [Editing with Coding Agents](agent-editing.md).
 - **CLI Flag `-no-git`**: Launch px0 with Git features completely disabled (`px0 -no-git`) for environments where Git is not installed or when viewing plain directory archives.
 - **CLI Flag `-no-agent`**: Disables **✦** and the commit plan along with every other coding-harness feature; staging, committing, pushing and pulling remain available since they never invoke a harness.
 

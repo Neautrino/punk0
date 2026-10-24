@@ -117,22 +117,19 @@ Tokens are stored in your px0 settings file (`~/.px0/settings.json`, or `$XDG_CO
 - The diff is computed against the merge-base between the PR head and its target branch, the same diff the forge shows.
 
 ### 2. Live Agent Synchronization
-When you or your background AI coding agents (Claude Code, Gemini CLI, Cursor Agent, Antigravity, Aider, etc.) make edits to the PR checkout from other terminals:
+When you or your coding agents (in the editor's [Terminal tab](editor-terminal-and-quick-edit.md), the agents page, or any other terminal) make edits to the PR checkout:
 - px0's real-time file watcher picks up modifications without full re-indexing.
 - Gutter diffs, status badges, and open tabs reload live in the browser.
 
-### 3. Line Comments & Hover Actions
-When hovering over code lines or diff lines:
-- A thread icon appears next to the line number.
-- Clicking it opens a context menu for that line. On a line that is part of the PR's diff it includes:
-  - **Add Review Comment**: Drafts an inline review comment.
-  - **Edit Inline**: Prompts your local AI coding agent to edit those lines directly.
-  - **Start Thread**: Opens a conversation with the agent about the line.
-- Alternatively, select any range of lines and press **`Alt+R`** (or click **Comment** on the selection bar) to open the review comment composer.
+### 3. Line Comments
+In the PR's diff:
+- Each reviewable line number carries a **Comment** button.
+- Clicking it opens the actions menu for that line (or for the selected range, when a selection covers the line), with **Add Review Comment** among Add to Chat, Copy Ref and Copy with Context.
+- Alternatively, select any range of lines and press **`Alt+R`** (or click **Comment** on the selection bar, or right-click and choose **Add Review Comment**) to open the review comment composer.
 
 ### 4. Batch Applying Comments Locally (`⚡ Batch Apply`)
 Drafted review comments appear in the PR top bar and inline across files:
-- **⚡ Batch Apply** applies all drafted review comments across the whole pull request in one go, using your configured coding agent harness. The agent reads your comments as instructions and changes the code directly in the PR worktree.
+- **⚡ Batch Apply** applies every drafted review comment that has a line across the whole pull request in one run of your configured coding harness (see [Editing with Coding Agents](agent-editing.md)). The harness reads each comment, with the line it points at, as an instruction and changes the code directly in the PR worktree. The button shows the elapsed time while it runs, and changed files reload when it finishes.
 - Comments stay drafts until they are batch-applied or submitted. Drafts are saved outside the repository, per pull request, so reopening the same PR, with `px0 <pr-url>` or from the [workbench](workbench.md), brings them back.
 
 ### 5. Submitting Reviews
@@ -225,9 +222,9 @@ Implementation details are in [the internals guide](../internals/github-pr-revie
 | Shortcut / Control | Context | Action |
 | :--- | :--- | :--- |
 | `Alt+R` | Selection in editor or diff view | Open review comment composer |
-| Line Hover (`✏`) | Hovering on editor line number | Choose between a review comment, an inline agent edit, or a thread |
+| **Comment** (line number) | Reviewable line in the PR's diff | Open the line's actions menu, including Add Review Comment |
 | `Cmd/Ctrl+D` | Active tab | Toggle side-by-side / unified diff against merge-base |
-| Command Palette (`Cmd/Ctrl+K`) | Command Palette → **Git: Open Pull Request…** | Launch a new PR review tab |
+| Command Palette (`Cmd/Ctrl+Shift+K`) | Command Palette → **Git: Open Pull Request…** | Launch a new PR review tab |
 | **No token — click to connect** | PR header bar | Open the Connect dialog |
 | `Enter` / `Esc` | Connect dialog | Check and save the token / cancel |
 | **`⚡ Batch Apply`** | PR header bar | Dispatch all drafted comments to local AI coding harness |

@@ -21,7 +21,7 @@ All 11 packages in `px0` achieve **100% Package Test and Benchmark Coverage**:
 
 | Package | Statement Coverage | Test Files | Primary Focus & Capabilities Tested |
 | :--- | :--- | :--- | :--- |
-| **`px0` (root core)** | **>62%** (54% short) | 7 test files | HTTP server routing, Git porcelain/diff parsing, LSP client, multi-repo workbench, forge providers (GitHub, GitLab, Gitea, Bitbucket), chat threads, AI agent harnesses. |
+| **`px0` (root core)** | **>62%** (54% short) | 7 test files | HTTP server routing, Git porcelain/diff parsing, LSP client, multi-repo workbench, forge providers (GitHub, GitLab, Gitea, Bitbucket), AI agent harnesses, Quick Edit parsing and guarded line replacement. |
 | **`internal/fuzzy`** | **100.0%** | `fuzzy_test.go` | Two-pass bounded fuzzy path finder, score calculation, min-heap top-K pruning (`worseResult`, `siftDownResult`), boundary detection. |
 | **`internal/symbols`**| **100.0%** | `symbols_test.go`| Multi-language outline parser (Go, Python, JS/TS, Rust, C/C++, Java, Ruby, Shell, PHP, Lua, Zig, Elixir, Markdown), symbol regex trees, indent calculation. |
 | **`internal/table`**  | **100.0%** | `table_test.go`  | CSV/TSV table rendering, ragged rows, quoted cell line wrapping, delimiter sniffing (`SniffDelim`). |

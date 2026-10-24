@@ -57,7 +57,7 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `lsp.memoryWarning` | Language Servers | `2048` | MB, `0` or more | Agents page: the language server memory total turns red above this. `0` never |
 | `lsp.hover.enabled` | Language Servers | `true` | `true`, `false` | Hover documentation cards |
 | `workspace.lspDefault` | Language Servers | `false` | `true`, `false` | Default of the New workspace form's Language Servers checkbox for worktrees |
-| `agent.harness` | Coding Agent | `""` | `claude`, `gemini`, `agy`, etc. | Preferred CLI coding harness |
+| `agent.harness` | Coding Agent | `""` | `claude`, `codex`, `opencode`, `agy`, `cursor-agent`, or a command template | Coding harness for Quick Edit, AI commit messages, AI rebase/merge and PR Batch Apply |
 | `agent.timeoutSeconds` | Coding Agent | `120` | `10` – `600` (seconds) | Max runtime for agent edits |
 | `github.token` | GitHub | `""` | any string | Personal access token for GitHub pull request review; takes precedence over `GITHUB_TOKEN` and `gh auth token`. Masked in the Settings UI. |
 | `gitlab.token` | GitLab | `""` | any string | Personal access token (`api` scope) for GitLab merge request review. Sent only to `gitlab.host`; takes precedence over `GITLAB_TOKEN`. Masked in the Settings UI. |
