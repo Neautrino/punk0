@@ -161,6 +161,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/close"), s.handleClose)
 	s.mux.HandleFunc(s.routePath("/api/raw"), s.handleRaw)
 	s.mux.HandleFunc(s.routePath("/api/file/save"), s.handleFileSave)
+	s.mux.HandleFunc(s.routePath("/api/file/replace"), s.handleFileReplace)
 	s.mux.HandleFunc(s.routePath("/api/fs/new"), s.handleFSNew)
 	s.mux.HandleFunc(s.routePath("/api/markdown"), s.handleMarkdown)
 	s.mux.HandleFunc(s.routePath("/api/table"), s.handleTable)
