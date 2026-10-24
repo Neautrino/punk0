@@ -148,6 +148,8 @@ export const LH = 20, CHUNK = 1000, OVERSCAN = 24;
  * @property {string} root - Absolute root path
  * @property {string} name - Project name
  * @property {string} [version]
+ * @property {string} [workspace]
+ * @property {string} [workspaceId]
  * @property {number} [files]
  * @property {number} [indexMs]
  * @property {boolean} [git]

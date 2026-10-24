@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="static/style.css">
 <!-- Every web/themes/*.css joined by the server. See docs/internals/styling-and-themes.md. -->
 <link rel="stylesheet" href="static/themes.css">
+<link rel="stylesheet" href="static/vendor/xterm.css">
 </head>
 <body>
 <div id="app">
@@ -432,8 +433,8 @@
   <aside id="right-side">
     <header class="inspector-head">
       <div class="inspector-tabs">
-        <button class="inspector-tab" data-itab="threads" id="tab-threads" title="Long-running conversations with a coding harness ({Alt+T} on a selection)" hidden>Threads<span class="thr-tab-count" hidden></span><span class="thr-tab-dot" hidden></span></button>
-        <button class="inspector-tab active" data-itab="refs" title="View references across workspace">References</button>
+        <button class="inspector-tab active" data-itab="term" id="tab-term" title="Agent terminal ({Alt+T} to focus)">Terminal</button>
+        <button class="inspector-tab" data-itab="refs" title="View references across workspace">References</button>
         <button class="inspector-tab" data-itab="symbols" title="View file symbols outline">Symbols</button>
         <button class="inspector-tab" data-itab="calls" title="Trace callers and callees ({Alt+Shift+H})">Calls</button>
         <button class="inspector-tab" data-itab="search" title="Search text across workspace ({Mod+Shift+F})">Search</button>
@@ -445,7 +446,7 @@
     </header>
 
     <!-- Right Pane 1: References for active symbol -->
-    <section class="inspector-pane active" id="pane-right-refs">
+    <section class="inspector-pane" id="pane-right-refs">
       <div class="inspector-bar">
         <span class="inspector-sym-title" id="right-ref-target">-</span>
         <span class="inspector-badge" id="right-ref-badge">0</span>
@@ -494,74 +495,15 @@
     </section>
     <!-- Right Pane 5: Threads. Long-running, multi-turn conversations with a
          coding harness, anchored to code. web/src/thread.js owns it. -->
-    <section class="inspector-pane" id="pane-right-threads">
-    <!-- Inline edit comments: one box per edit being composed or in flight, kept at the top of the
-         Threads pane. #agent-batch-bar applies every added comment together, and each applied
-         edit becomes a thread in the list below. web/src/agent.js owns it. -->
-    <div id="agentbox" hidden>
-      <div id="agent-batch-bar" class="agent-batch-bar" hidden>
-        <div class="agent-batch-header">
-          <div class="agent-batch-title-row">
-            <span class="agent-batch-badge">Batch</span>
-            <span id="agent-batch-count" class="agent-batch-count">No comments yet</span>
-            <span class="grow"></span>
-            <button id="agent-batch-clear" class="agent-batch-clear" title="Clear all comments">Clear All</button>
-          </div>
-          <div class="agent-batch-meta">
-            <span class="agent-meta-label">Model</span>
-            <select id="agent-batch-harness" class="agent-harness-select" title="Coding harness"></select>
-            <select id="agent-batch-model" class="agent-model-select" title="Model"></select>
-          </div>
-        </div>
-        <div class="agent-batch-actions">
-          <span id="agent-batch-hint" class="agent-hint"></span>
-          <button id="agent-batch-open" class="agent-now" title="Watch this batch as a thread" hidden>View thread</button>
-          <button id="agent-batch-cancel" class="agent-cancel" title="Cancel in-flight batch edits" hidden>Cancel</button>
-          <button id="agent-batch-apply" class="agent-send agent-batch-apply" title="Apply all comments together ({Mod+Shift+Enter})">Apply All</button>
-        </div>
-        <div id="agent-batch-err" class="agent-err" hidden></div>
-      </div>
-      <div id="agentbox-list" class="agentbox-list"></div>
-    </div>
-      <div id="thr-list-view" class="thr-view">
-        <div class="inspector-bar">
-          <span class="calls-dir" id="thr-filter">
-            <button class="opt on" data-thr-filter="all" title="Every thread in this workspace">All</button>
-            <button class="opt" data-thr-filter="file" title="Threads started in the open file">This file</button>
-          </span>
-          <button id="thr-new" class="thr-btn-primary" title="Start a thread about the workspace or the selection">+ New</button>
-        </div>
-        <div class="panel-body" id="thr-list"></div>
-      </div>
-      <div id="thr-thread-view" class="thr-view" hidden>
-        <div class="inspector-bar thr-head">
-          <button id="thr-back" class="mini" title="All threads" aria-label="All threads">&#8592;</button>
-          <span class="inspector-sym-title" id="thr-title">New thread</span>
-          <button id="thr-delete" class="mini" title="Delete this thread" aria-label="Delete thread" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
-        </div>
-        <div id="thr-anchor" class="thr-anchor" hidden></div>
-        <div id="thr-msgs" class="thr-msgs"></div>
-        <div class="thr-compose">
-          <!-- PR review only: what this thread is about (thread.js) -->
-          <div id="thr-scope" class="thr-scope" role="group" aria-label="What this thread is about" hidden>
-            <span class="thr-scope-label">About</span>
-            <button type="button" data-scope="pr" title="The whole pull request: merge-base to PR head">Whole PR</button>
-            <button type="button" data-scope="mine" title="Only your own changes on top of the PR (uncommitted and unpushed)">My changes</button>
-            <button type="button" data-scope="selection" title="Just the code this thread is anchored to">Selection</button>
-          </div>
-          <div class="agent-meta">
-            <span class="agent-meta-label">Model</span>
-            <select class="agent-harness-select" id="thr-harness" title="Coding harness"></select>
-            <select class="agent-model-select" id="thr-model" title="Model"></select>
-          </div>
-          <textarea id="thr-input" class="agent-input" rows="3" spellcheck="false" autocomplete="off" placeholder="Ask about this code, or ask for changes anywhere..."></textarea>
-          <div class="agent-foot">
-            <span class="agent-hint" id="thr-hint">Enter to send, Shift+Enter for a new line</span>
-            <button id="thr-stop" class="agent-cancel" title="Stop this reply" hidden>Stop</button>
-            <button id="thr-send" class="agent-send" title="Send message">Send</button>
-          </div>
+    <!-- Right Pane: Agent Terminal -->
+    <section class="inspector-pane active" id="pane-right-term">
+      <div class="term-inspector-bar" id="term-inspector-bar">
+        <div class="term-inspector-tabs" id="term-inspector-tabs"></div>
+        <div class="term-inspector-actions">
+          <button id="btn-term-add-shell" class="mini" title="New Shell Tab">+ Shell</button>
         </div>
       </div>
+      <div class="term-inspector-body" id="editor-term-container"></div>
     </section>
 
     <!-- Right Pane 6: Tips & Tricks. Browse, search and filter all px0 tips. web/src/tips.js owns it. -->
