@@ -13,11 +13,14 @@ package main
 // and starts again on attach, a claude tab resuming its session.
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -63,6 +67,7 @@ type Project struct {
 	ID         string       `json:"id"`
 	Name       string       `json:"name"`
 	Dir        string       `json:"dir"`
+	Owned      bool         `json:"owned,omitempty"` // punk0 made this folder, so removing the project may delete it
 	Scratch    bool         `json:"scratch,omitempty"`
 	Groups     []ChatGroup  `json:"groups,omitempty"`
 	Workspaces []*Workspace `json:"workspaces"`
@@ -84,6 +89,7 @@ type Workspace struct {
 	Archived bool         `json:"archived,omitempty"` // tabs stopped and hidden from the list; folder kept
 	Active   int64        `json:"active,omitempty"`   // unix ms of the last prompt, else of creation
 	Created  int64        `json:"created,omitempty"`  // unix ms the chat was made
+	Adopted  bool         `json:"adopted,omitempty"`  // worktree kind: a folder punk0 did not make, used where it is
 	Tabs     []*Satellite `json:"tabs"`
 }
 
@@ -94,7 +100,7 @@ type Satellite struct {
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
-	Session string `json:"session,omitempty"` // claude --session-id, so the chat can be resumed
+	Session string `json:"session,omitempty"` // the agent's chat id the tab resumes (agentCommand); claude's is its --session-id
 
 	dir     string
 	hook    string // PUNK0_HOOK_URL the agent's hooks report to
@@ -115,13 +121,18 @@ func (s *Satellite) Shell() (*Shell, error) {
 		if s.hook != "" {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
-		sh, err := startShell(s.dir, agentCommand(s.Kind, s.Session, s.newChat), env)
+		sh, err := startShell(s.dir, s.command(), env)
 		if err != nil {
 			return nil, err
 		}
 		s.sh, s.newChat = sh, false
 	}
 	return s.sh, nil
+}
+
+// command is the line the tab's next start runs. Callers hold s.mu or own s.
+func (s *Satellite) command() string {
+	return agentCommand(s.Kind, s.Session, s.newChat)
 }
 
 func (s *Satellite) running() bool {
@@ -179,12 +190,15 @@ type Records struct {
 
 	// mu guards projects, lsp, creating and the file. git never runs under
 	// it (newworkspace.go).
-	mu       sync.Mutex
-	projects []*Project
-	removed  []RemovedProject // newest first, at most maxRemoved
-	lsp      map[string]bool  // folder -> language servers wanted there
-	hookBase string           // this punk0's loopback URL, for PUNK0_HOOK_URL
-	creating map[string]bool  // folders and names of workspaces whose git is running
+	mu           sync.Mutex
+	projects     []*Project
+	removed      []RemovedProject // newest first, at most maxRemoved
+	lsp          map[string]bool  // folder -> language servers wanted there
+	hookBase     string           // this punk0's loopback URL, for PUNK0_HOOK_URL
+	creating     map[string]bool  // folders and names of workspaces whose git is running
+	removedChats []string         // chats Chats mode leaves out, agent+":"+id
+
+	chats *chatHistory // the agents' own chat history (history.go), read-only after this
 }
 
 // RemovedProject is a project the user removed, offered again by the Add
@@ -192,7 +206,8 @@ type Records struct {
 type RemovedProject struct {
 	Name    string `json:"name"`
 	Dir     string `json:"dir"`
-	Removed int64  `json:"removed"` // unix ms
+	Owned   bool   `json:"owned,omitempty"` // Project.Owned, so adding it back can still delete its folder
+	Removed int64  `json:"removed"`         // unix ms
 }
 
 const maxRemoved = 10
@@ -202,6 +217,9 @@ type recordsFile struct {
 	Projects []*Project       `json:"projects"`
 	Removed  []RemovedProject `json:"removed,omitempty"`
 	LSP      map[string]bool  `json:"lsp,omitempty"`
+	// RemovedChats keeps the JSON key hiddenChats: records.json files already
+	// on disk hold it, and `removed` is the removed projects' key.
+	RemovedChats []string `json:"hiddenChats,omitempty"`
 }
 
 // OpenRecords loads <state>/records.json; a missing file is an empty list. A
@@ -217,7 +235,9 @@ func OpenRecords(home string) (*Records, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Records{home: home, worktrees: wt, lsp: map[string]bool{}, creating: map[string]bool{}}
+	r := &Records{home: home, worktrees: wt, lsp: map[string]bool{}, creating: map[string]bool{}, chats: newChatHistory()}
+	// OpenCode lists the folder its CLI runs in, so it needs punk0's folders.
+	r.chats.dirs = r.ChatFolders
 	var f recordsFile
 	data, err := os.ReadFile(r.file())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -228,7 +248,7 @@ func OpenRecords(home string) (*Records, error) {
 			return nil, fmt.Errorf("%s: %w", r.file(), err)
 		}
 	}
-	r.projects, r.removed = f.Projects, f.Removed
+	r.projects, r.removed, r.removedChats = f.Projects, f.Removed, f.RemovedChats
 	for k, v := range f.LSP {
 		r.lsp[k] = v
 	}
@@ -244,6 +264,10 @@ func OpenRecords(home string) (*Records, error) {
 }
 
 func (r *Records) file() string { return filepath.Join(r.home, "records.json") }
+
+// Chats is the agents' own chat history, read from their history folders
+// (history.go). It is built once, so callers need no nil check.
+func (r *Records) Chats() *chatHistory { return r.chats }
 
 // SetHookBase tells the tabs where to report agent hooks: the loopback URL
 // this punk0 serves on, with its base path.
@@ -270,7 +294,7 @@ func (r *Records) adoptLocked(w *Workspace) {
 }
 
 func (r *Records) saveLocked() error {
-	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp})
+	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats})
 }
 
 type projectView struct {
@@ -454,6 +478,11 @@ func (r *Records) AddProject(dir string) (*Project, error) {
 		return r.projects[i], nil
 	}
 	p := &Project{ID: r.projectIDLocked(filepath.Base(dir)), Name: filepath.Base(dir), Dir: dir}
+	// A folder punk0 made stays punk0's to delete across a removal and a
+	// re-add: Recently removed offers it back as the project it was.
+	if i := slices.IndexFunc(r.removed, func(rp RemovedProject) bool { return rp.Dir == dir }); i >= 0 {
+		p.Owned = r.removed[i].Owned
+	}
 	name := p.Name
 	if b := gitBranch(dir); b != "" && b != "HEAD" {
 		name = b
@@ -470,31 +499,135 @@ func (r *Records) AddProject(dir string) (*Project, error) {
 	return p, r.saveLocked()
 }
 
-// RemoveProject stops the project's tabs and forgets it. Its folder and any
-// worktrees stay on disk; adding the project again finds the worktrees.
-func (r *Records) RemoveProject(id string) error {
+// SetOwned marks a project as one punk0 made itself, which is the only thing
+// that lets removing it delete its folder. Create new project and a finished
+// clone call it, for a folder they just made and nothing else.
+func (r *Records) SetOwned(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := r.projectLocked(id)
+	if p == nil {
+		return fmt.Errorf("project %q: %w", id, errNotFound)
+	}
+	p.Owned = true
+	return r.saveLocked()
+}
+
+// RemoveProject stops the project's tabs and forgets it. Without o.Files its
+// folder and its worktrees stay on disk and the Add project panel offers it
+// again, since adding it back finds them. o.Files moves the folder to
+// <state>/trash instead, which only a project punk0 made or cloned
+// (Project.Owned) offers: it wants the project's name in o.Confirm, and is
+// refused while the repository still has worktrees checked out or another
+// registered folder sits inside, which the move would leave pointing at
+// nothing. The agents' transcripts are never touched: a chat is deleted from
+// Chats mode, one at a time (history.go).
+func (r *Records) RemoveProject(id string, o RemoveOptions) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	i := slices.IndexFunc(r.projects, func(p *Project) bool { return p.ID == id })
 	if i < 0 {
-		return fmt.Errorf("project %q: %w", id, errNotFound)
+		return "", fmt.Errorf("project %q: %w", id, errNotFound)
 	}
-	if r.projects[i].Scratch {
-		return errors.New("scratch cannot be removed")
+	p := r.projects[i]
+	if p.Scratch {
+		return "", errors.New("scratch cannot be removed")
+	}
+	// Refused before a single tab is stopped, so a project the user decides
+	// against keeps its agents running. The move itself goes first too: a
+	// folder that cannot move (another filesystem, permissions, a Windows
+	// handle) leaves everything as it was. Shells running in it follow it to
+	// the trash and are stopped right after.
+	if o.Files {
+		if err := r.trashableLocked(p, o.Confirm); err != nil {
+			return "", err
+		}
+		if _, err := moveToTrash(r.home, p.Dir); err != nil {
+			if errors.Is(err, syscall.EXDEV) {
+				return "", fmt.Errorf("%s is on another filesystem than punk0's state folder, so it cannot be moved to the trash: delete it yourself", tildePath(p.Dir))
+			}
+			return "", err
+		}
 	}
 	var tabs []*Satellite
-	for _, w := range r.projects[i].Workspaces {
+	for _, w := range p.Workspaces {
 		tabs = append(tabs, w.Tabs...)
 	}
 	closeAll(tabs)
-	gone := r.projects[i]
 	r.projects = slices.Delete(r.projects, i, i+1)
-	r.forgetRemovedLocked(gone.Dir)
-	r.removed = slices.Insert(r.removed, 0, RemovedProject{Name: gone.Name, Dir: gone.Dir, Removed: time.Now().UnixMilli()})
-	if len(r.removed) > maxRemoved {
-		r.removed = r.removed[:maxRemoved]
+	r.forgetRemovedLocked(p.Dir)
+	// A trashed project can never be added back, so it is not offered.
+	if !o.Files {
+		r.removed = slices.Insert(r.removed, 0, RemovedProject{Name: p.Name, Dir: p.Dir, Owned: p.Owned, Removed: time.Now().UnixMilli()})
+		if len(r.removed) > maxRemoved {
+			r.removed = r.removed[:maxRemoved]
+		}
 	}
-	return r.saveLocked()
+	return "", r.saveLocked()
+}
+
+// workspaceDirs lists the folders a project's workspaces run in, each once.
+func workspaceDirs(p *Project) []string {
+	var dirs []string
+	for _, w := range p.Workspaces {
+		if !slices.Contains(dirs, w.Dir) {
+			dirs = append(dirs, w.Dir)
+		}
+	}
+	return dirs
+}
+
+// trashableLocked says why a project's folder must not be moved to the
+// trash: punk0 did not make it, its name was not typed back, the repository
+// still has worktrees, or another registered folder lives inside it — the
+// last two would be moved along and left pointing at nothing. A prunable
+// registration (its folder already gone) does not count, or a stale one
+// would be impossible to get past.
+func (r *Records) trashableLocked(p *Project, confirm string) error {
+	if !p.Owned {
+		return fmt.Errorf("punk0 did not create %s: remove the project and delete the folder yourself", tildePath(p.Dir))
+	}
+	if confirm != p.Name {
+		return fmt.Errorf("type the project name %q to delete its folder", p.Name)
+	}
+	if !isDir(p.Dir) {
+		return fmt.Errorf("%s is already gone: remove the project without deleting its folder", tildePath(p.Dir))
+	}
+	var inner []string
+	for _, q := range r.projects {
+		if q == p {
+			continue
+		}
+		if inside(q.Dir, p.Dir) {
+			inner = append(inner, tildePath(q.Dir))
+			continue
+		}
+		for _, w := range q.Workspaces {
+			if inside(w.Dir, p.Dir) {
+				inner = append(inner, tildePath(w.Dir))
+			}
+		}
+	}
+	if len(inner) > 0 {
+		return fmt.Errorf("%s holds other folders punk0 knows: %s. Remove those first", p.Name, strings.Join(inner, ", "))
+	}
+	if !gitAvailable(p.Dir) {
+		return nil
+	}
+	wts, err := listWorktrees(p.Dir)
+	if err != nil {
+		return err
+	}
+	var out []string
+	for _, wt := range wts {
+		if !wt.Main && !wt.Prunable {
+			out = append(out, tildePath(wt.Path))
+		}
+	}
+	if len(out) > 0 {
+		return fmt.Errorf("%s still has worktrees checked out: %s. Delete them first", p.Name, strings.Join(out, ", "))
+	}
+	return nil
 }
 
 func (r *Records) forgetRemovedLocked(dir string) {
@@ -527,17 +660,34 @@ func (r *Records) Removed() []removedView {
 	return out
 }
 
+// RemoveOptions is what a removal dialog answers with: Force deletes a
+// worktree that has uncommitted changes, Files deletes folders as well as
+// records, and Confirm is the project name typed back before its folder is
+// moved to the trash.
+type RemoveOptions struct {
+	Force   bool
+	Files   bool
+	Confirm string
+}
+
 // RemoveWorkspace stops the workspace's tabs and forgets it; workspaces
-// listed under it move to the top level. A local workspace leaves the project
-// folder alone. A scratch chat's folder is deleted with it: the page offers
-// that only for an archived chat. A worktree workspace also removes its
-// worktree, but answers errDirty while it has uncommitted changes unless
-// force is set. Its branch is kept unless workspace.deleteMergedBranch is on;
-// then git deletes it if merged, and note says why when it did not.
-func (r *Records) RemoveWorkspace(id string, force bool) (note string, err error) {
+// listed under it move to the top level. Without o.Files nothing on disk is
+// touched: a worktree keeps its folder, its branch and its registration in
+// the repository, so adding the project again finds it. With o.Files the
+// worktree is removed with git, never with os.RemoveAll, and only once
+// listWorktrees agrees the folder is a linked worktree of this project,
+// which is what makes an adopted folder safe to remove and the project's own
+// checkout impossible to; it answers errDirty while the worktree has
+// uncommitted changes unless o.Force is set. The branch is kept unless
+// workspace.deleteMergedBranch is on; then git deletes it if merged, and
+// note says why when it did not. A local workspace never touches the project
+// folder, and a scratch chat's folder goes with it exactly when punk0 made
+// it, whatever o.Files says. The agents' transcripts are never touched: a
+// removed workspace's chats stay on disk and keep being listed (history.go).
+func (r *Records) RemoveWorkspace(id string, o RemoveOptions) (note string, err error) {
 	var repo, branch string
 	// Registered before the unlock, so it runs after it: git branch -d needs
-	// no lock, and a failure only ever becomes the note.
+	// no lock, and its failing only ever becomes the note.
 	defer func() {
 		if err == nil && branch != "" {
 			note = deleteMergedBranch(repo, branch)
@@ -550,15 +700,14 @@ func (r *Records) RemoveWorkspace(id string, force bool) (note string, err error
 		return "", fmt.Errorf("workspace %q: %w", id, errNotFound)
 	}
 	w := p.Workspaces[i]
-	exists := isDir(w.Dir)
-	if w.Kind == kindWorktree {
-		// Only folders punk0 created are ever removed.
-		if !strings.HasPrefix(w.Dir, r.worktrees+string(filepath.Separator)) {
-			return "", fmt.Errorf("%s is not a punk0 worktree", w.Dir)
+	worktree, exists := w.Kind == kindWorktree && o.Files, isDir(w.Dir)
+	// Everything that can refuse runs before a single tab is stopped, so a
+	// refused delete leaves the agents running.
+	if worktree && exists {
+		if err := linkedWorktree(p.Dir, w.Dir); err != nil {
+			return "", err
 		}
-		// Checked before stopping anything, so a refused delete leaves the
-		// agents running.
-		if exists && !force {
+		if !o.Force {
 			out, err := exec.Command("git", "-C", w.Dir, "status", "--porcelain").Output()
 			if err != nil {
 				return "", fmt.Errorf("git status: %w", err)
@@ -569,11 +718,11 @@ func (r *Records) RemoveWorkspace(id string, force bool) (note string, err error
 		}
 	}
 	closeAll(w.Tabs)
-	if w.Kind == kindWorktree {
+	if worktree {
 		args := []string{"-C", p.Dir, "worktree", "prune"}
 		if exists {
 			args = []string{"-C", p.Dir, "worktree", "remove", w.Dir}
-			if force {
+			if o.Force {
 				args = append(args, "--force")
 			}
 		}
@@ -604,11 +753,73 @@ func deleteMergedBranch(repo, branch string) string {
 	return ""
 }
 
-// AddTab opens a new tab in a workspace. A claude tab gets the session id its
-// conversation will be saved under.
-func (r *Records) AddTab(workspaceID, kind string) (*Satellite, error) {
-	if _, agent := tabAgents[kind]; kind != tabShell && !agent {
+// linkedWorktree answers nil only while dir is one of repo's linked
+// worktrees that git will remove. Adopted worktrees live anywhere, so where
+// a folder sits says nothing about whose it is; git's own list does, and it
+// is also what keeps a stale record from running worktree remove on the
+// main checkout. Prunable and locked registrations are refused here rather
+// than by git later (worktree remove refuses a locked one even with
+// --force), so the tabs are not stopped for a removal that cannot happen.
+func linkedWorktree(repo, dir string) error {
+	wts, err := listWorktrees(repo)
+	if err != nil {
+		return err
+	}
+	wt := worktreeAt(wts, dir)
+	switch {
+	case wt == nil:
+		return fmt.Errorf("%s is not a worktree of %s", dir, repo)
+	case wt.Main:
+		return fmt.Errorf("%s is the project's own checkout, not a worktree", dir)
+	case wt.Prunable:
+		return fmt.Errorf("%s is no longer a worktree of %s: git lists it as prunable", dir, repo)
+	case wt.Locked:
+		return fmt.Errorf("%s is locked (git worktree unlock to allow removing it)", dir)
+	}
+	return nil
+}
+
+// moveToTrash moves path into <state>/trash, stamped with the time and, if
+// that name is taken, numbered, and returns where it went. A project folder
+// punk0 deletes for the user is never removed outright: a rename can be
+// undone by hand, RemoveAll cannot. A trash folder on another filesystem
+// fails here rather than copying.
+func moveToTrash(state, path string) (string, error) {
+	trash := filepath.Join(state, "trash")
+	if err := os.MkdirAll(trash, 0o700); err != nil {
+		return "", err
+	}
+	base := fmt.Sprintf("%d-%s", time.Now().UnixMilli(), filepath.Base(path))
+	dest := filepath.Join(trash, base)
+	for i := 1; ; i++ {
+		if _, err := os.Lstat(dest); errors.Is(err, fs.ErrNotExist) {
+			break
+		}
+		dest = filepath.Join(trash, fmt.Sprintf("%s.%d", base, i))
+	}
+	if err := os.Rename(path, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// validSession is what an agent's chat id may hold: it goes into the tab's
+// shell command line and into codex/opencode argument lists, and every
+// agent's ids (UUIDs, ses_…) fit it. It cannot start with '-', or an id read
+// from a transcript on disk could pass itself off as a flag.
+var validSession = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+// AddTab opens a new tab in a workspace. session "" starts a new chat (a
+// claude tab gets the session id it will be saved under); else the tab
+// resumes that chat of the agent's from its first start, so the agent must be
+// able to resume by id.
+func (r *Records) AddTab(workspaceID, kind, session string) (*Satellite, error) {
+	a, agent := tabAgents[kind]
+	if kind != tabShell && !agent {
 		return nil, fmt.Errorf("invalid tab kind %q", kind)
+	}
+	if session != "" && (!agent || (kind != tabClaude && a.resumeID == nil) || !validSession.MatchString(session)) {
+		return nil, fmt.Errorf("invalid session %q for a %s tab", session, kind)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -617,7 +828,7 @@ func (r *Records) AddTab(workspaceID, kind string) (*Satellite, error) {
 		return nil, fmt.Errorf("workspace %q: %w", workspaceID, errNotFound)
 	}
 	w := p.Workspaces[i]
-	t := newTab(kind, w.Dir)
+	t := newTab(kind, w.Dir, session)
 	w.Tabs = append(w.Tabs, t)
 	r.adoptLocked(w)
 	return t, r.saveLocked()
@@ -685,6 +896,199 @@ func (r *Records) Tab(id string) *Satellite {
 		return w.Tabs[i]
 	}
 	return nil
+}
+
+// RemoveChat takes one of the agents' chats out of Chats mode, or lists it
+// again. Only punk0's list changes: the conversation is the agent's, stays on
+// disk, and its tabs keep running.
+func (r *Records) RemoveChat(agent, id string, removed bool) error {
+	key := chatKey(agent, id)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	has := slices.Contains(r.removedChats, key)
+	switch {
+	case removed && !has:
+		r.removedChats = append(r.removedChats, key)
+	case !removed && has:
+		r.removedChats = slices.DeleteFunc(r.removedChats, func(k string) bool { return k == key })
+	default:
+		return nil
+	}
+	return r.saveLocked()
+}
+
+// RemovedChats is the removed set, for one listing.
+func (r *Records) RemovedChats() map[string]bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]bool, len(r.removedChats))
+	for _, k := range r.removedChats {
+		out[k] = true
+	}
+	return out
+}
+
+// RestoreAllChats lists every removed chat again and says how many came
+// back. Sync does it in one go: removing a chat is punk0's own bookkeeping,
+// so one click undoes all of it.
+func (r *Records) RestoreAllChats() (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := len(r.removedChats)
+	if n == 0 {
+		return 0, nil
+	}
+	r.removedChats = nil
+	return n, r.saveLocked()
+}
+
+// CloseSessionTabs stops and forgets every tab resuming one chat, wherever it
+// is: deleting a conversation an agent still holds would have it written back
+// on the next stop. Close waits until the shell's process group is reaped, so
+// the delete that follows cannot race it.
+func (r *Records) CloseSessionTabs(agent, id string) (int, error) {
+	if agent == "" || id == "" {
+		return 0, nil
+	}
+	closed := 0
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			w.Tabs = slices.DeleteFunc(w.Tabs, func(t *Satellite) bool {
+				if t.Kind != agent || t.Session != id {
+					return false
+				}
+				t.close()
+				closed++
+				return true
+			})
+		}
+	}
+	if closed == 0 {
+		return 0, nil
+	}
+	return closed, r.saveLocked()
+}
+
+// ChatFolders lists every folder punk0 knows a chat could have run in -- each
+// project's own folder and each of its workspaces' -- once. OpenCode's CLI
+// answers for the folder it is started in, so this is how wide its listing
+// can be.
+func (r *Records) ChatFolders() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for _, p := range r.projects {
+		for _, dir := range append([]string{p.Dir}, workspaceDirs(p)...) {
+			if dir != "" && !slices.Contains(out, dir) {
+				out = append(out, dir)
+			}
+		}
+	}
+	return out
+}
+
+// SessionTab finds the tab that resumes an agent's chat: Open reuses it
+// instead of opening a second tab on one conversation, and a permanent
+// delete checks none is left after CloseSessionTabs.
+func (r *Records) SessionTab(agent, session string) (tabID, workspaceID string, running bool) {
+	if session == "" {
+		return "", "", false
+	}
+	r.mu.Lock()
+	var t *Satellite
+found:
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			i := slices.IndexFunc(w.Tabs, func(s *Satellite) bool { return s.Kind == agent && s.Session == session })
+			if i >= 0 {
+				t, workspaceID = w.Tabs[i], w.ID
+				break found
+			}
+		}
+	}
+	r.mu.Unlock()
+	if t == nil {
+		return "", "", false
+	}
+	// running takes the tab's own lock, never r.mu.
+	return t.ID, workspaceID, t.running()
+}
+
+// TabSessions maps every conversation a tab resumes, by chatKey, to that
+// tab, so one listing of the chat history can mark them all.
+func (r *Records) TabSessions() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]string{}
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			for _, t := range w.Tabs {
+				if t.Session != "" {
+					out[chatKey(t.Kind, t.Session)] = t.ID
+				}
+			}
+		}
+	}
+	return out
+}
+
+// ProjectDirsOf lists the folders of the project that holds workspace id --
+// the project folder and every workspace's -- for Chats mode's Project
+// scope.
+func (r *Records) ProjectDirsOf(workspaceID string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, _ := r.workspaceLocked(workspaceID)
+	if p == nil {
+		return nil
+	}
+	dirs := make([]string, 0, len(p.Workspaces)+1)
+	dirs = append(dirs, p.Dir)
+	for _, w := range p.Workspaces {
+		dirs = append(dirs, w.Dir)
+	}
+	return dirs
+}
+
+// WorkspaceByDir maps every workspace folder to its workspace, for
+// workspaceIn: a chat says where punk0 would open it. Local workspaces share
+// a folder; the first one wins, as elsewhere.
+func (r *Records) WorkspaceByDir() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.workspaceDirsLocked()
+}
+
+// WorkspaceAround is the first workspace whose folder holds dir, with the
+// name it goes by: a chat that ran in a subfolder of a workspace is in
+// punk0's tree without being a folder punk0 can open a tab in.
+func (r *Records) WorkspaceAround(dir string) (id, label string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if inside(dir, w.Dir) {
+				return w.ID, cmp.Or(w.Title, w.Name)
+			}
+		}
+	}
+	return "", ""
+}
+
+// ProjectFolders lists the registered projects as id and folder, Scratch
+// aside: what a folder outside punk0 is matched against.
+func (r *Records) ProjectFolders() []workspaceDir {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]workspaceDir, 0, len(r.projects))
+	for _, p := range r.projects {
+		if !p.Scratch {
+			out = append(out, workspaceDir{p.ID, p.Dir})
+		}
+	}
+	return out
 }
 
 // tabPlace is where a tab runs, copied under the lock: what the turn ledger
@@ -953,28 +1357,127 @@ func (r *Records) projectIDLocked(name string) string {
 	return id
 }
 
+// worktreeInfo is one worktree of a repository, as git lists it: the main
+// checkout first, then the linked ones. Workspace is the punk0 workspace
+// running in Path, filled in by Records.Worktrees.
+type worktreeInfo struct {
+	Path      string `json:"path"`
+	Branch    string `json:"branch"` // "" when detached
+	Head      string `json:"head"`
+	Detached  bool   `json:"detached"`
+	Locked    bool   `json:"locked"`
+	Prunable  bool   `json:"prunable"` // its folder is gone; git worktree prune forgets it
+	Main      bool   `json:"main"`
+	Workspace string `json:"workspace"`
+}
+
+// listWorktrees parses `git worktree list --porcelain`: one "key value" line
+// per field, a blank line ending each worktree. -z would keep a newline in a
+// folder name, but needs git 2.36.
+func listWorktrees(repo string) ([]worktreeInfo, error) {
+	out, err := exec.Command("git", "-C", repo, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return nil, gitError(ee.Stderr, err)
+		}
+		return nil, err
+	}
+	var wts []worktreeInfo
+	cur := -1
+	for _, line := range strings.Split(string(out), "\n") {
+		key, val, _ := strings.Cut(line, " ")
+		switch {
+		case line == "":
+			cur = -1
+		case key == "worktree":
+			wts = append(wts, worktreeInfo{Path: val, Main: len(wts) == 0})
+			cur = len(wts) - 1
+		case cur < 0:
+		case key == "HEAD":
+			wts[cur].Head = val
+		case key == "branch":
+			wts[cur].Branch = strings.TrimPrefix(val, "refs/heads/")
+		case key == "detached":
+			wts[cur].Detached = true
+		case key == "locked":
+			wts[cur].Locked = true
+		case key == "prunable":
+			wts[cur].Prunable = true
+		}
+	}
+	return wts, nil
+}
+
+// sameDir reports whether a and b name one folder: equal once cleaned, or
+// once symlinks are resolved (git records worktree folders resolved).
+func sameDir(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if a == b {
+		return true
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA != nil {
+		ra = a
+	}
+	if errB != nil {
+		rb = b
+	}
+	return ra == rb
+}
+
+// worktreeAt is the worktree in folder dir, or nil.
+func worktreeAt(wts []worktreeInfo, dir string) *worktreeInfo {
+	for i := range wts {
+		if sameDir(wts[i].Path, dir) {
+			return &wts[i]
+		}
+	}
+	return nil
+}
+
 // ownWorktrees returns a workspace for every worktree of the repository at
 // dir that lives under <state>/worktrees.
 func (r *Records) ownWorktrees(dir string) []*Workspace {
-	out, err := exec.Command("git", "-C", dir, "worktree", "list", "--porcelain").Output()
-	if err != nil {
-		return nil
-	}
+	wts, _ := listWorktrees(dir)
 	prefix := r.worktrees + string(filepath.Separator)
 	var ws []*Workspace
-	var cur *Workspace
-	for _, line := range strings.Split(string(out), "\n") {
-		if path, ok := strings.CutPrefix(line, "worktree "); ok {
-			cur = nil
-			if strings.HasPrefix(path, prefix) {
-				cur = newWorkspace(filepath.Base(path), kindWorktree, path, "")
-				ws = append(ws, cur)
-			}
-		} else if b, ok := strings.CutPrefix(line, "branch refs/heads/"); ok && cur != nil {
-			cur.Branch = b
+	for _, wt := range wts {
+		if strings.HasPrefix(wt.Path, prefix) {
+			ws = append(ws, newWorkspace(filepath.Base(wt.Path), kindWorktree, wt.Path, wt.Branch))
 		}
 	}
 	return ws
+}
+
+// workspaceDirsLocked maps each folder a workspace runs in, in any project,
+// to the first such workspace.
+func (r *Records) workspaceDirsLocked() map[string]string {
+	dirs := map[string]string{}
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if _, ok := dirs[w.Dir]; !ok {
+				dirs[w.Dir] = w.ID
+			}
+		}
+	}
+	return dirs
+}
+
+// workspaceIn is the workspace of dirs (workspaceDirsLocked) running in dir,
+// or "". The folders are walked in order, so two workspaces spelling one
+// folder differently always answer with the same one.
+func workspaceIn(dirs map[string]string, dir string) string {
+	if id := dirs[dir]; id != "" {
+		return id
+	}
+	for _, d := range slices.Sorted(maps.Keys(dirs)) {
+		if sameDir(d, dir) {
+			return dirs[d]
+		}
+	}
+	return ""
 }
 
 // newWorkspace opens empty, on the page's welcome view; a scratch chat gets
@@ -983,17 +1486,19 @@ func newWorkspace(name, kind, dir, branch string) *Workspace {
 	return &Workspace{ID: newID(), Name: name, Kind: kind, Dir: dir, Branch: branch, Tabs: []*Satellite{}}
 }
 
-// newTab makes a tab of kind. An agent tab starts a new session the first
-// time it runs; a claude tab gets the session id its conversation will be
-// saved under.
-func newTab(kind, dir string) *Satellite {
-	t := &Satellite{ID: newID(), Kind: kind, Name: kind, dir: dir}
+// newTab makes a tab of kind. With session "" an agent tab starts a new
+// session the first time it runs, and a claude tab gets the session id its
+// conversation will be saved under; with a session it resumes that chat.
+func newTab(kind, dir, session string) *Satellite {
+	t := &Satellite{ID: newID(), Kind: kind, Name: kind, dir: dir, Session: session}
 	if a, ok := tabAgents[kind]; ok && kind != tabClaude {
 		t.Name = a.Label
 	}
-	t.newChat = kind != tabShell
-	if kind == tabClaude {
-		t.Session = newUUID()
+	if session == "" {
+		t.newChat = kind != tabShell
+		if kind == tabClaude {
+			t.Session = newUUID()
+		}
 	}
 	return t
 }

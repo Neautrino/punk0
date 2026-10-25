@@ -3,12 +3,15 @@
 // whether each is shown. Widths live in two CSS variables on #wb-app
 // (--wb-left, --wb-right); the left one also sizes the status bar's left
 // section, so the bar follows the sidebar. A hidden pane is a class on
-// #wb-app (hide-left, hide-right). A hidden pane's show button (.o-show)
-// takes its place: the center's head at the left edge for the projects pane,
-// the open file's path row (or, with none open, the tab bar) for the files
-// pane. The right side's toggle, which closes the files pane with the open
-// files, is split.js's (isHidden, setHidden, 'pane:toggled'). All of it is
-// remembered in this browser.
+// #wb-app (hide-left, hide-right). Each pane hides with its ≡ button
+// (.o-hide[data-hide]: the projects pane's head; the end of the files
+// tree's head, so in Files mode it hides the tree only), and a hidden
+// pane's show button (.o-show) takes its place: the center's head at the
+// left edge for the projects pane, the right end of the second row for the
+// files pane (the file tab row, or with no file group showing the
+// terminals' top row). The right side's toggle, which closes the files
+// pane with the open files, is split.js's (isHidden, setHidden,
+// 'pane:toggled'). All of it is remembered in this browser.
 //
 // Smoothness: a drag only records the pointer; one requestAnimationFrame per
 // frame writes the variables, and body.wb-resizing turns off text selection
@@ -94,12 +97,14 @@ function toggleSide(side) {
   apply();
   save();
   emit('pane:toggled', side);
-  // Keep focus on the pane's buttons when one of them was used; a toggle
-  // stays in place, so it keeps focus by itself.
-  if (!document.activeElement?.closest?.(`#o-hide-${side}, .o-show[data-show="${side}"]`)) return;
+  // Keep focus on the pane's buttons when one of them was used: it moves to
+  // the counterpart now in view. A toggle stays in place, so it keeps focus
+  // by itself.
+  if (!document.activeElement?.closest?.(`.o-hide[data-hide="${side}"], .o-show[data-show="${side}"]`)) return;
+  const shown = sel => $$(sel).find(b => b.offsetParent);
   const btn = layout.hidden[side]
-    ? [...$$(`.o-show[data-show="${side}"], .o-side-toggle[data-side="${side}"]`)].find(b => b.offsetParent)
-    : $(`#o-hide-${side}`);
+    ? shown(`.o-show[data-show="${side}"]`) || shown(`.o-side-toggle[data-side="${side}"]`)
+    : shown(`.o-hide[data-hide="${side}"]`);
   btn?.focus();
 }
 
@@ -171,8 +176,7 @@ export function initResize() {
     });
   }
   for (const side of ['left', 'right']) {
-    $(`#o-hide-${side}`).addEventListener('click', () => toggleSide(side));
-    for (const b of $$(`.o-show[data-show="${side}"]`)) b.addEventListener('click', () => toggleSide(side));
+    for (const b of $$(`.o-hide[data-hide="${side}"], .o-show[data-show="${side}"]`)) b.addEventListener('click', () => toggleSide(side));
   }
   addEventListener('keydown', shortcut);
   addEventListener('resize', () => {

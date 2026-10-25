@@ -11,6 +11,7 @@
 // its first prompt (scratch.go); renaming, grouping, pinning and archiving
 // change labels only. New groups and group names are edited in place.
 import { $, esc } from '../state.js';
+import { emit } from '../bus.js';
 import { showToast } from '../ui.js';
 import { call, failed, openEditor } from './api.js';
 import { state, subscribe, reload, selectWorkspace, workspace, tildify, wsLabel } from './store.js';
@@ -18,6 +19,7 @@ import { getSetting } from './settings.js';
 import { openNewChat, closeNewChat } from './newchat.js';
 import { openNewWorkspace, closeNewWorkspace } from './newworkspace.js';
 import { openAddProject, closeAddProject } from './addproject.js';
+import { openRemoveDialog, closeRemoveDialog } from './removedialog.js';
 import { opts, setOpt, initViewMenu, syncViewButton, closeViewMenu, isRunning, statusOf, stateOf, STATES, agentOf, agentLabel } from './listview.js';
 
 const ICON_PLUS = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
@@ -124,6 +126,7 @@ function setView(v) {
   closeChatMenu();
   closeNewChat();
   closeNewWorkspace();
+  closeRemoveDialog();
   closeViewMenu();
   editing = null;
   syncSearch();
@@ -466,7 +469,8 @@ const BACKEND_TITLE = {
 function renderWorkspace(w, p) {
   let chip = '';
   if (w.missing) chip = '<span class="o-chip o-missing" title="Folder deleted outside punk0">missing</span>';
-  else if (w.kind === 'worktree') chip = `<span class="o-chip o-wt" title="Own worktree on branch ${esc(w.branch)}">⑂ ${esc(w.branch)}</span>`;
+  else if (w.kind === 'worktree') chip = `<span class="o-chip o-wt" title="${w.adopted ? 'Adopted worktree' : 'Own worktree'} on branch ${esc(w.branch)}">⑂ ${esc(w.branch)}</span>`;
+  if (w.adopted) chip += '<span class="o-chip o-adopted" title="Made outside punk0 and used where it is: deleting the workspace leaves its folder">adopted</span>';
   const name = p && p.name !== w.name ? `${p.name} / ${w.name}` : w.name;
   return `
     <div class="o-ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}${p ? ' o-flat' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}">
@@ -520,14 +524,14 @@ async function onListClick(e) {
   if (prId) return reviewAction(state.reviews.find(r => r.id === prId), act);
   if (act === 'add-project') return openAddProject(e.target.closest('[data-act]'));
   if (act === 'add-ws') return newWorkspace(project, e.target.closest('[data-act]'));
-  if (act === 'del-project') return removeProject(project);
+  if (act === 'del-project') return removeProject(project, e.target.closest('[data-act]'));
   if (act === 'refresh-project') return refreshProject(project, e.target.closest('[data-act]'));
   // The group's + only shows on hover; point at its row.
   if (act === 'new-chat') return newChat(groupId, e.target.closest('.o-proj-row') || e.target.closest('[data-act]'));
   if (act === 'rename-group') return startRenameGroup(groupId);
   if (act === 'del-group') return removeGroup(groupId);
   if (act === 'toggle-archived') return toggleArchived();
-  if (w && act === 'del-ws') return removeWorkspace(w);
+  if (w && act === 'del-ws') return removeWorkspace(w, e.target.closest('[data-act]'));
   if (w && act === 'chat-menu') return chatMenuEl.hidden || menuChat !== w.id ? openChatMenu(w, e.target.closest('button')) : closeChatMenu();
   if (w && act === 'restore') return updateChat(w, { archived: false });
   if (w && act === 'pin') return updateChat(w, { pinned: !w.pinned });
@@ -694,31 +698,97 @@ async function reviewAction(it, act) {
   reload();
 }
 
-async function removeProject(p) {
-  if (!confirm(`Remove "${p.name}" from punk0? Its tabs stop. No files are deleted, and its worktrees come back if you add it again.`)) return;
-  const res = await call('DELETE', `api/projects/${encodeURIComponent(p.id)}`);
+// removeProject asks what to remove with the project: for one punk0 created
+// or cloned, its folder, which is moved to punk0's trash and only once its
+// name is typed back. Its agents' chats are never touched; they are deleted
+// in Chats mode, one at a time. from is the ✕ the dialog points at.
+async function removeProject(p, from) {
+  const options = [];
+  if (p.owned) {
+    options.push({
+      id: 'files',
+      label: 'Also delete the project folder',
+      note: `${tildify(p.dir)} is moved to punk0's trash folder. Refused while the repository still has worktrees checked out.`,
+      checked: false,
+    });
+  }
+  const answers = await openRemoveDialog({
+    heading: 'Remove project',
+    go: { off: 'Remove project', on: 'Remove project' },
+    what: `Remove <b>${esc(p.name)}</b> from punk0? Its tabs stop. ${p.owned
+      ? 'Nothing is deleted unless you say so below.'
+      : 'No files are deleted, and its worktrees come back if you add it again.'}`,
+    options,
+    confirm: p.owned ? p.name : '',
+  }, from);
+  if (!answers) return;
+  const q = new URLSearchParams();
+  if (answers.files) {
+    q.set('files', '1');
+    q.set('confirm', answers.confirm);
+  }
+  const res = await call('DELETE', `api/projects/${encodeURIComponent(p.id)}${query(q)}`);
   if (!res.ok) failed(res);
+  else if (res.data?.note) showToast('!', res.data.note, 6000);
   reload();
+  emit('orch:removed');
 }
 
-async function removeWorkspace(w) {
+// removeWorkspace asks what to delete with the workspace: a worktree offers
+// its folder, ticked for the worktrees punk0 made and clear for ones it
+// adopted in place. The agents' chats are never touched; a removed
+// workspace's chats stay listed in Chats mode. Uncommitted changes come back
+// as 409 dirty, which asks once more and deletes them.
+async function removeWorkspace(w, from) {
+  const branchNote = getSetting('workspace.deleteMergedBranch')
+    ? `Branch ${w.branch} is deleted if merged, else kept.`
+    : `Branch ${w.branch} is kept.`;
+  const options = [];
+  if (w.kind === 'worktree') {
+    options.push({
+      id: 'files',
+      label: 'Also delete the worktree folder',
+      note: w.missing
+        ? 'The folder is already gone; git stops listing the worktree.'
+        : `${tildify(w.dir)} is removed with git worktree remove.${w.branch ? ` ${branchNote}` : ''}`,
+      checked: !w.adopted,
+    });
+  }
+  // Nothing else goes with it: the chats of its folder are the agents' own.
   const what = {
-    worktree: `Delete "${w.name}"? Its tabs stop and its worktree folder is removed. Branch ${w.branch} is ${getSetting('workspace.deleteMergedBranch') ? 'deleted if merged, else kept' : 'kept'}.`,
-    local: `Delete "${w.name}"? Its tabs stop. The project folder is not touched.`,
+    worktree: `Delete workspace <b>${esc(w.name)}</b>? Its tabs stop${w.adopted ? ', and the worktree stays where it is unless you say otherwise' : ''}.`,
+    local: `Delete workspace <b>${esc(w.name)}</b>? Its tabs stop. The project folder is not touched.`,
     folder: ownFolder(w)
-      ? `Delete chat "${wsLabel(w)}" for good? Its folder ${w.dir} and everything in it are deleted.`
-      : `Delete chat "${wsLabel(w)}"? Its tabs stop. Your folder ${w.dir} is not touched.`,
+      ? `Delete chat <b>${esc(wsLabel(w))}</b>? Its tabs stop and the folder punk0 made for it, ${esc(tildify(w.dir))}, is deleted with it.`
+      : `Delete chat <b>${esc(wsLabel(w))}</b>? Its tabs stop. Your folder ${esc(tildify(w.dir))} is not touched.`,
   }[w.kind];
-  if (!confirm(what)) return;
+  const answers = await openRemoveDialog({
+    heading: w.kind === 'folder' ? 'Delete chat' : 'Delete workspace',
+    go: { off: 'Delete', on: 'Delete' },
+    what,
+    options,
+    confirm: '',
+  }, from);
+  if (!answers) return;
+  const q = new URLSearchParams();
+  if (answers.files) q.set('files', '1');
   const path = `api/workspaces/${encodeURIComponent(w.id)}`;
-  let res = await call('DELETE', path);
+  let res = await call('DELETE', path + query(q));
   if (res.status === 409 && res.data?.dirty) {
     if (!confirm(`"${w.name}" has uncommitted changes. Delete them with the worktree?`)) return;
-    res = await call('DELETE', `${path}?force=1`);
+    q.set('force', '1');
+    res = await call('DELETE', path + query(q));
   }
   if (!res.ok) failed(res);
   else if (res.data?.note) showToast('!', res.data.note, 6000);
   reload();
+  emit('orch:removed');
+}
+
+// query is a search string for params, empty when there are none.
+function query(params) {
+  const s = params.toString();
+  return s ? `?${s}` : '';
 }
 
 /* ---------- new workspaces ---------- */

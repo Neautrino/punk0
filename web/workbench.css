@@ -139,12 +139,11 @@
   background: var(--bg2);
 }
 #o-side { width: var(--wb-left); border-right: 1px solid var(--line); }
-/* No border of its own: the second row runs on from the open file's path
-   into the pane's head, so only the tree and its foot draw the line, and
-   the head too while no file is shown beside it. */
-#o-files { overflow: hidden; }
-#o-tree, #o-files-foot, #o-files .o-files-head { box-shadow: inset 1px 0 0 var(--line); }
-#o-center.file-shown #o-files .o-files-head { box-shadow: none; }
+/* A column of the center under the right side's top row, with its own
+   border beside the file group's rows. */
+#o-files { overflow: hidden; border-left: 1px solid var(--line); }
+/* One section per mode (paneviews.js); [hidden] hides the other. */
+#o-files > section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* A pane border's drag handle: no width of its own, an 8px hit area over
    the border, and an accent line once hovered a moment or dragged. */
@@ -175,38 +174,43 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-center .o-show { display: none; }
 #wb-app.hide-left #o-center:not(.term-off) #o-tab-head .o-show[data-show="left"],
 #wb-app.hide-left #o-center.term-off #o-file-head .o-show[data-show="left"] { display: inline-flex; }
-/* The files pane's show button: at the end of the open file's path row,
-   where the pane's ≡ hide button was, or in the tab bar while no file is
-   open. */
-#wb-app.hide-right #o-center.file-shown #o-view-head .o-show[data-show="right"],
-#wb-app.hide-right #o-center:not(.file-shown) #o-tab-head .o-show[data-show="right"] { display: inline-flex; }
-#o-view-head .o-show[data-show="right"] {
-  flex: none; width: 22px; height: 22px; margin-right: -8px; padding: 0;
-  align-items: center; justify-content: center; border-radius: var(--r);
-}
-/* Open in editor and the right side's toggle: always there, in the head at
-   the center's right edge; aria-pressed says whether anything shows right
-   of the terminals. */
-#o-center :is(.o-side-toggle, .o-open-editor) { display: none; flex: none; width: 22px; height: 22px; margin-left: 2px; padding: 0; align-items: center; justify-content: center; border-radius: var(--r); }
-#o-center:not(.files-open) #o-tab-head :is(.o-side-toggle, .o-open-editor),
-#o-center.file-off #o-tab-head :is(.o-side-toggle, .o-open-editor),
-#o-center.files-open:not(.file-off) #o-file-head :is(.o-side-toggle, .o-open-editor) { display: inline-flex; }
-/* The pane's own hide button, in its head: shown filled, as the pane is. */
-#o-hide-right { width: 22px; height: 22px; border-radius: var(--r); background: var(--bg4); color: var(--fg); }
+/* The files pane's show button: at the right end of the second row, where
+   its ≡ hide button was: the file tab row while the file group shows, else
+   the terminals' top row, the right side then being closed. */
+#wb-app.hide-right #o-center.files-open:not(.file-off) #o-file-bar .o-show[data-show="right"],
+#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-tab-head .o-show[data-show="right"] { display: inline-flex; }
+/* The top row's right end: always in the right side's top row (Maximize
+   in Chats mode, and in Files mode with the file group open); in the
+   terminals' head only while the right side is closed, to bring it back. */
+.o-top-acts { display: none; flex: none; margin-left: auto; align-items: center; gap: 2px; }
+#o-file-head .o-top-acts,
+#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-tab-head .o-top-acts { display: flex; }
+.o-head .o-top-acts .mini, #o-center .o-show[data-show="right"] { flex: none; width: 22px; height: 22px; padding: 0; align-items: center; justify-content: center; border-radius: var(--r); }
+.o-head .o-top-acts .mini { display: inline-flex; }
+#o-file-max { display: none; }
+#wb-app[data-pane-view="chats"] #o-file-max,
+#wb-app:not([data-pane-view="chats"]) #o-center.files-open:not(.file-off) #o-file-max { display: inline-flex; }
+/* The pane's own hide button, at the end of the tree's head: shown
+   filled, as the pane is. */
+.o-head .mini.o-hide[data-hide="right"] { margin-left: 2px; width: 22px; height: 22px; border-radius: var(--r); background: var(--bg4); color: var(--fg); }
 .o-show[data-show="left"] { margin: 0 4px 0 6px; }
 #wb-app.hide-left .wb-status-side { width: auto; border-right: 0; }
-/* The center is a grid of three rows and five columns. Rows: tab bars; the
-   second row (the open file's path, the files pane's head); bodies.
-   Columns: terminal group, split border, file group, files pane border,
-   files pane. The rightmost tab bar runs over the files pane, whose head is
-   part of the second row. In the tabs layout, and in split while no file is
-   open, only the terminal group has width and the viewer takes the
-   terminal's place. --o-split (split.js) is the terminal group's share of
-   the two groups; each keeps 320px (GROUP_MIN in split.js). */
+/* The center is a grid of four rows and five columns. Rows: top rows; the
+   file group's tabs and the files pane's head; the file group's path row;
+   bodies. Columns: terminal group, split border, file group, files pane
+   border, files pane. The terminals' head is column 1's top row; the right
+   side's (#o-file-head) runs over the file group and the pane, or the pane
+   alone while no file group shows, and goes with the right side. The
+   files pane takes rows 2-4 (its mode's head, level with the file tabs,
+   then its body). Terminals and the welcome view take rows 2-4; in the
+   tabs layout, and in split while no file is open, only the terminal
+   group has width and the viewer takes its place (path row 2, code rows
+   3-4). --o-split (split.js) is the terminal group's share of the two
+   groups; each keeps 320px (GROUP_MIN in split.js). */
 #o-center {
   flex: 1; min-width: 320px; position: relative; background: var(--bg);
   --o-files-w: var(--wb-right);
-  display: grid; grid-template-rows: 30px 28px minmax(0, 1fr);
+  display: grid; grid-template-rows: 30px 30px 28px minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w);
 }
 #wb-app.hide-right #o-center { --o-files-w: 0px; }
@@ -217,26 +221,37 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 }
 #o-center.files-open.term-off { grid-template-columns: 0 0 minmax(0, 1fr) 0 var(--o-files-w); }
 #o-center.files-open.file-off { grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w); }
-#o-tab-head { grid-area: 1 / 1 / 2 / -1; }
-#o-center.files-open:not(.file-off) #o-tab-head { grid-column: 1 / 2; }
-#o-term, #o-empty { grid-area: 2 / 1 / 4 / 2; }
+#o-tab-head { grid-area: 1 / 1 / 2 / 2; }
+#o-term, #o-empty { grid-area: 2 / 1 / 5 / 2; }
 /* The viewer's path row and code sit in the grid themselves. */
 #o-viewer { display: contents; }
 #o-view-head { grid-area: 2 / 1; }
-#o-code-vp, #o-diff-vp { grid-area: 3 / 1; }
-#o-split-resizer { grid-area: 1 / 2 / 4 / 3; display: none; }
-#o-file-head { grid-area: 1 / 3 / 2 / -1; display: none; }
-#o-center.files-open #o-view-head { grid-area: 2 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open :is(#o-code-vp, #o-diff-vp) { grid-area: 3 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open #o-file-head { display: flex; border-left: 1px solid var(--line); }
+#o-code-vp, #o-diff-vp { grid-area: 3 / 1 / 5 / 2; }
+#o-split-resizer { grid-area: 1 / 2 / 5 / 3; display: none; }
+#o-file-head { grid-area: 1 / 5 / 2 / 6; border-left: 1px solid var(--line); }
+#o-center.files-open:not(.file-off) #o-file-head { grid-column: 3 / -1; }
+#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-file-head { display: none; }
+#o-file-bar { grid-area: 2 / 3; display: none; }
+#o-center.files-open #o-view-head { grid-area: 3 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open :is(#o-code-vp, #o-diff-vp) { grid-area: 4 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open #o-file-bar { display: flex; border-left: 1px solid var(--line); }
 #o-center.files-open #o-split-resizer { display: block; }
-.o-resizer[data-side="right"] { grid-area: 3 / 4 / 4 / 5; }
-#o-files { grid-area: 2 / 5 / 4 / 6; }
+.o-resizer[data-side="right"] { grid-area: 2 / 4 / 5 / 5; }
+#o-files { grid-area: 2 / 5 / 5 / 6; }
+/* Chats mode: no file group; the chats take its columns and the pane's,
+   even while the tree is hidden. */
+#wb-app[data-pane-view="chats"] #o-center.files-open > :is(#o-file-bar, #o-viewer, .o-resizer[data-side="right"]) { display: none; }
+#wb-app[data-pane-view="chats"] #o-center.files-open:not(.file-off) > #o-files { display: flex; grid-column: 3 / 6; }
+/* Chats maximized without a file group: the pane's column takes the
+   center (split.js only maximizes them while the pane shows). */
+#wb-app[data-pane-view="chats"] #o-center.term-off:not(.files-open) { grid-template-columns: 0 0 0 0 minmax(0, 1fr); }
+#wb-app[data-pane-view="chats"] #o-center.term-off:not(.files-open) > .o-resizer[data-side="right"] { display: none; }
+#wb-app[data-pane-view="chats"] #o-center.term-off > #o-files { border-left: 0; }
 /* A collapsed group goes; the border stays only while being dragged back. */
 #o-center.term-off > :is(#o-tab-head, #o-term, #o-empty),
-#o-center.file-off > :is(#o-file-head, #o-viewer),
+#o-center.file-off > :is(#o-file-bar, #o-viewer),
 #o-center:is(.term-off, .file-off):not(.dragging) > #o-split-resizer { display: none; }
-#o-center.term-off :is(#o-file-head, #o-view-head, #o-code-vp, #o-diff-vp) { border-left: 0; }
+#o-center.term-off :is(#o-file-head, #o-file-bar, #o-view-head, #o-code-vp, #o-diff-vp) { border-left: 0; }
 #o-file-max .o-ic-restore, #o-center.term-off #o-file-max .o-ic-max { display: none; }
 #o-center.term-off #o-file-max .o-ic-restore { display: inline; }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
@@ -274,8 +289,15 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 /* Pane headers: each pane's hide button sits at its inner edge, 4px in;
    in the projects pane after the Projects | Scratch switch. */
 .o-side-head { gap: 6px; padding: 0 4px 0 8px; }
-.o-files-head { height: 28px; gap: 6px; padding: 0 4px; }
-#o-hide-left { margin-left: auto; }
+.o-files-head { height: 30px; gap: 6px; padding: 0 4px; }
+/* The right side's mode switch (paneviews.js), at the left of its top row:
+   icons, the active one filled. */
+.o-pane-tabs { flex: none; display: flex; gap: 2px; margin-left: 6px; }
+.o-pane-tabs button { width: 26px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); color: var(--dim); }
+.o-pane-tabs button:hover { color: var(--fg); background: var(--bg3); }
+.o-pane-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg4); }
+.o-pane-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-hide[data-hide="left"] { margin-left: auto; }
 .o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
 .o-side-tabs button {
   height: 20px; padding: 0 10px; border-radius: var(--r); font-size: 11.5px; font-weight: 500; color: var(--dim);
@@ -402,6 +424,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 }
 .o-chip.o-wt { color: var(--accent-fg); }
 .o-chip.o-missing { color: var(--err); }
+.o-chip.o-adopted { flex: none; color: var(--dim); }
 /* Running tabs, or the most urgent agent status among them. */
 .o-badge {
   flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 5px;
@@ -420,14 +443,14 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 
 /* ---------- middle: tabs, terminal, viewer ---------- */
 /* The bars' line is a shadow, as in the app, so the active tab covers it. */
-#o-tab-head, #o-file-head { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); min-width: 0; }
+#o-tab-head, #o-file-head, #o-file-bar { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); min-width: 0; }
 #o-tabs, #o-file-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 #o-tabs::-webkit-scrollbar, #o-file-tabs::-webkit-scrollbar { display: none; }
 #o-tabs .tab, #o-file-tabs .tab { height: 100%; line-height: normal; }
 #o-new-tab { flex: none; margin: 0 auto 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-/* New tab, and Open file in the file group, start the bars' right ends. */
-#o-file-new, #o-file-max { flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-#o-file-new { margin-left: auto; }
+/* Open file follows the file tabs, as New tab the terminal tabs; what
+   comes after them sits at the bar's right end. */
+#o-file-new { flex: none; margin: 0 auto 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 /* A terminal tab's PTY: hollow when stopped, then by agent status. */
 .o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
 .o-tab-dot.on { background: var(--gi); border-color: var(--gi); }
@@ -468,9 +491,10 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 
 #o-term { min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
 
-/* The path row: the second row's start, as high as the files pane's head. */
+/* The path row: as high as its grid row (row 2 in the terminals' place,
+   level with the files pane's head; row 3 under the file tabs). */
 #o-view-head {
-  height: 28px; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px;
   background: var(--bg2); border-bottom: 1px solid var(--line); font: 11px var(--mono);
 }
 #o-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
@@ -570,6 +594,8 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
   content: ""; position: absolute; left: -6px; top: calc(var(--notch, 20px) - 5px); width: 10px; height: 10px;
   background: var(--bg3); border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); transform: rotate(45deg);
 }
+/* Flipped to the anchor's left (placeFlyoutAt): the notch points right. */
+.o-flyout.o-flip::before { left: auto; right: -6px; border: 0; border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
 .o-flyout-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
 .o-flyout-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--fg); }
 .o-chat-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--dim); }
@@ -649,27 +675,186 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-nw-plan.err { color: var(--err); }
 .o-nw-plan.pending { opacity: .6; }
 .o-nw-dir { font: 11px var(--mono); color: var(--faint); }
+.o-nw-prune { margin-left: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r); font-size: 11px; color: var(--fg); background: var(--bg); }
+/* The project's worktrees, then its branches, matching the name. */
+.o-nw-suggest {
+  display: flex; flex-direction: column; max-height: 180px; overflow-y: auto; margin-top: 3px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--bg);
+}
+.o-nw-sec { padding: 4px 8px 2px; font-size: 10.5px; color: var(--faint); }
+.o-nw-wt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; }
+.o-nw-wt-branch { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); color: var(--accent-fg); }
+.o-nw-wt.gone .o-nw-wt-branch { color: var(--err); }
+.o-nw-wt-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); color: var(--faint); }
+.o-nw-wt .wb-btn { padding: 1px 8px; font-size: 11px; }
+.o-nw-branch { padding: 3px 8px; text-align: left; font: 11px var(--mono); color: var(--dim); }
+.o-nw-branch:hover, .o-nw-branch:focus-visible { background: var(--bg2); color: var(--fg); outline: none; }
 .o-acts .mini.o-pin.on { color: var(--accent-fg); }
+
+/* Delete workspace / Remove project (removedialog.js): one checkbox per
+   thing that can go with the record, each with the line that says what it
+   does. */
+.o-flyout.o-rm { width: 330px; }
+.o-rm-what { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; }
+.o-rm-what b { color: var(--fg); font-weight: 600; }
+.o-rm-opts { display: flex; flex-direction: column; gap: 8px; }
+.o-rm-opt { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; font-size: 12px; color: var(--fg); cursor: pointer; }
+.o-rm-opt input { margin: 0; accent-color: var(--accent); }
+.o-rm-opt small { grid-column: 2; font-size: 11px; line-height: 1.45; color: var(--faint); overflow-wrap: anywhere; }
+/* The name sits on a line of its own above the field, whole unless it is
+   very long; the full name is its title then. */
+.o-rm-ask { display: flex; align-items: baseline; gap: 4px; min-width: 0; white-space: nowrap; }
+.o-rm-name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+  font: 11px var(--mono); color: var(--fg); background: var(--bg3); border-radius: var(--r);
+}
+/* The button says what it will do: the plain label while nothing is ticked,
+   the red one once something is (removedialog.js's sync). */
+.wb-btn.o-rm-go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.wb-btn.o-rm-go.o-rm-danger { background: var(--err); border-color: var(--err); }
+.wb-btn.o-rm-go:hover:not(:disabled) { filter: brightness(1.08); }
+.wb-btn.o-rm-go:disabled { opacity: .45; cursor: default; }
 
 /* ---------- right: files ---------- */
 #o-tree { padding: 4px 0 16px; }
+/* The tree's first row in the changed-files view (tree.js): the Changes
+   tab, in the accent, with the count of changed files at its right. */
+#o-all-changes {
+  flex: none; display: flex; align-items: center; gap: 6px; height: 24px; margin-top: 4px; padding: 0 10px 0 12px;
+  font-size: 12px; color: var(--accent-fg); text-align: left;
+}
+#o-all-changes[hidden] { display: none; }
+#o-all-changes:hover { background: var(--bg3); }
+#o-all-changes.sel { background: var(--bg4); }
+#o-all-changes:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-all-mark { flex: none; width: 12px; font-family: var(--mono); text-align: center; }
+.o-all-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#o-all-count { flex: none; font: 10.5px var(--mono); color: var(--faint); }
+#o-all-changes:not([hidden]) + #o-tree { padding-top: 0; }
+
+/* The branch bar under the tree (git.js): one button opening the editor's
+   git panel. */
 #o-files-foot { height: 26px; flex: none; display: flex; border-top: 1px solid var(--line); }
-/* The branch bar (git.js): one button opening the editor's git panel. */
+#o-files-foot[hidden] { display: none; }
 #o-git-bar {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
+  flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px;
   border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; text-align: left;
 }
 #o-git-bar:hover { background: var(--bg3); }
 #o-git-bar:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 #o-git-bar svg { flex: none; }
 /* The branch keeps its room longest; the staged count gives way first. */
-#o-files-branch { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--mono); color: var(--fg); }
+#o-git-branch { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 12px var(--mono); color: var(--fg); }
 #o-git-sum { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
 #o-git-track { margin-left: auto; flex: none; font: 11px var(--mono); color: var(--faint); white-space: nowrap; }
 #o-git-track .o-git-ahead { color: var(--accent-fg); }
 #o-git-track .o-git-behind { color: var(--gd); }
 #o-git-bar .o-git-out { color: var(--faint); }
 #o-git-bar:hover .o-git-out { color: var(--fg); }
+
+/* ---------- right: chats (history.js) ---------- */
+/* The head, one row while the pane is wide: name, scope tabs, the agent
+   dropdown as plain text until hovered, the search at the right, ⋯.
+   Narrow, three rows: name with the agent filter button and ⋯, the scope
+   tabs, then the search, both full width. */
+#o-files > section[data-pane-view="chats"] { container: hist / inline-size; }
+.o-hist-head { gap: 6px; padding: 0 4px 0 12px; }
+.o-hist-name { flex: none; font-size: 12px; font-weight: 700; color: var(--fg); }
+.o-hist-scope { flex: none; }
+.o-hist-sel {
+  flex: none; max-width: 110px; height: 22px; padding: 0 2px;
+  font: 11.5px var(--ui); color: var(--dim); background: none; border: 1px solid transparent; border-radius: var(--r);
+  cursor: pointer; text-overflow: ellipsis; field-sizing: content;
+}
+.o-hist-sel:hover { color: var(--fg); background: var(--bg3); }
+.o-hist-sel:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-hist-sel option { color: var(--fg); background: var(--bg3); }
+.o-hist-search { flex: 1 1 60px; min-width: 30px; max-width: 220px; height: 22px; margin: 0 0 0 auto; padding: 0 4px 0 7px; gap: 5px; }
+#o-hist-more { flex: none; width: 22px; height: 22px; }
+#o-hist-filter { display: none; flex: none; width: auto; min-width: 22px; height: 22px; padding: 0 4px; align-items: center; justify-content: center; gap: 3px; border-radius: var(--r); }
+@container hist (max-width: 519px) {
+  .o-hist-head {
+    height: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name filter more" "scope scope scope" "search search search";
+    align-items: center; gap: 6px 2px; padding: 4px 4px 8px 12px;
+  }
+  .o-hist-name { grid-area: name; }
+  #o-hist-filter { grid-area: filter; display: inline-flex; }
+  #o-hist-more { grid-area: more; }
+  #o-hist-agent { display: none; }
+  .o-hist-scope { grid-area: scope; margin-right: 4px; }
+  .o-hist-scope button { flex: 1; }
+  .o-hist-search { grid-area: search; max-width: none; margin: 0 4px 0 0; }
+}
+#o-hist-menu button[role="menuitemcheckbox"]::before { content: ""; width: 10px; height: 10px; flex: none; border: 1px solid var(--line); border-radius: 2px; }
+#o-hist-menu button[role="menuitemcheckbox"][aria-checked="true"]::before { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--bg3); }
+#o-hist-list { padding: 2px 0 16px; }
+.o-hist-none { margin: 10px 12px; font-size: 12px; color: var(--faint); }
+/* A group header: small muted caps, chevron turned down while open, count
+   at the right; the whole header folds the group. */
+.o-hist-fold {
+  display: flex; align-items: center; gap: 4px; height: 24px; margin: 6px 6px 0; padding: 0 8px 0 4px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint);
+  cursor: pointer; border-radius: var(--r); user-select: none;
+}
+.o-hist-fold:hover { color: var(--fg); }
+.o-hist-fold:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-hist-fold .o-chev { flex: none; transition: transform .12s; }
+.o-hist-fold[aria-expanded="true"] .o-chev { transform: rotate(90deg); }
+.o-hist-gname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-hist-gcount { flex: none; margin-left: auto; font: 400 10.5px var(--mono); letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) { .o-hist-fold .o-chev { transition: none; } }
+/* A chat: one line, the whole of it a button that expands its preview; the
+   trash covers the agent and age on hover or focus, leaving the chevron. */
+.o-hist-row { margin: 0 6px; border-radius: var(--r); }
+.o-hist-line { position: relative; border-radius: var(--r); }
+.o-hist-line:hover, .o-hist-line:focus-within, .o-hist-row.shown .o-hist-line { background: var(--bg3); }
+.o-hist-open {
+  width: 100%; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 8px;
+  font-size: 12px; color: var(--fg); text-align: left; background: none; border: 0; border-radius: var(--r); cursor: pointer;
+}
+.o-hist-open:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.o-hist-open .o-chev { flex: none; color: var(--faint); transition: transform .12s; }
+.o-hist-row.shown .o-hist-open .o-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .o-hist-open .o-chev { transition: none; } }
+.o-hist-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--faint); }
+.o-hist-row.open .o-hist-dot { background: var(--gi); border-color: var(--gi); }
+.o-hist-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-hist-row.removed .o-hist-title { color: var(--faint); font-style: italic; }
+.o-hist-row.missing .o-hist-title { color: var(--dim); }
+.o-hist-agent, .o-hist-age { flex: none; font: 10.5px var(--mono); color: var(--faint); white-space: nowrap; }
+.o-hist-age { min-width: 3ch; text-align: right; }
+/* Narrow rows drop the agent's name first: the age and the chevron say more. */
+@container hist (max-width: 419px) { .o-hist-agent { display: none; } }
+.o-hist-acts { position: absolute; top: 3px; right: 22px; display: none; gap: 2px; padding-left: 8px; background: var(--bg3); }
+.o-hist-line:hover .o-hist-acts, .o-hist-line:focus-within .o-hist-acts { display: flex; }
+.o-hist-acts .mini { width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); }
+.o-hist-acts .mini:hover { background: var(--bg4); }
+.o-hist-acts .o-del:hover { color: var(--err); }
+/* The expanded row: the conversation in plain text, clamped, then what can
+   be done with it. */
+.o-hist-prev {
+  display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px;
+  padding: 8px 10px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r);
+}
+.o-hist-facts, .o-hist-prev-note { margin: 0; font: 10.5px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+.o-hist-prev-h {
+  margin: 2px 0 0; font-size: 9.5px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--faint);
+}
+.o-hist-prompt, .o-hist-reply {
+  margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* A mask reads alpha only: opaque down to 72%, then faded out. */
+.o-hist-prompt { -webkit-line-clamp: 3; }
+.o-hist-reply { -webkit-line-clamp: 5; color: var(--dim); mask-image: linear-gradient(#000 72%, transparent); }
+.o-hist-started { color: var(--dim); }
+.o-hist-role { margin-right: 6px; font: 10.5px var(--mono); color: var(--faint); }
+.o-hist-prev-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.o-hist-prev-acts .wb-btn { padding: 2px 10px; font-size: 11px; }
+/* An Open error names a folder and what to do: shown whole. */
+#toast .toast-msg.o-hist-err { white-space: normal; overflow-wrap: anywhere; max-width: min(420px, 70vw); }
 
 /* ---------- holding page ---------- */
 .wb-holding { max-width: 640px; margin: 18vh auto 0; padding: 0 16px; }

@@ -6,9 +6,9 @@
 // a click in the files pane's changed-files view) shows that file's alone.
 // Beside the terminals the diff is one column; with the files maximized it
 // is side by side, or one column, as last picked with the switch in the
-// path row (punk0.diffLayout). The files pane's Diff button opens the
-// Changes tab; a diff reloads each time it comes into view, and with its
-// refresh button.
+// path row (punk0.diffLayout). The files tree's "± All changes" row
+// (#o-all-changes, shown by tree.js) opens the Changes tab; a diff reloads
+// each time it comes into view, and with its refresh button.
 import { $, esc } from '../state.js';
 import { call } from './api.js';
 import { subscribe, workspace, hasGit, openChanges, openFile } from './store.js';
@@ -21,7 +21,7 @@ const LAYOUT_KEY = 'punk0.diffLayout';
 const ICON_FOLD = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 const ICON_OPEN = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>';
 
-let vp, titleEl, metaEl, actsEl, layoutEl, diffBtn, modeEl;
+let vp, titleEl, metaEl, actsEl, layoutEl, modeEl;
 let shown = false; // a diff is in view
 let ws = ''; // workspace id of data
 let href = ''; // its folder's backend, "w/<id>/"
@@ -38,10 +38,9 @@ export function initChanges() {
   metaEl = $('#o-file-meta');
   actsEl = $('#o-changes-acts');
   layoutEl = $('#o-diff-layout');
-  diffBtn = $('#o-tree-diff');
   modeEl = $('#o-file-mode');
 
-  diffBtn.addEventListener('click', () => {
+  $('#o-all-changes').addEventListener('click', () => {
     if (shown && !only) load();
     openChanges();
   });
@@ -60,7 +59,6 @@ export function initChanges() {
   vp.addEventListener('click', onClick);
   subscribe(() => {
     const w = workspace();
-    diffBtn.disabled = !hasGit(w);
     // The switch is for a file tab, in a folder with git to diff against.
     const f = view().file;
     modeEl.hidden = !f?.path || !hasGit(w);

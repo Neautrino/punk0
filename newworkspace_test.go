@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -132,20 +133,14 @@ func TestPlanBranches(t *testing.T) {
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
 	for _, tc := range []struct {
-		name, action, branch, base, err string
+		name, action, branch, base string
 	}{
-		{"local-one", planExisting, "local-one", "", ""},
-		{"origin/remote-only", planTrack, "remote-only", "origin/remote-only", ""},
-		{"remote-only", planTrack, "remote-only", "origin/remote-only", ""},
-		{"busy", "", "", "", "already checked out in"},
+		{"local-one", planExisting, "local-one", ""},
+		{"origin/remote-only", planTrack, "remote-only", "origin/remote-only"},
+		{"remote-only", planTrack, "remote-only", "origin/remote-only"},
+		{"busy", planAdopt, "busy", ""}, // checked out in a worktree punk0 did not make
 	} {
 		pl := rec.Plan(p.ID, WorkspaceOptions{Name: tc.name, Worktree: true})
-		if tc.err != "" {
-			if !strings.Contains(pl.Error, tc.err) {
-				t.Errorf("%s: error %q, want %q", tc.name, pl.Error, tc.err)
-			}
-			continue
-		}
 		if pl.Error != "" || pl.Action != tc.action || pl.Branch != tc.branch || pl.Base != tc.base {
 			t.Errorf("%s: plan %+v, want %s %s from %q", tc.name, pl, tc.action, tc.branch, tc.base)
 		}
@@ -262,5 +257,160 @@ func TestPlanFetchBaseOff(t *testing.T) {
 	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "x", Worktree: true})
 	if pl.Error != "" || pl.Base != "origin/main" || pl.Fetch != "" {
 		t.Fatalf("plan %+v, want origin/main with no fetch", pl)
+	}
+}
+
+// The panel's suggestions: refs lists the worktrees other than the project
+// folder, with the workspace running in each (in any project), and Prune
+// drops deleted ones.
+func TestRefsListWorktreesAndPrune(t *testing.T) {
+	useSettings(t, map[string]any{})
+	repo := cleanRepo(t)
+	runGit(t, repo, "branch", "outside")
+	runGit(t, repo, "branch", "gone")
+	base := tempDir(t)
+	outside, gone := filepath.Join(base, "outside"), filepath.Join(base, "gone")
+	runGit(t, repo, "worktree", "add", "-q", outside, "outside")
+	runGit(t, repo, "worktree", "add", "-q", gone, "gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	var proj struct{ Project string }
+	decode(t, postJSON(t, wb, "/api/projects", `{"dir":"`+repo+`"}`).Body, &proj)
+	var made struct{ ID, Dir string }
+	decode(t, postJSON(t, wb, "/api/projects/"+proj.Project+"/workspaces", `{"name":"made","worktree":true}`).Body, &made)
+
+	refs := func(id string) map[string]worktreeInfo {
+		var res struct{ Worktrees []worktreeInfo }
+		decode(t, reqJSON(t, wb, "GET", "/api/projects/"+id+"/refs", "").Body, &res)
+		m := map[string]worktreeInfo{}
+		for _, wt := range res.Worktrees {
+			m[wt.Path] = wt
+		}
+		return m
+	}
+	got := refs(proj.Project)
+	if len(got) != 3 || got[made.Dir].Workspace != made.ID || got[outside].Workspace != "" || got[outside].Branch != "outside" || !got[gone].Prunable {
+		t.Fatalf("refs worktrees %+v, want made (workspace %s), outside (none) and gone (prunable), not the project folder", got, made.ID)
+	}
+
+	// A worktree folder is a project of its own: its local workspace is the
+	// one running in outside, and the first project opens it.
+	var other struct{ Project string }
+	decode(t, postJSON(t, wb, "/api/projects", `{"dir":"`+outside+`"}`).Body, &other)
+	local := listed(wb.records, other.Project).Workspaces[0].ID
+	if got = refs(proj.Project); got[outside].Workspace != local {
+		t.Fatalf("outside's workspace %q, want the other project's %s", got[outside].Workspace, local)
+	}
+	if pl := wb.records.Plan(proj.Project, WorkspaceOptions{Name: "outside", Worktree: true}); pl.Action != planOpen || pl.Workspace != local {
+		t.Fatalf("plan for outside %+v, want the other project's workspace opened", pl)
+	}
+	if _, ok := refs(other.Project)[outside]; ok {
+		t.Fatal("a project that is a linked worktree lists its own folder")
+	}
+
+	// The panel reads these two off the wire: a renamed JSON tag would leave
+	// the Open button without a workspace and hide the Prune one.
+	var pl struct {
+		Action    string
+		Workspace string
+		Prune     bool
+	}
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?name=outside&worktree=1", "").Body, &pl)
+	if pl.Action != planOpen || pl.Workspace != local {
+		t.Fatalf("plan over HTTP %+v, want %s opened", pl, local)
+	}
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?name=gone&worktree=1", "").Body, &pl)
+	if !pl.Prune {
+		t.Fatalf("plan for gone over HTTP %+v, want prune", pl)
+	}
+
+	if w := postJSON(t, wb, "/api/projects/"+proj.Project+"/prune", ""); w.Code != http.StatusOK {
+		t.Fatalf("prune: %d %s", w.Code, w.Body.String())
+	}
+	if got = refs(proj.Project); len(got) != 2 || got[gone].Path != "" {
+		t.Fatalf("refs worktrees after Prune %+v, want made and outside only", got)
+	}
+}
+
+// A branch checked out in a worktree punk0 did not make adopts that worktree
+// where it is; one a workspace runs in opens that workspace, even when its
+// folder was deleted; one whose folder was deleted otherwise is refused until
+// Prune.
+func TestPlanExistingWorktrees(t *testing.T) {
+	useSettings(t, map[string]any{})
+	repo := cleanRepo(t)
+	runGit(t, repo, "branch", "outside")
+	runGit(t, repo, "branch", "gone")
+	base := tempDir(t)
+	outside, gone := filepath.Join(base, "outside"), filepath.Join(base, "gone")
+	runGit(t, repo, "worktree", "add", "-q", outside, "outside")
+	runGit(t, repo, "worktree", "add", "-q", gone, "gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+
+	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "outside", Worktree: true})
+	if pl.Error != "" || pl.Action != planAdopt || pl.Dir != outside || pl.Branch != "outside" {
+		t.Fatalf("plan %+v, want outside adopted in %s", pl, outside)
+	}
+	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "gone", Worktree: true}); !pl.Prune || !strings.Contains(pl.Error, "prune it") {
+		t.Fatalf("plan for a branch of a deleted worktree %+v, want a refusal offering Prune", pl)
+	}
+	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "main", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != p.Workspaces[0].ID {
+		t.Fatalf("plan for the project folder's branch %+v, want its local workspace opened", pl)
+	}
+
+	// A punk0 worktree deleted outside punk0 is listed as missing; its
+	// branch opens that row, whose ✕ prunes, rather than pruning under it.
+	feat, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "feat", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(feat.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "feat", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != feat.ID {
+		t.Fatalf("plan for a missing worktree workspace's branch %+v, want workspace %s opened", pl, feat.ID)
+	}
+
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "outside", Worktree: true, Agent: tabShell})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Kind != kindWorktree || w.Dir != outside || w.Branch != "outside" || !w.Adopted || len(w.Tabs) != 1 {
+		t.Fatalf("adopted %+v, want an adopted worktree workspace in %s with one shell", w, outside)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "README.md")); err != nil {
+		t.Fatalf("adopting touched the folder: %v", err)
+	}
+	again, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "outside", Worktree: true, Agent: tabShell})
+	if err != nil || again.ID != w.ID || len(again.Tabs) != 1 {
+		t.Fatalf("adding outside again = %+v, %v; want workspace %s opened as it was", again, err, w.ID)
+	}
+	if n := len(listed(rec, p.ID).Workspaces); n != 3 {
+		t.Fatalf("%d workspaces, want local, feat and outside", n)
+	}
+
+	if err := rec.PruneWorktrees(p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "gone", Worktree: true}); pl.Error != "" || pl.Action != planExisting {
+		t.Fatalf("plan after Prune %+v, want gone checked out anew", pl)
+	}
+
+	// Deleting an adopted workspace forgets it; the folder is the user's.
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("deleting the adopted workspace removed its folder: %v", err)
+	}
+	if !strings.Contains(runGit(t, repo, "worktree", "list"), outside) {
+		t.Fatal("deleting the adopted workspace unregistered its worktree")
 	}
 }

@@ -47,7 +47,7 @@ type chatSim struct {
 
 func newChat(t *testing.T, wb *workbench, ws *Workspace) *chatSim {
 	t.Helper()
-	tab, err := wb.records.AddTab(ws.ID, tabClaude)
+	tab, err := wb.records.AddTab(ws.ID, tabClaude, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -606,7 +606,7 @@ func TestTabSend(t *testing.T) {
 	wb.localOnly = true
 	useSettings(t, map[string]any{})
 	t.Setenv("SHELL", "/bin/sh")
-	tab, err := wb.records.AddTab(ws.ID, tabClaude)
+	tab, err := wb.records.AddTab(ws.ID, tabClaude, "")
 	if err != nil {
 		t.Fatal(err)
 	}

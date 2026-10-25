@@ -8,7 +8,7 @@
 // renames a terminal tab after what it is for. At the right end, the
 // workspace's folder opens in the full editor.
 import { $, $$, esc } from '../state.js';
-import { on } from '../bus.js';
+import { emit, on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
 import { subscribe, reload, workspace, tabsOf, fileTabsOf, activeTab, termTab, fileTab, selectTab, closeFile, closeChanges } from './store.js';
 import { fileKind } from './tree.js';
@@ -170,6 +170,9 @@ async function onTabClick(e) {
     const res = await call('DELETE', `api/tabs/${encodeURIComponent(t.id)}`);
     if (!res.ok) return failed(res);
     await reload();
+    // Chats mode lists a chat as open while a tab resumes it: that tab is
+    // gone now, and the list would say otherwise until its next poll.
+    emit('orch:tabclosed');
   }
   if (next) selectTab(next);
 }

@@ -14,17 +14,20 @@ import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
 import { initNewChat } from './orch/newchat.js';
 import { initNewWorkspace } from './orch/newworkspace.js';
+import { initRemoveDialog } from './orch/removedialog.js';
 import { initAddProject } from './orch/addproject.js';
 import { initLsp } from './orch/lsp.js';
 import { initTabs } from './orch/tabs.js';
 import { initTree } from './orch/tree.js';
 import { initGit } from './orch/git.js';
+import { initHistory } from './orch/history.js';
 import { initPicker } from './orch/picker.js';
 import { initViewer, showFile, hideFile, forgetClosed } from './orch/viewer.js';
 import { initChanges, showChanges, hideChanges } from './orch/changes.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
 import { initResize } from './orch/resize.js';
 import { initSplit, layoutCenter } from './orch/split.js';
+import { initPaneViews } from './orch/paneviews.js';
 import { initSettings } from './orch/settings.js';
 import { initNotify } from './orch/notify.js';
 
@@ -40,15 +43,18 @@ const emptyPane = $('#o-empty');
 
 initResize(); // first: the panes take their widths before anything measures them
 initSplit();
+initPaneViews(); // before the views' modules, which ask paneView()
 const pollResources = initStatusBar();
 initSettings();
 initAddProject(); // before the sidebar, which may open it for ?open=<url>
 initSidebar();
 initNewChat();
 initNewWorkspace();
+initRemoveDialog();
 initLsp();
 initTabs();
 initGit();
+initHistory();
 initTree();
 initPicker();
 initViewer();

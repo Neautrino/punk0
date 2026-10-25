@@ -4,10 +4,12 @@
 // tab; the active file tab's row stays highlighted. Rows use the app's tree
 // classes (style.css), so both views look alike. In a git checkout the
 // pane shows only the changed files, their folders opened, until the
-// head's switch asks for all of them (punk0.treeMode). The tree follows git
-// through the editor's git-status stream (w/<id>/api/stream), as the
-// editor's own tree does (gitstream.js); each snapshot also goes out as
-// 'git:status' for the git bar and drawer below the tree (git.js).
+// head's switch asks for all of them (punk0.treeMode); there the first row,
+// "± All changes N" (#o-all-changes; changes.js opens it), stands for the
+// Changes tab while anything changed. The tree follows git through the
+// editor's git-status stream (w/<id>/api/stream), as the editor's own tree
+// does (gitstream.js); each snapshot also goes out as 'git:status' for the
+// branch bar under the tree (git.js).
 import { $, esc } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, failed } from './api.js';
@@ -43,7 +45,8 @@ export function fileKind(name) {
 
 const MODE_KEY = 'punk0.treeMode';
 
-let treeEl, modeEl;
+let treeEl, modeEl, allEl, allCountEl;
+let changed = 0; // files changed in the tree's folder, from the stream
 let treeWs = ''; // workspace id the tree shows
 let treeHref = ''; // its folder's backend, "w/<id>/"
 let activePath = null;
@@ -60,6 +63,8 @@ let refreshing = null, refreshAgain = false;
 export function initTree() {
   treeEl = $('#o-tree');
   modeEl = $('#o-tree-mode');
+  allEl = $('#o-all-changes');
+  allCountEl = $('#o-all-count');
   treeEl.addEventListener('click', onTreeClick);
   $('#o-tree-collapse').addEventListener('click', collapseTree);
   $('#o-tree-refresh').addEventListener('click', refreshTree);
@@ -93,6 +98,7 @@ function syncStream(fresh = false) {
     try { d = JSON.parse(e.data); } catch { return; }
     emit('git:status', { ws: want, data: d });
     markStaged(d.staged || {});
+    setChanged(d);
     const sig = JSON.stringify([d.statuses || {}, d.dirtyDirs || {}]);
     const quiet = skip;
     skip = false;
@@ -138,14 +144,30 @@ function renderTree() {
     treeHref = w?.href || '';
     treeEl.innerHTML = '';
     gitSig = '';
+    changed = 0;
     if (w?.missing) treeEl.innerHTML = '<p class="o-note">The folder of this workspace is gone.</p>';
     else if (w) drawDir('', treeEl, 0);
     syncStream(true);
   } else if (only && !was) {
     expandDirty(treeEl);
   }
+  drawAll();
   activePath = view().file?.path ?? null;
   markActive();
+}
+
+// setChanged takes a git-status snapshot's count of changed files.
+function setChanged(d) {
+  changed = Object.keys(d.statuses || {}).length;
+  drawAll();
+}
+
+// drawAll shows the All changes row in the changed-files view while there
+// is anything changed, selected while the Changes tab is in front.
+function drawAll() {
+  allEl.hidden = !treeEl.classList.contains('changed-only') || !changed;
+  allCountEl.textContent = changed;
+  allEl.classList.toggle('sel', !!view().file?.changes);
 }
 
 function markActive() {
@@ -214,6 +236,7 @@ async function toggleStage(el) {
   if (res.data && 'statuses' in res.data) {
     emit('git:status', { ws: from, data: res.data });
     markStaged(res.data.staged || {});
+    setChanged(res.data);
   }
 }
 

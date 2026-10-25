@@ -4,9 +4,10 @@ package main
 // the New chat dialog. These are the agents px0's harness package knows (it
 // runs them headless for edits); here each starts in its own TUI instead.
 // Claude Code is the one punk0 follows closely: its hooks report what it is
-// doing and its session id resumes the exact conversation. The others resume
-// this folder's most recent session after a restart where the agent can, and
-// report no status.
+// doing. Every agent that can resume a chat by id does so when the tab knows
+// it (Satellite.Session: always for Claude, for the others when the tab was
+// opened on an existing chat); without an id, the others resume this folder's
+// most recent session after a restart where the agent can.
 
 import (
 	"net/http"
@@ -19,9 +20,10 @@ import (
 
 // tabAgent is how one agent starts in a tab.
 type tabAgent struct {
-	Label  string
-	bin    string
-	resume []string // args resuming the latest session; nil when the agent has none
+	Label    string
+	bin      string
+	resume   []string // args resuming the latest session; nil when the agent has none
+	resumeID []string // args before a session id resuming exactly it; nil when the agent cannot
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
@@ -29,20 +31,23 @@ var tabAgentOrder = []string{tabClaude, "codex", "opencode", "agy", "cursor-agen
 
 var tabAgents = map[string]tabAgent{
 	tabClaude:      {Label: "Claude Code", bin: "claude"},
-	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}},
-	"opencode":     {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}},
+	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}},
+	"opencode":     {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
-	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent"},
+	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 }
 
 // agentCommand is the line a tab's shell runs first; "" for a plain shell.
 // first is a tab's first start this run, which opens a new session; later
 // starts resume. Claude resumes its own session id, and exits 1 when there is
 // nothing to resume (the tab never got a message), so || then starts that
-// session. Other agents resume their latest session when they can, else start
-// a new one. A new tab never resumes: in a folder of the user's, the latest
-// session may belong to something else. agents.<kind>.args goes right after
-// the program name, verbatim: it is shell text the user wrote.
+// session. Another agent given a session resumes exactly it on every start,
+// falling back to a new chat when the id is gone; without one it resumes its
+// latest session when it can, else starts a new one. A new tab without a
+// session never resumes: in a folder of the user's, the latest session may
+// belong to something else. agents.<kind>.args goes right after the program
+// name, verbatim: it is shell text the user wrote. session must be shell-safe
+// (validSession).
 func agentCommand(kind, session string, first bool) string {
 	a, ok := tabAgents[kind]
 	if !ok {
@@ -59,6 +64,9 @@ func agentCommand(kind, session string, first bool) string {
 		}
 		return claudeCommand(bin) + " --resume " + session + " || " + start
 	}
+	if session != "" && a.resumeID != nil {
+		return bin + " " + strings.Join(a.resumeID, " ") + " " + session + " || " + bin
+	}
 	if first || a.resume == nil {
 		return bin
 	}
@@ -67,11 +75,12 @@ func agentCommand(kind, session string, first bool) string {
 
 // agentView is one choice in the New chat dialog.
 type agentView struct {
-	ID        string `json:"id"`
-	Label     string `json:"label"`
-	Installed bool   `json:"installed"`
-	Resumes   bool   `json:"resumes"` // picks its conversation up again after a restart
-	Status    bool   `json:"status"`  // reports working / needs you / idle
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Installed   bool   `json:"installed"`
+	Resumes     bool   `json:"resumes"`     // picks its conversation up again after a restart
+	ResumesByID bool   `json:"resumesByID"` // can open one exact earlier chat (History's Open)
+	Status      bool   `json:"status"`      // reports working / needs you / idle
 }
 
 // handleAgents lists the agents a chat can start with, installed or not.
@@ -83,7 +92,8 @@ func (wb *workbench) handleAgents(w http.ResponseWriter, r *http.Request) {
 	for _, id := range tabAgentOrder {
 		a := tabAgents[id]
 		_, installed := harness.LookPath(a.bin)
-		out = append(out, agentView{ID: id, Label: a.Label, Installed: installed, Resumes: id == tabClaude || a.resume != nil, Status: id == tabClaude})
+		out = append(out, agentView{ID: id, Label: a.Label, Installed: installed, Resumes: id == tabClaude || a.resume != nil,
+			ResumesByID: id == tabClaude || a.resumeID != nil, Status: id == tabClaude})
 	}
 	writeJSON(w, out)
 }

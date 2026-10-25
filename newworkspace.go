@@ -5,7 +5,8 @@ package main
 // and its own branch; a local one runs in the project folder. What the panel
 // holds is planned first, exactly as creating it would go, so the panel can
 // say what will happen -- a new branch from origin/main, an existing branch
-// checked out, or why it cannot be done -- before anything is made.
+// checked out, a worktree made outside punk0 adopted where it is, or why it
+// cannot be done -- before anything is made.
 //
 // git never runs under Records.mu: fetching and checking out a large
 // repository takes seconds, and every request of the page waits on that lock.
@@ -16,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,20 +49,24 @@ const (
 	planTrack    = "track"    // a new branch tracking the remote branch Base
 	planExisting = "existing" // a branch that exists, checked out as it is
 	planPR       = "pr"       // a pull request: reviewed, or worked on in a worktree
+	planAdopt    = "adopt"    // a worktree that exists, recorded where it is, no git
+	planOpen     = "open"     // a workspace runs in that worktree already: the panel selects it
 )
 
 // WorkspacePlan is what creating a workspace from some options would do, or
 // Error saying why it cannot.
 type WorkspacePlan struct {
-	Worktree bool    `json:"worktree"`
-	Name     string  `json:"name"`
-	Branch   string  `json:"branch"`
-	Action   string  `json:"action"`
-	Base     string  `json:"base,omitempty"`
-	Fetch    string  `json:"fetch,omitempty"` // the remote fetched before branching from Base
-	Dir      string  `json:"dir"`
-	Error    string  `json:"error,omitempty"`
-	PR       *prPlan `json:"pr,omitempty"`
+	Worktree  bool    `json:"worktree"`
+	Name      string  `json:"name"`
+	Branch    string  `json:"branch"`
+	Action    string  `json:"action"`
+	Base      string  `json:"base,omitempty"`
+	Fetch     string  `json:"fetch,omitempty"` // the remote fetched before branching from Base
+	Dir       string  `json:"dir"`
+	Workspace string  `json:"workspace,omitempty"` // open: the workspace running in Dir
+	Prune     bool    `json:"prune,omitempty"`     // Error is a deleted worktree that Prune forgets
+	Error     string  `json:"error,omitempty"`
+	PR        *prPlan `json:"pr,omitempty"`
 
 	repo     string // the project folder git runs in
 	fetchRef string // the remote's branch Fetch fetches
@@ -109,6 +115,7 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 	for k := range r.creating {
 		taken[k] = true
 	}
+	open := r.workspaceDirsLocked()
 	pid := p.ID
 	r.mu.Unlock()
 
@@ -142,6 +149,25 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 	if !hasCommit(pl.repo) {
 		return pl, errors.New("no commits yet: make a first commit to create worktrees, or choose Project folder")
 	}
+	wts, err := listWorktrees(pl.repo)
+	if err != nil {
+		return pl, err
+	}
+	// A folder typed in names a worktree that exists, never a branch.
+	if filepath.IsAbs(name) || strings.HasPrefix(name, "~/") {
+		dir, err := expandPath(name, pl.repo)
+		if err != nil {
+			return pl, err
+		}
+		wt := worktreeAt(wts, dir)
+		if wt == nil {
+			return pl, fmt.Errorf("%s is not a worktree of this project", tildePath(dir))
+		}
+		if pl.Name = wt.Branch; pl.Name == "" {
+			pl.Name = filepath.Base(wt.Path)
+		}
+		return planWorktree(pl, *wt, open, names)
+	}
 	base := strings.TrimSpace(o.Base)
 	branch := strings.TrimSpace(o.Branch)
 	if strings.HasPrefix(base, "-") {
@@ -174,7 +200,11 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		return pl, gitError(out, err)
 	}
 	pl.Branch = branch
-	var err error
+	// git checks a branch out in one worktree only: that one is opened or
+	// adopted instead of making another.
+	if wt := checkedOutAt(wts, branch); wt != nil {
+		return planWorktree(pl, *wt, open, names)
+	}
 	if pl.Name, err = label(pl.Name, 80); err != nil {
 		return pl, err
 	}
@@ -184,9 +214,6 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 
 	switch {
 	case refExists(pl.repo, "refs/heads/"+branch):
-		if at := checkedOutAt(pl.repo, branch); at != "" {
-			return pl, fmt.Errorf("branch %s is already checked out in %s", branch, tildePath(at))
-		}
 		pl.Action = planExisting
 	case track != "":
 		pl.Action, pl.Base = planTrack, track
@@ -219,13 +246,56 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 	return pl, nil
 }
 
+// planWorktree is the plan for a worktree that exists: open the workspace
+// running in it, adopt it where it is, or say why neither. open maps every
+// workspace folder to its workspace (workspaceDirsLocked); names are the
+// project's workspace names, which an adopted worktree's pl.Name must not
+// repeat. A workspace on a deleted folder is opened, not pruned: its ✕ does
+// both.
+func planWorktree(pl WorkspacePlan, wt worktreeInfo, open map[string]string, names map[string]bool) (WorkspacePlan, error) {
+	pl.Dir, pl.Branch = wt.Path, wt.Branch
+	what := "a detached commit"
+	if wt.Branch != "" {
+		what = "branch " + wt.Branch
+	}
+	if id := workspaceIn(open, wt.Path); id != "" {
+		pl.Action, pl.Workspace = planOpen, id
+		return pl, nil
+	}
+	switch {
+	case wt.Prunable:
+		pl.Prune = true
+		return pl, fmt.Errorf("%s was deleted, but git still has %s checked out there: prune it first", tildePath(wt.Path), what)
+	case sameDir(wt.Path, pl.repo):
+		return pl, fmt.Errorf("%s is checked out in the project folder: choose Project folder", what)
+	case wt.Main:
+		return pl, fmt.Errorf("%s is checked out in the repository's main checkout %s", what, tildePath(wt.Path))
+	}
+	var err error
+	if pl.Name, err = label(pl.Name, 80); err != nil {
+		return pl, err
+	}
+	if names[pl.Name] {
+		return pl, fmt.Errorf("a workspace named %q already exists", pl.Name)
+	}
+	pl.Action = planAdopt
+	return pl, nil
+}
+
 // AddWorkspace adds a feature to a project, as planned for o. A remote branch
 // it starts from is fetched first; when that fails the local copy is used and
-// warning says so.
+// warning says so. A worktree that exists is adopted where it is, with no
+// git; one a workspace runs in already returns that workspace, unchanged.
 func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspace, warning string, err error) {
 	pl, err := r.plan(projectID, o)
 	if err != nil {
 		return nil, "", err
+	}
+	if pl.Action == planOpen {
+		if w := r.Workspace(pl.Workspace); w != nil {
+			return w, "", nil
+		}
+		return nil, "", fmt.Errorf("workspace %q: %w", pl.Workspace, errNotFound)
 	}
 	// Two requests planned at once may have picked the same name or folder.
 	nameKey := "name\x00" + projectID + "\x00" + pl.Name
@@ -246,7 +316,7 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 		r.mu.Unlock()
 	}()
 
-	if pl.Worktree {
+	if pl.Worktree && pl.Action != planAdopt {
 		if pl.Fetch != "" {
 			if err := fetchBranch(pl.repo, pl.Fetch, pl.fetchRef); err != nil {
 				warning = fmt.Sprintf("Could not fetch %s from %s (%v), so it starts from the copy you already had.", pl.fetchRef, pl.Fetch, err)
@@ -268,13 +338,18 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 	if slices.ContainsFunc(p.Workspaces, func(x *Workspace) bool { return x.Name == pl.Name }) {
 		return nil, "", fmt.Errorf("a workspace named %q already exists", pl.Name)
 	}
+	if pl.Action == planAdopt && workspaceIn(r.workspaceDirsLocked(), pl.Dir) != "" {
+		return nil, "", fmt.Errorf("%s is a workspace already", tildePath(pl.Dir))
+	}
 	if pl.Worktree {
 		w = newWorkspace(pl.Name, kindWorktree, pl.Dir, pl.Branch)
+		// A folder under <state>/worktrees is punk0's even when adopted back.
+		w.Adopted = pl.Action == planAdopt && !strings.HasPrefix(pl.Dir, r.worktrees+string(filepath.Separator))
 	} else {
 		w = newWorkspace(pl.Name, kindLocal, pl.Dir, "")
 	}
 	if o.Agent != "" {
-		w.Tabs = append(w.Tabs, newTab(o.Agent, w.Dir))
+		w.Tabs = append(w.Tabs, newTab(o.Agent, w.Dir, ""))
 	}
 	if o.LSP {
 		r.lsp[w.Dir] = true
@@ -282,6 +357,60 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 	r.adoptLocked(w)
 	p.Workspaces = append(p.Workspaces, w)
 	return w, warning, r.saveLocked()
+}
+
+// AdoptWorktree makes the worktree at dir, of the project's repository, a
+// workspace where it is, as typing its folder into the New workspace panel
+// does; a folder some workspace runs in already returns that workspace. Only
+// an absolute folder is one: a relative name would be read as a branch and
+// make a worktree instead of adopting one.
+func (r *Records) AdoptWorktree(projectID, dir string) (*Workspace, error) {
+	if !filepath.IsAbs(dir) {
+		return nil, fmt.Errorf("%q is not an absolute folder", dir)
+	}
+	w, _, err := r.AddWorkspace(projectID, WorkspaceOptions{Name: dir, Worktree: true})
+	return w, err
+}
+
+// Worktrees lists the linked worktrees of the repository at repo, each with
+// the workspace running in it, for the New workspace panel. The project
+// folder is left out, also when it is itself a linked worktree. A project
+// folder that is gone or not a repository has none, which is no error worth
+// logging: Chats mode asks this of every project on each Open.
+func (r *Records) Worktrees(repo string) []worktreeInfo {
+	out := []worktreeInfo{}
+	if !isDir(repo) || !gitAvailable(repo) {
+		return out
+	}
+	wts, err := listWorktrees(repo)
+	if err != nil {
+		log.Printf("worktrees of %s: %v", repo, err)
+		return out
+	}
+	r.mu.Lock()
+	dirs := r.workspaceDirsLocked()
+	r.mu.Unlock()
+	for _, wt := range wts {
+		if !wt.Main && !sameDir(wt.Path, repo) {
+			wt.Workspace = workspaceIn(dirs, wt.Path)
+			out = append(out, wt)
+		}
+	}
+	return out
+}
+
+// PruneWorktrees runs git worktree prune in the project, so the branches of
+// worktrees whose folders were deleted can be checked out again. Workspaces
+// on such folders stay, listed as missing.
+func (r *Records) PruneWorktrees(projectID string) error {
+	repo := r.ProjectDir(projectID)
+	if repo == "" {
+		return fmt.Errorf("project %q: %w", projectID, errNotFound)
+	}
+	if out, err := exec.Command("git", "-C", repo, "worktree", "prune").CombinedOutput(); err != nil {
+		return gitError(out, err)
+	}
+	return nil
 }
 
 // ProjectDir is a registered project's folder, "" for none or Scratch.
@@ -393,22 +522,13 @@ func remoteBranch(repo, ref string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), remote+"/")
 }
 
-// checkedOutAt is the worktree branch is checked out in, or "": git refuses
+// checkedOutAt is the worktree branch is checked out in, or nil: git refuses
 // to check one branch out twice.
-func checkedOutAt(repo, branch string) string {
-	out, err := exec.Command("git", "-C", repo, "worktree", "list", "--porcelain").Output()
-	if err != nil {
-		return ""
+func checkedOutAt(wts []worktreeInfo, branch string) *worktreeInfo {
+	if i := slices.IndexFunc(wts, func(wt worktreeInfo) bool { return wt.Branch == branch }); i >= 0 {
+		return &wts[i]
 	}
-	at := ""
-	for _, line := range strings.Split(string(out), "\n") {
-		if path, ok := strings.CutPrefix(line, "worktree "); ok {
-			at = path
-		} else if line == "branch refs/heads/"+branch {
-			return at
-		}
-	}
-	return ""
+	return nil
 }
 
 var (

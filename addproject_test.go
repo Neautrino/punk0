@@ -161,7 +161,7 @@ func TestRemovedProjectsComeBack(t *testing.T) {
 	if _, err := addWorkspace(rec, p.ID, "feat", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := rec.RemoveProject(p.ID); err != nil {
+	if _, err := rec.RemoveProject(p.ID, RemoveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -174,5 +174,50 @@ func TestRemovedProjectsComeBack(t *testing.T) {
 	}
 	if removed := rec.Removed(); len(removed) != 0 {
 		t.Fatalf("still offered after adding it again: %+v", removed)
+	}
+}
+
+// Only folders punk0 made itself may be deleted with their project, so
+// Create new project and a finished clone mark the project owned and adding
+// a folder of yours never does.
+func TestPunk0MadeProjectsAreOwned(t *testing.T) {
+	src := cleanRepo(t)
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	parent := t.TempDir()
+
+	if w := postJSON(t, wb, "/api/projects/new", `{"name":"fresh","parent":"`+parent+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	var job struct{ ID string }
+	decode(t, postJSON(t, wb, "/api/clones", `{"url":"`+src+`/.git","parent":"`+parent+`"}`).Body, &job)
+	if st := waitClone(t, wb, job.ID); st.Error != "" {
+		t.Fatalf("clone: %+v", st)
+	}
+	if w := postJSON(t, wb, "/api/projects", `{"dir":"`+src+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("add: %d %s", w.Code, w.Body.String())
+	}
+
+	var projects []struct {
+		Dir   string `json:"dir"`
+		Owned bool   `json:"owned"`
+	}
+	getJSON(t, wb, "/api/projects", &projects)
+	want := map[string]bool{}
+	want[filepath.Join(parent, "fresh")] = true
+	want[filepath.Join(parent, filepath.Base(src))] = true
+	want[src] = false
+	for _, p := range projects {
+		owned, listed := want[p.Dir]
+		if !listed {
+			continue
+		}
+		if p.Owned != owned {
+			t.Errorf("%s: owned %v, want %v", p.Dir, p.Owned, owned)
+		}
+		delete(want, p.Dir)
+	}
+	if len(want) != 0 {
+		t.Fatalf("not listed: %v", want)
 	}
 }

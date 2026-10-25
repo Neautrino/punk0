@@ -33,7 +33,7 @@
           <button type="button" role="tab" data-view="projects" aria-selected="true">Projects</button>
           <button type="button" role="tab" data-view="scratch" aria-selected="false">Scratch</button>
         </div>
-        <button id="o-hide-left" type="button" class="mini" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar">
+        <button type="button" class="mini o-hide" data-hide="left" title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
         </button>
       </header>
@@ -222,6 +222,7 @@
             </span>
           </div>
           <input id="o-nw-name" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="300">
+          <div id="o-nw-suggest" class="o-nw-suggest" hidden></div>
         </div>
         <p id="o-nw-plan" class="o-nw-plan" role="status" aria-live="polite"></p>
         <label class="o-chat-field">Agent
@@ -233,6 +234,27 @@
           <button id="o-nw-cancel" type="button" class="wb-btn">Cancel</button>
           <button id="o-nw-review" type="button" class="wb-btn" hidden>Review</button>
           <button id="o-nw-create" type="submit" class="wb-btn wb-primary" title="Ctrl+Enter">Create</button>
+        </div>
+      </form>
+      <!-- Delete workspace / Remove project: a flyout beside the sidebar
+           whose checkboxes decide what goes with the record
+           (web/src/orch/removedialog.js). -->
+      <form id="o-rm-form" class="o-flyout o-rm" role="dialog" aria-labelledby="o-rm-heading" autocomplete="off" hidden>
+        <header class="o-flyout-head">
+          <h2 id="o-rm-heading">Delete</h2>
+          <button id="o-rm-close" type="button" class="mini" title="Close (Esc)" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </header>
+        <p id="o-rm-what" class="o-rm-what"></p>
+        <div id="o-rm-opts" class="o-rm-opts"></div>
+        <label id="o-rm-confirm-field" class="o-chat-field" hidden>
+          <span class="o-rm-ask">Type <code id="o-rm-confirm-name" class="o-rm-name"></code> to confirm</span>
+          <input id="o-rm-confirm" class="o-input" type="text" spellcheck="false" autocapitalize="off" autocorrect="off">
+        </label>
+        <div class="o-form-acts">
+          <button id="o-rm-cancel" type="button" class="wb-btn">Cancel</button>
+          <button id="o-rm-go" type="submit" class="wb-btn o-rm-go">Delete</button>
         </div>
       </form>
       <div id="o-projects" class="o-scroll"></div>
@@ -256,23 +278,25 @@
         <button id="o-new-tab" type="button" class="mini" title="New tab" aria-label="New tab" aria-haspopup="menu">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <!-- Shows a hidden files pane again while no file is open; with a file
-             open it sits at the end of the file's path row instead. -->
-        <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
-        </button>
-        <!-- Open in editor and the right side's toggle: in the head at the
-             center's right edge, after Maximize there (split.js). Open in
-             editor shows the selected workspace's folder in the full editor,
-             in its own browser tab; the ◫ toggle closes the open files and
-             the files pane together, or opens whatever of them is closed
-             (aria-pressed while both show). -->
-        <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
-        </button>
-        <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
-        </button>
+        <!-- While the right side is closed (no file group and no files pane
+             showing), its controls come here, at the top row's right end:
+             the files pane's show button (resize.js), Open in editor and
+             the right side's toggle (split.js), which brings it back. Open
+             in editor shows the selected workspace's folder in the full
+             editor, in its own browser tab; the ◫ toggle closes the open
+             files and the files pane together, or opens whatever of them is
+             closed (aria-pressed while the right side shows). -->
+        <span class="o-top-acts">
+          <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+          </button>
+          <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+          </button>
+          <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+          </button>
+        </span>
       </header>
       <div id="o-new-menu" class="o-menu" role="menu" hidden>
         <div id="o-new-agents" class="o-agent-list"></div>
@@ -280,31 +304,52 @@
       </div>
       <div id="o-term" hidden></div>
       <div id="o-split-resizer" class="o-resizer" role="separator" aria-orientation="vertical" aria-label="Resize terminals and files" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
-      <!-- The file group's strip (split layout only): its tabs, then Open
-           file, Maximize, Open in editor and the right side's toggle. -->
+      <!-- The right side's top row, over the file group and the files pane
+           (over the pane alone while no file group shows): the mode switch
+           at its left (paneviews.js), then Maximize (Files mode with the
+           file group open), Open in editor and the right side's toggle. -->
       <header class="o-head" id="o-file-head">
         <button type="button" class="mini o-show" data-show="left" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
         </button>
+        <span class="o-pane-tabs" role="tablist" aria-label="Right side">
+          <button type="button" role="tab" data-view="files" title="Files" aria-label="Files" aria-selected="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg>
+          </button>
+          <button type="button" role="tab" data-view="chats" title="Chats" aria-label="Chats" aria-selected="false" tabindex="-1">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+          </button>
+        </span>
+        <span class="o-top-acts">
+          <button id="o-file-max" type="button" class="mini" title="Maximize files" aria-label="Maximize files">
+            <svg class="o-ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            <svg class="o-ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+          </button>
+          <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+          </button>
+          <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+          </button>
+        </span>
+      </header>
+      <!-- Its second row: the open files' tabs, then Open file, and at its
+           right end a hidden files pane's show button, level with the ≡
+           that hid it (resize.js). -->
+      <header class="o-head" id="o-file-bar">
         <div id="o-file-tabs" role="tablist"></div>
         <button id="o-file-new" type="button" class="mini" title="Open file" aria-label="Open file">
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <button id="o-file-max" type="button" class="mini" title="Maximize files" aria-label="Maximize files">
-          <svg class="o-ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-          <svg class="o-ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
-        </button>
-        <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
-        </button>
-        <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
         </button>
       </header>
       <main id="o-viewer" hidden>
-        <!-- The second row: the file's path and, in a git checkout, whether
-             it shows the text or the diff; for a diff (changes.js) its
-             summary, layout switch and refresh. -->
+        <!-- The path row (under the file tabs beside the terminals, under the
+             tab bar in their place): the file's path and, in a git checkout,
+             whether it shows the text or the diff; for a diff (changes.js)
+             its summary, layout switch and refresh. -->
         <header id="o-view-head">
           <span id="o-file-title"></span>
           <span id="o-file-meta"></span>
@@ -329,11 +374,6 @@
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
           </span>
-          <!-- Shows a hidden files pane again, where its ≡ hide button was
-               (resize.js); only there while the pane is hidden. -->
-          <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
-          </button>
         </header>
         <div id="o-code-vp">
           <div id="o-code-sizer">
@@ -367,47 +407,93 @@
         </div>
       </div>
       <div class="o-resizer" data-side="right" role="separator" aria-orientation="vertical" aria-label="Resize files" tabindex="0"></div>
-      <!-- Right: the selected workspace's files. Inside #o-center so the
-           center's first row runs over it and its own head is part of the
-           second row (workbench.css). -->
+      <!-- Right: the selected workspace's files pane, a column of the
+           center's grid under the right side's top row. Each mode is a
+           section holding its own head (the second row) and body; Chats
+           also takes the file group's columns (paneviews.js). -->
       <aside id="o-files">
-        <header class="o-head o-files-head">
-          <!-- Changed files only (the default, in a git checkout) or all (tree.js). -->
-          <span id="o-tree-mode" class="sidebar-toggle" role="group" aria-label="Files to show">
-            <button type="button" class="toggle-btn" data-mode="all" title="All files" aria-label="All files">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-            </button>
-            <button type="button" class="toggle-btn" data-mode="changes" title="Changed files only" aria-label="Changed files only">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg>
-            </button>
-          </span>
-          <span class="o-head-acts">
-            <button id="o-tree-diff" type="button" class="mini" title="Diff: every change in this workspace" aria-label="Diff">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7z"/><path d="M15 2v5h5"/><path d="M3 8v12a2 2 0 0 0 2 2h10"/><path d="M13.5 7.5v5M11 10h5M11 14.5h5"/></svg>
-            </button>
-            <button id="o-tree-refresh" type="button" class="mini" title="Refresh" aria-label="Refresh">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
-            <button id="o-tree-collapse" type="button" class="mini" title="Collapse all folders" aria-label="Collapse all folders">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>
-            </button>
-            <button id="o-hide-right" type="button" class="mini" title="Hide files" aria-label="Hide files">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
-            </button>
-          </span>
-        </header>
-        <div id="o-tree" class="o-scroll"></div>
-        <!-- The branch bar (git.js): branch, staged count, ahead/behind; a
-             click opens the editor on its git panel. -->
-        <footer id="o-files-foot" hidden>
-          <button id="o-git-bar" type="button" title="Git in the editor: stage, commit, push, history">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7"/><path d="M18 10.5c0 4-6 3-11 5.5"/></svg>
-            <span id="o-files-branch"></span>
-            <span id="o-git-sum"></span>
-            <span id="o-git-track"></span>
-            <svg class="o-git-out" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+        <section data-pane-view="files" aria-label="Files">
+          <header class="o-head o-files-head">
+            <!-- Changed files only (the default, in a git checkout) or all (tree.js). -->
+            <span id="o-tree-mode" class="sidebar-toggle" role="group" aria-label="Files to show">
+              <button type="button" class="toggle-btn" data-mode="all" title="All files" aria-label="All files">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              </button>
+              <button type="button" class="toggle-btn" data-mode="changes" title="Changed files only" aria-label="Changed files only">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg>
+              </button>
+            </span>
+            <span class="o-head-acts">
+              <button id="o-tree-refresh" type="button" class="mini" title="Refresh" aria-label="Refresh">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+              <button id="o-tree-collapse" type="button" class="mini" title="Collapse all folders" aria-label="Collapse all folders">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg>
+              </button>
+              <button type="button" class="mini o-hide" data-hide="right" title="Hide files" aria-label="Hide files">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+              </button>
+            </span>
+          </header>
+          <!-- In the changed-files view, the Changes tab's row: every diff of
+               the workspace, one after another (tree.js shows it, changes.js
+               opens it). -->
+          <button id="o-all-changes" type="button" title="Changes: every diff in this workspace" hidden>
+            <span class="o-all-mark">±</span><span class="o-all-name">All changes</span><span id="o-all-count"></span>
           </button>
-        </footer>
+          <div id="o-tree" class="o-scroll"></div>
+          <!-- The branch bar (git.js): branch, staged count, ahead/behind; a
+               click opens the editor on its git panel. -->
+          <footer id="o-files-foot" hidden>
+            <button id="o-git-bar" type="button" title="Git in the editor: stage, commit, push, history">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7"/><path d="M18 10.5c0 4-6 3-11 5.5"/></svg>
+              <span id="o-git-branch"></span>
+              <span id="o-git-sum"></span>
+              <span id="o-git-track"></span>
+              <svg class="o-git-out" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+            </button>
+          </footer>
+        </section>
+        <!-- Chats: every chat the coding agents kept on disk, in this
+             workspace, this project or anywhere (web/src/orch/history.js). -->
+        <section data-pane-view="chats" aria-label="Chats" hidden>
+          <!-- One row while the pane is wide: name, scope tabs, agent
+               dropdown, search, ⋯. Narrow (a container query in
+               workbench.css), three: name with the agent filter button and
+               ⋯, then the scope tabs, then the search. The dropdown and the
+               filter button pick the same agent. -->
+          <header class="o-head o-files-head o-hist-head">
+            <span class="o-hist-name">Chats</span>
+            <div id="o-hist-scope" class="o-side-tabs o-hist-scope" role="tablist" aria-label="Which chats">
+              <button type="button" role="tab" data-scope="workspace" aria-selected="false" tabindex="-1">Workspace</button>
+              <button type="button" role="tab" data-scope="project" aria-selected="false" tabindex="-1">Project</button>
+              <button type="button" role="tab" data-scope="all" aria-selected="false" tabindex="-1">All</button>
+            </div>
+            <!-- Only chats of one agent; the agents with chats in the list. -->
+            <select id="o-hist-agent" class="o-hist-sel" aria-label="Agent">
+              <option value="">All agents</option>
+            </select>
+            <button id="o-hist-filter" type="button" class="mini o-view-btn" title="Agent" aria-label="Agent" aria-haspopup="menu" aria-expanded="false" aria-controls="o-hist-agents">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5Z"/></svg>
+              <span class="o-view-count" hidden></span>
+            </button>
+            <span class="o-search o-hist-search">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="o-hist-q" type="text" spellcheck="false" autocomplete="off" placeholder="Search" aria-label="Search chats">
+            </span>
+            <button id="o-hist-more" type="button" class="mini" title="More" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="o-hist-menu">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
+          </header>
+          <div id="o-hist-agents" class="o-menu" role="menu" aria-label="Agent" hidden></div>
+          <!-- Sync re-reads the agents' folders and brings back every chat
+               removed from the list; Show removed lists them where they are. -->
+          <div id="o-hist-menu" class="o-menu" role="menu" aria-label="Chats" hidden>
+            <button type="button" role="menuitem" data-act="sync">Sync</button>
+            <button type="button" role="menuitemcheckbox" data-act="removed" aria-checked="false">Show removed</button>
+          </div>
+          <div id="o-hist-list" class="o-scroll"></div>
+        </section>
       </aside>
     </section>
   </div>

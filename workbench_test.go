@@ -697,7 +697,8 @@ func TestWorkbenchHandsOverWorktreeFolder(t *testing.T) {
 }
 
 // A worktree with uncommitted changes is kept until the page asks again with
-// force, so an agent's unsaved work is never thrown away by one click.
+// force, so an agent's unsaved work is never thrown away by one click — and
+// nothing on disk is touched at all unless the dialog asked for files.
 func TestWorkbenchRefusesDirtyWorktreeDelete(t *testing.T) {
 	newTestStore(t)
 	repo := cleanRepo(t)
@@ -712,23 +713,56 @@ func TestWorkbenchRefusesDirtyWorktreeDelete(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(wt.Dir, "wip.txt"), []byte("agent output"), 0o644)
 
-	w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID, "")
+	w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID+"?files=1", "")
 	if w.Code != http.StatusConflict {
 		t.Fatalf("dirty delete: %d %s", w.Code, w.Body.String())
 	}
 	var res map[string]any
-	json.Unmarshal(w.Body.Bytes(), &res)
+	decode(t, w.Body, &res)
 	if res["dirty"] != true || res["error"] == "" {
 		t.Fatalf("409 body: %s", w.Body.String())
 	}
 	if wb.records.Workspace(wt.ID) == nil {
 		t.Fatal("refused delete still forgot the workspace")
 	}
-	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID+"?force=1", ""); w.Code != http.StatusOK {
-		t.Fatalf("forced delete: %d %s", w.Code, w.Body.String())
+	// Without files the same dirty worktree is only forgotten.
+	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+wt.ID, ""); w.Code != http.StatusOK {
+		t.Fatalf("forget: %d %s", w.Code, w.Body.String())
 	}
-	if wb.records.Workspace(wt.ID) != nil {
-		t.Fatal("forced delete kept the workspace")
+	if wb.records.Workspace(wt.ID) != nil || !isDir(wt.Dir) {
+		t.Fatalf("forget kept the record or deleted %s", wt.Dir)
+	}
+}
+
+// The project dialog's answers travel as query parameters: the folder goes
+// only with files=1 and the name in confirm, and only for a project punk0
+// made.
+func TestWorkbenchRemovesProjectFolder(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	parent := t.TempDir()
+	var made struct{ Project, Workspace string }
+	decode(t, postJSON(t, wb, "/api/projects/new", `{"name":"fresh","parent":"`+parent+`"}`).Body, &made)
+	p, _, err := wb.records.Open(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if w := reqJSON(t, wb, "DELETE", "/api/projects/"+p.ID+"?files=1&confirm="+url.QueryEscape(p.Name), ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("delete a folder punk0 did not make: %d %s", w.Code, w.Body.String())
+	}
+	if !isDir(repo) {
+		t.Fatalf("%s was deleted anyway", repo)
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/projects/"+made.Project+"?files=1&confirm=wrong", ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("delete without the name: %d %s", w.Code, w.Body.String())
+	}
+	if w := reqJSON(t, wb, "DELETE", "/api/projects/"+made.Project+"?files=1&confirm=fresh", ""); w.Code != http.StatusOK {
+		t.Fatalf("delete the folder: %d %s", w.Code, w.Body.String())
+	}
+	if isDir(filepath.Join(parent, "fresh")) {
+		t.Fatal("the project folder is still there")
 	}
 }
 
@@ -954,5 +988,29 @@ func TestWorkspaceTabsList(t *testing.T) {
 	// the folder's workspace.
 	if w := reqJSON(t, wb, "DELETE", "/api/workspaces/"+dirID, ""); w.Code != http.StatusNotFound {
 		t.Fatalf("DELETE by folder id = %d, want 404", w.Code)
+	}
+}
+
+func TestTabAddWithSession(t *testing.T) {
+	useSettings(t, map[string]any{})
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	var opened map[string]any
+	decode(t, reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+repo+`"}`).Body, &opened)
+	wsID, _ := opened["workspace"].(string)
+
+	w := reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"opencode","session":"ses_42"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("add tab with session: %d %s", w.Code, w.Body.String())
+	}
+	var tab struct{ ID string }
+	decode(t, w.Body, &tab)
+	ws := wb.records.WorkspaceAt(wsID)
+	if got := wb.records.View(ws).Tabs[0].tab.command(); got != "opencode --session ses_42 || opencode" {
+		t.Fatalf("tab %s starts with %q", tab.ID, got)
+	}
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"opencode","session":"$(id)"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("unsafe session: %d %s", w.Code, w.Body.String())
 	}
 }

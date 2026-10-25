@@ -4,10 +4,12 @@
 // it starts from, and the agent its first tab runs.
 //
 // As it is filled in, GET api/projects/{id}/plan (newworkspace.go) says what
-// creating it would do -- the branch, what it starts from, the folder -- or
-// why it cannot, before anything is made. A pull request typed in is looked
-// up on its forge: it can be reviewed (the editor's PR view) or worked on in
-// a worktree on its branch. Each project's last choices are offered again.
+// creating it would do -- the branch, what it starts from, the folder, an
+// existing worktree adopted or opened -- or why it cannot, before anything is
+// made. Under the name, the project's worktrees and branches that match are
+// offered. A pull request typed in is looked up on its forge: it can be
+// reviewed (the editor's PR view) or worked on in a worktree on its branch.
+// Each project's last choices are offered again.
 import { $, esc } from '../state.js';
 import { showToast } from '../ui.js';
 import { call, openEditor } from './api.js';
@@ -17,7 +19,7 @@ import { placeFlyout } from './flyout.js';
 
 const PREFS = 'punk0.newWorkspace';
 
-let form, projectEl, whereEls, nameEl, baseEl, baseRow, refsEl, planEl, agentEl, lspRow, lspEl;
+let form, projectEl, whereEls, nameEl, suggestEl, baseEl, baseRow, refsEl, planEl, agentEl, lspRow, lspEl;
 let msgEl, createEl, reviewEl;
 let done = null; // resolves the open panel's promise
 let anchor = null;
@@ -26,6 +28,8 @@ let plan = null; // the last plan answered for what the panel holds
 let planSeq = 0;
 let planTimer = 0;
 let defaultBase = '';
+let worktrees = []; // the project's worktrees but its folder (worktreeInfo)
+let branches = []; // its branches, most recently committed first
 let busy = false;
 
 export function initNewWorkspace() {
@@ -33,6 +37,7 @@ export function initNewWorkspace() {
   projectEl = $('#o-nw-project');
   whereEls = [...form.querySelectorAll('[data-where]')];
   nameEl = $('#o-nw-name');
+  suggestEl = $('#o-nw-suggest');
   baseEl = $('#o-nw-base');
   baseRow = $('#o-nw-base-row');
   refsEl = $('#o-nw-refs');
@@ -71,6 +76,9 @@ export function initNewWorkspace() {
   projectEl.addEventListener('change', loadProject);
   for (const b of whereEls) b.addEventListener('click', () => setWhere(b.dataset.where));
   for (const el of [nameEl, baseEl]) el.addEventListener('input', schedulePlan);
+  planEl.addEventListener('click', e => e.target.closest('[data-act=prune]') && prune());
+  nameEl.addEventListener('input', renderSuggest);
+  suggestEl.addEventListener('click', pickSuggestion);
 }
 
 // openNewWorkspace shows the panel for project, pointing at from. It
@@ -127,11 +135,18 @@ async function loadProject() {
   lspEl.checked = 'lsp' in prefs ? !!prefs.lsp : !!getSetting('workspace.lspDefault');
   chooseAgent(prefs);
   whereEls.find(b => b.dataset.where === 'worktree').disabled = !p.git;
+  worktrees = [];
+  branches = [];
   setWhere(where);
   refsEl.innerHTML = '';
   defaultBase = '';
   baseEl.placeholder = 'default branch';
-  if (!p.git) return;
+  if (p.git) await loadRefs(p);
+}
+
+// loadRefs asks for the project's branches and worktrees: the start points,
+// and the suggestions under the name.
+async function loadRefs(p) {
   const res = await call('GET', `api/projects/${encodeURIComponent(p.id)}/refs`);
   if (!res.ok || project() !== p) return;
   // A repository with no commits has nothing for a worktree to start from.
@@ -142,6 +157,9 @@ async function loadProject() {
   defaultBase = res.data.default;
   refsEl.innerHTML = res.data.refs.map(r => `<option value="${esc(r)}"></option>`).join('');
   baseEl.placeholder = defaultBase || 'default branch';
+  worktrees = res.data.worktrees;
+  branches = res.data.refs;
+  renderSuggest();
 }
 
 function setWhere(w) {
@@ -152,6 +170,7 @@ function setWhere(w) {
   nameEl.placeholder = wt ? 'Name, branch, #123 or pull request URL' : 'Name of this workspace';
   form.querySelector('label[for=o-nw-name]').textContent = wt ? 'Name or start from' : 'Name';
   schedulePlan();
+  renderSuggest();
 }
 
 // loadAgents fills the agent list: none (the welcome view), installed agents,
@@ -175,6 +194,66 @@ function chooseAgent(prefs) {
   const usable = id => [...agentEl.options].some(o => o.value === id && !o.disabled);
   if ('agent' in prefs && usable(prefs.agent)) agentEl.value = prefs.agent;
   else agentEl.value = defaultAgent([...agentEl.options].filter(o => o.value && !o.disabled).map(o => ({ id: o.value })));
+}
+
+/* ---------- suggestions ---------- */
+
+const WORKTREE_ACT = {
+  open: ['Open', 'A workspace runs in it already: select it'],
+  adopt: ['Adopt', 'Make it a workspace where it is: nothing is moved or checked out'],
+  prune: ['Prune', 'Its folder was deleted: forget every deleted worktree of this repository, so their branches can be checked out again'],
+};
+
+// renderSuggest lists, under the name, the project's worktrees and then its
+// branches that match what is typed. A worktree is opened, adopted or pruned
+// from its row; a branch fills in the name.
+function renderSuggest() {
+  const q = nameEl.value.trim().toLowerCase();
+  const on = where === 'worktree' && !/^#|:\/\//.test(q);
+  const hit = (...s) => !q || s.some(x => x && x.toLowerCase().includes(q));
+  const wts = on ? worktrees.filter(w => hit(w.branch, w.path, tildify(w.path))) : [];
+  const held = new Set(worktrees.map(w => w.branch));
+  const brs = on ? branches.filter(b => !held.has(b) && b.toLowerCase() !== q && hit(b)).slice(0, 6) : [];
+  suggestEl.hidden = !wts.length && !brs.length;
+  suggestEl.innerHTML =
+    (wts.length ? '<div class="o-nw-sec">Existing worktrees</div>' + wts.map(worktreeRow).join('') : '') +
+    (brs.length ? '<div class="o-nw-sec">Branches</div>' + brs.map(b => `<button type="button" class="o-nw-branch" data-branch="${esc(b)}">${esc(b)}</button>`).join('') : '');
+}
+
+// worktreeRow offers Open before Prune: a workspace on a deleted folder is
+// selected, and its ✕ prunes.
+function worktreeRow(w) {
+  const act = w.workspace ? 'open' : w.prunable ? 'prune' : 'adopt';
+  const [label, title] = WORKTREE_ACT[act];
+  return `
+    <div class="o-nw-wt${w.prunable ? ' gone' : ''}">
+      <span class="o-nw-wt-branch">⑂ ${esc(w.branch || 'detached ' + w.head.slice(0, 7))}</span>
+      <span class="o-nw-wt-path" title="${esc(w.path)}">${esc(tildify(w.path))}${w.prunable ? ' (deleted)' : ''}</span>
+      <button type="button" class="wb-btn" data-act="${act}" data-path="${esc(w.path)}" title="${title}">${label}</button>
+    </div>`;
+}
+
+// pickSuggestion acts on a row: a branch fills in the name and is planned;
+// Open selects the workspace, Adopt creates from the worktree's folder, Prune
+// forgets deleted worktrees.
+function pickSuggestion(e) {
+  const b = e.target.closest('button');
+  if (!b || busy) return;
+  if (b.dataset.branch) {
+    nameEl.value = b.dataset.branch;
+    nameEl.focus();
+    renderSuggest();
+    return schedulePlan();
+  }
+  const w = worktrees.find(x => x.path === b.dataset.path);
+  if (!w) return;
+  if (b.dataset.act === 'prune') return prune();
+  if (b.dataset.act === 'open') {
+    selectWorkspace(w.workspace);
+    return close(w.workspace);
+  }
+  nameEl.value = w.path;
+  create();
 }
 
 /* ---------- the plan ---------- */
@@ -206,11 +285,13 @@ function schedulePlan() {
 }
 
 const code = s => `<code>${esc(s)}</code>`;
+const PRUNE = ' <button type="button" class="o-nw-prune" data-act="prune" title="Forget every deleted worktree of this repository, so their branches can be checked out again">Prune</button>';
+const workspaceName = id => state.projects.flatMap(p => p.workspaces).find(w => w.id === id)?.name || '';
 
 function renderPlan(pl) {
   planEl.classList.remove('pending', 'err');
   reviewEl.hidden = !pl?.pr;
-  createEl.textContent = pl?.pr ? 'Work on it' : 'Create';
+  createEl.textContent = { adopt: 'Adopt', open: 'Open' }[pl?.action] || (pl?.pr ? 'Work on it' : 'Create');
   reviewEl.textContent = 'Review';
   if (!pl) {
     planEl.innerHTML = where === 'worktree'
@@ -220,27 +301,32 @@ function renderPlan(pl) {
   }
   if (pl.error && !pl.pr) {
     planEl.classList.add('err');
-    planEl.textContent = pl.error;
+    planEl.innerHTML = esc(pl.error) + (pl.prune ? PRUNE : '');
     return;
   }
   const dir = `<span class="o-nw-dir">→ ${esc(pl.dir)}</span>`;
+  const on = pl.branch ? code(pl.branch) : 'a detached commit';
   let what = '';
   switch (pl.action) {
     case 'local': what = `Runs in the project folder${pl.branch ? `, on ${code(pl.branch)}` : ''}.`; break;
     case 'existing': what = `Checks out the existing branch ${code(pl.branch)}.`; break;
     case 'track': what = `New branch ${code(pl.branch)} tracking ${code(pl.base)}, fetched first.`; break;
     case 'new': what = `New branch ${code(pl.branch)} from ${code(pl.base)}${pl.fetch ? `, fetched from ${esc(pl.fetch)} first` : ''}.`; break;
+    case 'adopt': what = `Adopts the worktree on ${on} where it is: nothing is moved or checked out.`; break;
+    case 'open': what = `Already a workspace, <b>${esc(workspaceName(pl.workspace))}</b>, on ${on}: Open selects it.`; break;
     case 'pr': {
       const pr = pl.pr;
       what = `<b>#${pr.number} ${esc(pr.title)}</b><br>` +
         `Review opens it in the editor. Work on it checks out ${code(pl.branch || pr.head)}${pr.fork ? ' (from a fork)' : ''} in a worktree.`;
       if (pl.error) {
-        planEl.innerHTML = `${what}<br><span class="o-err">${esc(pl.error)}</span>`;
+        planEl.innerHTML = `${what}<br><span class="o-err">${esc(pl.error)}</span>${pl.prune ? PRUNE : ''}`;
         return;
       }
       break;
     }
   }
+  // A pull request whose branch is checked out already is adopted or opened.
+  if (pl.pr && pl.action !== 'pr') what = `<b>#${pl.pr.number} ${esc(pl.pr.title)}</b><br>${what}`;
   planEl.innerHTML = what + (pl.action === 'local' ? '' : `<br>${dir}`);
 }
 
@@ -290,6 +376,24 @@ async function review() {
   await reload();
   openEditor(res.data.href);
   close('');
+}
+
+// prune has git forget the project's deleted worktrees, then lists the
+// worktrees again and replans: their branches are free to check out.
+async function prune() {
+  const p = project();
+  if (!p || busy) return;
+  setBusy(true, 'Pruning…');
+  const res = await call('POST', `api/projects/${encodeURIComponent(p.id)}/prune`);
+  setBusy(false);
+  if (!res.ok) return showMsg(res.data.error);
+  showMsg('');
+  // The plan that offered Prune is answered: drop it rather than redraw it
+  // with its button until the next one arrives.
+  plan = null;
+  renderPlan(null);
+  await loadRefs(p);
+  schedulePlan();
 }
 
 function setBusy(on, label = '') {

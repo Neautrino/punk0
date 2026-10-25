@@ -1,10 +1,10 @@
 // web/src/orch/git.js
-// The branch bar under the files tree: the selected workspace's branch, how
-// many of its changed files are staged, and how far it is ahead of or
-// behind its upstream. A click opens the folder's editor on its git panel
-// (?panel=git), where committing, pushing and the history are. Staging a
-// single file is the tree's own tick (tree.js). The bar follows the
-// git-status stream tree.js keeps open ('git:status').
+// The branch bar under the files tree (#o-files-foot): the selected
+// workspace's branch, how many of its changed files are staged, and how far
+// it is ahead of or behind its upstream. A click opens the folder's editor
+// on its git panel (?panel=git), where committing, pushing and the history
+// are. Staging a single file is the tree's own tick (tree.js). The bar
+// follows the git-status stream tree.js keeps open ('git:status').
 import { $ } from '../state.js';
 import { on } from '../bus.js';
 import { openEditor } from './api.js';
@@ -16,7 +16,7 @@ const latest = new Map(); // workspace id -> its last git-status payload
 
 export function initGit() {
   footEl = $('#o-files-foot');
-  branchEl = $('#o-files-branch');
+  branchEl = $('#o-git-branch');
   sumEl = $('#o-git-sum');
   trackEl = $('#o-git-track');
   on('git:status', ({ ws, data }) => {

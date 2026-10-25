@@ -115,7 +115,7 @@ func (wb *workbench) handleProjectNew(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "git init: "+gitError(out, err).Error())
 		return
 	}
-	wb.openFolder(w, dest)
+	wb.openFolder(w, dest, true)
 }
 
 // gitUsable says why git cannot be run, or nil.
@@ -366,6 +366,11 @@ func (wb *workbench) runClone(ctx context.Context, j *cloneJob, url string) {
 	}
 	p, ws, err := wb.records.Open(j.dir)
 	if err != nil {
+		j.finish(err.Error(), "", "")
+		return
+	}
+	// punk0 made this folder, so removing the project may offer to delete it.
+	if err := wb.records.SetOwned(p.ID); err != nil {
 		j.finish(err.Error(), "", "")
 		return
 	}

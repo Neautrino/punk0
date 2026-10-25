@@ -445,6 +445,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/workspaces"), wb.handleWorkspaceAdd)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/plan"), wb.handleWorkspacePlan)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/refs"), wb.handleRefs)
+	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/prune"), wb.handleWorktreePrune)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/changes-summary"), wb.handleChangesSummary)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
@@ -456,6 +457,12 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/chat-groups/{id}"), wb.handleChatGroupRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/agents"), wb.handleAgents)
+	wb.mux.HandleFunc("GET "+wb.route("/api/history"), wb.handleHistory)
+	wb.mux.HandleFunc("GET "+wb.route("/api/history/{agent}/{id}/preview"), wb.handleHistoryPreview)
+	wb.mux.HandleFunc("POST "+wb.route("/api/history/open"), wb.handleHistoryOpen)
+	wb.mux.HandleFunc("POST "+wb.route("/api/history/remove"), wb.handleHistoryRemove)
+	wb.mux.HandleFunc("POST "+wb.route("/api/history/sync"), wb.handleHistorySync)
+	wb.mux.HandleFunc("DELETE "+wb.route("/api/history/{agent}/{id}"), wb.handleHistoryDelete)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/tabs/{id}"), wb.handleTabRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
@@ -1083,7 +1090,7 @@ func (wb *workbench) handleOpen(w http.ResponseWriter, r *http.Request) {
 		if dir != "" {
 			// A folder is not an item: registering it as a project answers
 			// with the workspace to open, like POST /api/projects.
-			wb.openFolder(w, dir)
+			wb.openFolder(w, dir, false)
 			return
 		}
 	}
@@ -1226,37 +1233,69 @@ func (wb *workbench) handleProjectAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	wb.openFolder(w, dir)
+	wb.openFolder(w, dir, false)
 }
 
 // openFolder registers a folder and answers with the workspace that opens it:
 // the Add project panel, `punk0 <dir>` in a terminal and a second punk0 handing
 // its folder over all come through here, and all of them may name a folder
-// that is already registered.
-func (wb *workbench) openFolder(w http.ResponseWriter, dir string) {
+// that is already registered. owned is set only by the paths that made the
+// folder themselves, since it is what lets removing the project delete it.
+func (wb *workbench) openFolder(w http.ResponseWriter, dir string, owned bool) {
 	p, ws, err := wb.records.Open(dir)
 	if err != nil {
 		failRecord(w, err)
 		return
 	}
+	if owned {
+		if err := wb.records.SetOwned(p.ID); err != nil {
+			failRecord(w, err)
+			return
+		}
+	}
 	writeJSON(w, map[string]any{"project": p.ID, "workspace": ws.ID, "href": wb.childHref(wbItemID("dir", ws.Dir))})
 }
 
+// handleProjectRemove takes the Remove project dialog's answers:
+// ?files=1&confirm=<name> moves the folder to the trash.
 func (wb *workbench) handleProjectRemove(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
 	}
-	if err := wb.records.RemoveProject(r.PathValue("id")); err != nil {
+	note, err := wb.records.RemoveProject(r.PathValue("id"), removeOptions(r))
+	if err != nil {
 		failRecord(w, err)
 		return
 	}
 	wb.stopOrphans()
-	writeJSON(w, map[string]any{"ok": true})
+	writeNote(w, note)
+}
+
+// removeOptions reads a removal dialog's answers off the query string.
+func removeOptions(r *http.Request) RemoveOptions {
+	q := r.URL.Query()
+	return RemoveOptions{
+		Force:   q.Get("force") == "1",
+		Files:   q.Get("files") == "1",
+		Confirm: q.Get("confirm"),
+	}
+}
+
+// writeNote answers a removal that worked: note says what it could not do
+// along the way (a branch git kept), which is never a reason to fail it.
+func writeNote(w http.ResponseWriter, note string) {
+	res := map[string]any{"ok": true}
+	if note != "" {
+		res["note"] = note
+	}
+	writeJSON(w, res)
 }
 
 // handleWorkspaceAdd makes a workspace from the New workspace panel
 // (newworkspace.go). A pull request typed there is worked on: its head is
-// fetched and checked out in a worktree of its own.
+// fetched and checked out in a worktree of its own — unless its head branch
+// is checked out already, when the panel offered Open or Adopt and nothing
+// is fetched.
 func (wb *workbench) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
@@ -1276,7 +1315,12 @@ func (wb *workbench) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		if ok {
-			if o, err = pp.workOn(dir, o); err != nil {
+			// The plan decides first: Open and Adopt check nothing out, so
+			// fetching the head would only make the click slow or fail.
+			po := pp.options(o)
+			if pl := wb.records.Plan(id, po); pl.Action == planAdopt || pl.Action == planOpen {
+				o = po
+			} else if o, err = pp.workOn(dir, o); err != nil {
 				fail(w, http.StatusBadRequest, err.Error())
 				return
 			}
@@ -1318,9 +1362,13 @@ func (wb *workbench) handleWorkspacePlan(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		if ok {
-			// The base is the PR's head, fetched only when the worktree is made.
+			// The base is the PR's head, fetched only when the worktree is made;
+			// a head branch checked out already is opened or adopted instead.
 			pl := wb.records.Plan(id, pp.options(o))
-			pl.Action, pl.Base, pl.Fetch, pl.PR = planPR, "", "", pp.view()
+			if pl.Action != planAdopt && pl.Action != planOpen {
+				pl.Action, pl.Base, pl.Fetch = planPR, "", ""
+			}
+			pl.PR = pp.view()
 			pl.Dir = tildePath(pl.Dir)
 			writeJSON(w, pl)
 			return
@@ -1332,7 +1380,8 @@ func (wb *workbench) handleWorkspacePlan(w http.ResponseWriter, r *http.Request)
 }
 
 // handleRefs lists a project's branches for the panel's start point, with
-// the one a new branch starts from by default.
+// the one a new branch starts from by default, and its worktrees other than
+// the project folder, each with the workspace running in it.
 func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
 		return
@@ -1343,29 +1392,40 @@ func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !gitAvailable(dir) {
-		writeJSON(w, map[string]any{"default": "", "refs": []string{}})
+		writeJSON(w, map[string]any{"default": "", "refs": []string{}, "worktrees": []worktreeInfo{}})
 		return
 	}
-	writeJSON(w, map[string]any{"default": defaultBase(dir), "refs": gitRefs(dir), "empty": !hasCommit(dir)})
+	writeJSON(w, map[string]any{"default": defaultBase(dir), "refs": gitRefs(dir), "empty": !hasCommit(dir), "worktrees": wb.records.Worktrees(dir)})
 }
 
-// handleWorkspaceRemove answers 409 while a worktree has uncommitted changes;
-// ?force=1 deletes them. note says why a merged-branch delete did not happen.
+// handleWorktreePrune is the panel's Prune: git forgets the project's
+// worktrees whose folders were deleted.
+func (wb *workbench) handleWorktreePrune(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	if err := wb.records.PruneWorktrees(r.PathValue("id")); err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleWorkspaceRemove takes the Delete workspace dialog's answers:
+// ?files=1 removes the worktree folder. It answers 409 while the worktree has
+// uncommitted changes; ?force=1 deletes them. note says why a merged-branch
+// delete did not happen.
 func (wb *workbench) handleWorkspaceRemove(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
 	}
-	note, err := wb.records.RemoveWorkspace(r.PathValue("id"), r.URL.Query().Get("force") == "1")
+	note, err := wb.records.RemoveWorkspace(r.PathValue("id"), removeOptions(r))
 	if err != nil {
 		failRecord(w, err)
 		return
 	}
 	wb.stopOrphans()
-	res := map[string]any{"ok": true}
-	if note != "" {
-		res["note"] = note
-	}
-	writeJSON(w, res)
+	writeNote(w, note)
 }
 
 // handleLSP turns language servers on or off for a workspace's folder. The
@@ -1517,7 +1577,8 @@ func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Kind string `json:"kind"`
+		Kind    string `json:"kind"`
+		Session string `json:"session"` // optional: the agent's chat to resume
 	}
 	if readJSONBody(r, &body) != nil {
 		fail(w, http.StatusBadRequest, "bad request")
@@ -1528,7 +1589,7 @@ func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "workspace not found")
 		return
 	}
-	t, err := wb.records.AddTab(ws.ID, body.Kind)
+	t, err := wb.records.AddTab(ws.ID, body.Kind, body.Session)
 	if err != nil {
 		failRecord(w, err)
 		return

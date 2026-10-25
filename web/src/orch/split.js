@@ -16,9 +16,15 @@
 //
 // The ◫ toggle (.o-side-toggle) and Ctrl+Alt+B close everything right of
 // the terminals, the open files and the files pane, and open both again.
+// In Chats mode (paneviews.js) the chats take the file group's columns and
+// the files pane's, and the right side shows while either has room. There
+// Maximize hides the terminals and the chats take the whole center; in
+// Files mode it is for the file group alone, so only while it has files
+// (a maximized tree would be a narrow list stretched over empty width).
 import { $, $$ } from '../state.js';
 import { on } from '../bus.js';
 import { state, rerender, setCollapsed, workspace, activeTab, termTab, fileTab, fileTabsOf } from './store.js';
+import { paneView } from './paneviews.js';
 import { getSetting } from './settings.js';
 import { isHidden, setHidden } from './resize.js';
 
@@ -41,12 +47,17 @@ export function isSplit() {
 export function view() {
   const w = workspace();
   const front = activeTab();
-  if (!isSplit()) {
-    const file = front?.kind === 'file' ? front : null;
-    return { split: false, files: false, term: file ? null : front, file, welcome: !front, collapsed: '' };
+  const split = isSplit();
+  const files = split && fileTabsOf(w).length > 0;
+  // Files mode collapses a group only while the file group has files;
+  // Chats mode maximizes the chats over the terminals while they show: in
+  // the file group's columns, or in the pane's while it is not hidden.
+  const chatsMax = state.collapsed === 'term' && paneView() === 'chats' && (files || !isHidden('right'));
+  const collapsed = chatsMax ? 'term' : files ? state.collapsed : '';
+  if (!split) {
+    const file = !collapsed && front?.kind === 'file' ? front : null;
+    return { split: false, files: false, term: collapsed || file ? null : front, file, welcome: !collapsed && !front, collapsed };
   }
-  const files = fileTabsOf(w).length > 0;
-  const collapsed = files ? state.collapsed : '';
   const term = collapsed === 'term' ? null : termTab(w);
   return {
     split: true, files, collapsed, term,
@@ -65,14 +76,16 @@ export function layoutCenter() {
   center.classList.toggle('file-shown', !!v.file);
   syncToggle(v);
   const max = $('#o-file-max');
-  max.title = v.collapsed === 'term' ? 'Restore terminals' : 'Maximize files';
+  max.title = v.collapsed === 'term' ? 'Restore terminals' : paneView() === 'chats' ? 'Maximize chats' : 'Maximize files';
   max.setAttribute('aria-label', max.title);
   return v;
 }
 
 // rightOpen says whether everything right of the terminals shows: the open
-// files (when there are any) and the files pane.
-const rightOpen = v => !isHidden('right') && !(v.files && v.collapsed === 'file');
+// files (when there are any) and the files pane; in Chats mode, the chats
+// in whatever of their columns has room.
+const groupShown = v => v.files && v.collapsed !== 'file';
+const rightOpen = v => (paneView() === 'chats' && groupShown(v)) || (!isHidden('right') && !(v.files && v.collapsed === 'file'));
 
 function syncToggle(v) {
   for (const b of $$('.o-side-toggle')) b.setAttribute('aria-pressed', String(rightOpen(v)));
@@ -118,8 +131,9 @@ function apply() {
 const schedule = () => { frame ||= requestAnimationFrame(apply); };
 
 // groupsWidth is what the terminal and file groups share: the center less
-// the files pane at its right (nothing while hidden).
-const groupsWidth = () => center.clientWidth - files.offsetWidth;
+// the files pane's column at its right (nothing while hidden). Not the
+// pane's own width: in Chats mode it spans the file group's columns too.
+const groupsWidth = () => center.clientWidth - (parseFloat(getComputedStyle(center).getPropertyValue('--o-files-w')) || 0);
 
 // setPx puts the border x pixels from the center's left edge, keeping both
 // groups at least GROUP_MIN wide.
@@ -193,6 +207,7 @@ export function initSplit() {
   for (const b of $$('.o-side-toggle')) b.addEventListener('click', toggleRight);
   addEventListener('keydown', shortcut);
   on('pane:toggled', () => syncToggle(view()));
+  on('paneview:changed', rerender);
   // Only a change of layout re-renders; resizes inside one keep the DOM.
   // The files pane showing, hiding or resizing changes the groups' room too.
   const measure = () => {
