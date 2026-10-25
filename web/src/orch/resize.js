@@ -1,8 +1,8 @@
 // web/src/orch/resize.js
 // The side panes: their widths, dragged on the borders between panes, and
 // whether each is shown. Widths live in two CSS variables on #wb-app
-// (--wb-left, --wb-right); the left one also sizes the status bar's left
-// section, so the bar follows the sidebar. A hidden pane is a class on
+// (--wb-left, --wb-right); the status bar's sections do not follow them
+// (style.css's --pane-w). A hidden pane is a class on
 // #wb-app (hide-left, hide-right). Each pane hides with its ≡ button
 // (.o-hide[data-hide]: the projects pane's head; the end of the files
 // tree's head, so in Files mode it hides the tree only), and a hidden

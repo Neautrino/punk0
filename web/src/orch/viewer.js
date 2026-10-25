@@ -13,13 +13,13 @@ import { $, esc, MOD, withKeys } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, pageURL } from './api.js';
 import { getSetting } from './settings.js';
-import { fmtBytes } from '../format.js';
+import { drawFileStatus, tabCol } from '../statusparts.js';
 
 const VIEW_CHUNK = 1000;
 const VIEW_OVERSCAN = 30;
 
 let codeVp, codeSizer, codeRows, fileTitle, fileMeta;
-let stFile, stPos, stLines, stSize, stTabSize, stEnc, stEol, gotoEl, gotoIn;
+let stPos, gotoEl, gotoIn;
 let lineH = 21; // --lh, measured at init
 let tabSize = 4; // editor.tabSize: how wide a tab renders and counts in Col
 let viewWs = ''; // workspace id of the open files below
@@ -34,13 +34,7 @@ export function initViewer() {
   codeRows = $('#o-code-rows');
   fileTitle = $('#o-file-title');
   fileMeta = $('#o-file-meta');
-  stFile = $('#st-file');
   stPos = $('#st-pos');
-  stLines = $('#st-lines');
-  stSize = $('#st-size');
-  stTabSize = $('#st-tabsize');
-  stEnc = $('#st-enc');
-  stEol = $('#st-eol');
   gotoEl = $('#o-goto');
   gotoIn = $('#o-goto-in');
   lineH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--lh')) || lineH;
@@ -191,17 +185,13 @@ function paint() {
 // diff has no cursor, so no Ln / Col.
 function drawStatus() {
   const d = current?.doc;
-  stFile.hidden = !d;
-  stPos.hidden = diffView;
   if (!d || diffView) closeGoto();
-  if (!d) return;
+  if (!d) return drawFileStatus(null);
   const { line, col } = current.cur || { line: 1, col: 1 };
-  stPos.textContent = `Ln ${line}, Col ${col}`;
-  stLines.textContent = `${d.total} line${d.total === 1 ? '' : 's'}`;
-  stSize.textContent = fmtBytes(d.size);
-  stTabSize.textContent = `Tab Size: ${tabSize}`;
-  stEnc.textContent = d.encoding;
-  stEol.textContent = d.eol;
+  drawFileStatus({
+    pos: diffView ? '' : `Ln ${line}, Col ${col}`,
+    total: d.total, size: d.size, tabSize, encoding: d.encoding, eol: d.eol,
+  });
 }
 
 // placeCursor puts the cursor where a click (or the end of a drag) left the
@@ -219,7 +209,7 @@ function placeCursor(e) {
     const r = document.createRange();
     r.setStart(row.querySelector('.c'), 0);
     r.setEnd(sel.focusNode, sel.focusOffset);
-    for (const ch of r.toString()) col += ch === '\t' ? tabSize - (col - 1) % tabSize : 1;
+    col = tabCol(r.toString(), tabSize);
   }
   setCursor(Number(row.querySelector('.g').textContent), col);
 }

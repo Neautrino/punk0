@@ -13,7 +13,7 @@ Sharing code with a teammate or an AI agent usually means selecting lines, copyi
 ## Where the Actions Appear
 
 - **Selection pill**: floats just above a selection in the source view, with **✦ Quick Edit** (`Mod+K`), **Add to Chat** (`Alt+L`) and **Copy Ref** (`Alt+C`). It is not shown in the diff view or the Markdown preview, and it hides when the view scrolls.
-- **Footer selection bar**: while code is selected, the left of the status bar trades its navigation buttons for the copy actions, and the right shows the selection's line and character count. It never covers code.
+- **Footer selection bar**: while code is selected, the status bar trades its Wrap and Go to buttons for the copy actions, and the right shows the selection's line and character count. It never covers code.
 - **Right-click menu**: a right click on a selection opens the actions at the pointer. On code it offers Quick Edit (source view only), Add to Chat, Copy Source, Copy Ref, Copy with Context and Find Usages. In the Markdown preview it keeps its own copy items: Copy Formatted Text, Copy Raw Markdown, Copy Ref and Copy with Context. A right click on plain code with no selection keeps the browser's menu.
 
 ---

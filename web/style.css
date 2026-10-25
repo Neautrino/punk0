@@ -49,10 +49,13 @@ input { font: inherit; color: inherit; background: none; border: 0; outline: 0; 
 
 
 /* ---------- sidebar ---------- */
-/* --side-w: the sidebar's width (panels.js's resizer), shared with the status
-   bar's first section so it sits right under the sidebar. */
+/* --pane-w: both side panels' opening width, the agents page's too, and the
+   fixed width of the status bar's first and last sections on both pages,
+   whatever the panels' widths. */
+:root { --pane-w: 260px; }
+/* --side-w: the sidebar's width once dragged (panels.js's resizer). */
 #side {
-  width: var(--side-w, 340px); flex: none; background: var(--bg2); border-right: 1px solid var(--line);
+  width: var(--side-w, var(--pane-w)); flex: none; background: var(--bg2); border-right: 1px solid var(--line);
   display: flex; flex-direction: column; overflow: hidden;
 }
 body.side-hidden #side, body.side-hidden #resizer { display: none; }
@@ -150,20 +153,23 @@ body.right-hidden #tab-head .side-open-right { display: inline-flex; }
   color: var(--dim);
 }
 .panel-body { flex: 1; overflow: auto; padding-bottom: 16px; }
-/* The status bar's first section: logo, version and buttons, as wide as the
-   sidebar above it; just as wide as its contents while the sidebar is hidden. */
+/* The status bar's first section: logo, version and buttons, a fixed
+   --pane-w wide, whatever the sidebar's width or whether it shows. */
 .status-side {
-  width: var(--side-w, 340px); align-self: stretch; display: flex; align-items: center; gap: 6px;
+  width: var(--pane-w); align-self: stretch; display: flex; align-items: center; gap: 6px;
   padding: 0 8px; border-right: 1px solid var(--line);
 }
-body.side-hidden .status-side { width: auto; border-right: 0; }
 .status-side .mini svg { display: block; }
-/* Project links and the theme button, together at the right edge. */
+/* Help, GitHub and settings, together at the right edge. */
 .side-actions { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 .side-actions .mini { margin-left: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; }
-.side-logo { flex: none; display: flex; align-items: center; padding: 2px 3px; border-radius: var(--r); }
-.side-logo:hover { background: var(--bg4); }
-.side-logo img { height: 13px; width: auto; }
+/* punk[0]: drawn in text in the style of px0's px[0] logo, so it follows the theme. */
+.status-logo {
+  flex: none; padding: 1px 3px; border-radius: var(--r);
+  font: 600 12px/1 var(--mono); color: var(--fg); text-decoration: none;
+}
+.status-logo span { color: var(--mark-active); }
+.status-logo:hover { background: var(--bg4); }
 
 /* ---------- tree ---------- */
 .tw { display: block; }
@@ -753,7 +759,7 @@ a.cc-who:hover { color: var(--accent-fg); }
 
 /* ---------- right side: the terminal ---------- */
 #right-side {
-  width: 384px; flex: none; background: var(--bg2); border-left: 1px solid var(--line);
+  width: var(--pane-w); flex: none; background: var(--bg2); border-left: 1px solid var(--line);
   display: flex; flex-direction: column; overflow: hidden;
 }
 body.right-hidden #right-side, body.right-hidden #right-resizer { display: none; }
@@ -761,7 +767,6 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
 /* Zoom (⛶ in its top row): the right side takes the editor's whole width. */
 body.right-zoom #side, body.right-zoom #resizer, body.right-zoom #main, body.right-zoom #right-resizer { display: none; }
 body.right-zoom #right-side { flex: 1; width: auto !important; border-left: 0; }
-body.right-zoom .status-side { width: auto; border-right: 0; }
 .side-btn .ic-restore, body.right-zoom #btn-right-zoom .ic-max { display: none; }
 body.right-zoom #btn-right-zoom .ic-restore { display: block; }
 /* A mode's own row under the top row: the terminal's tabs and +, the chat
@@ -2047,15 +2052,15 @@ kbd {
 }
 
 /* ---------- status ---------- */
-#status { height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 0; background: var(--bg2); border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--faint); user-select: none; white-space: nowrap; overflow: hidden; }
+#status { height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0; background: var(--bg2); border-top: 1px solid var(--line); font: 11px var(--mono); color: var(--faint); user-select: none; white-space: nowrap; overflow: hidden; }
 /* Nothing shrinks or wraps: an overflowing bar is what tells fitStatus() to shed detail. */
 #status > * { flex: none; }
 #status > .grow { flex: 1; }
 /* Shed in steps as the bar narrows; the classes accumulate, so each step keeps the ones before. */
 #status.fit-1 .footer-kbd,
-#status.fit-2 #st-size,
-#status.fit-3 .res-count:not(:last-child), #status.fit-3 .res-btn .metric-divider,
-#status.fit-4 [data-action="wrap"], #status.fit-4 [data-action="help"], #status.fit-4 .sel-chip, #status.fit-4 #sel-stats,
+#status.fit-2 #st-tabsize, #status.fit-2 #st-eol, #status.fit-2 #st-lines,
+#status.fit-3 #st-enc, #status.fit-3 #st-size, #status.fit-3 .res-count:not(:last-child), #status.fit-3 .res-btn .metric-divider,
+#status.fit-4 [data-action="wrap"], #status.fit-4 .sel-chip, #status.fit-4 #sel-stats, #status.fit-4 #st-working,
 #status.fit-5 #st-res,
 #status.fit-6 #st-lsp { display: none; }
 #footer-actions { display: flex; align-items: center; gap: 3px; }
@@ -2085,16 +2090,41 @@ kbd {
 .footer-btn:hover .footer-kbd {
   color: var(--fg); border-color: var(--accent);
 }
-.status-sep { width: 1px; height: 12px; background: var(--line); flex: none; }
+/* The last section, the resource button: a fixed --pane-w wide, whatever
+   the right side's width or whether it shows. */
+.status-end {
+  width: var(--pane-w); align-self: stretch; display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 10px 0 8px; border-left: 1px solid var(--line);
+}
+
+/* Agents needing you and working, each a button to the next one; the open
+   file's details (statusparts.js). Both status bars have them. */
+.agent-states { flex: none; display: flex; align-items: center; gap: 2px; }
+.agent-state, .st-btn {
+  display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 6px;
+  border: 0; border-radius: var(--r); background: none; cursor: pointer;
+  font: 11px var(--mono); color: var(--dim);
+}
+.agent-state[hidden], .st-btn[hidden] { display: none; }
+.agent-state:hover, .st-btn:hover, .st-btn[aria-expanded="true"] { color: var(--fg); background: var(--bg4); }
+.agent-state:focus-visible, .st-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.agent-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.agent-state.working::before { background: var(--accent-fg); }
+.agent-state.waiting { color: var(--mark-active); font-weight: 600; }
+@keyframes o-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: no-preference) {
+  .agent-state.working::before { animation: o-pulse 1.2s ease-in-out infinite; }
+}
+#st-file:not([hidden]) { flex: none; display: flex; align-items: center; gap: 12px; }
+#st-file .st-btn { margin: 0 -6px; }
+#st-file > [hidden] { display: none; }
 
 /* Selection mode: the left of the bar swaps to actions on the selected code.
    The accent edge and chip make the swap noticeable at the bottom of the screen. */
 #footer-sel { display: none; align-items: center; gap: 8px; min-width: 0; }
 #status.selecting { border-top-color: var(--accent); }
 #status.selecting #footer-sel { display: flex; animation: sel-in .12s ease-out; }
-#status.selecting > #footer-actions,
-#status.selecting > #footer-actions + .status-sep,
-#status.selecting > #st-size { display: none; }
+#status.selecting > #footer-actions { display: none; }
 @keyframes sel-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { #status.selecting #footer-sel { animation: none; } }
 .sel-chip {

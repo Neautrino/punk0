@@ -10,6 +10,7 @@ import { setLayoutPref } from './diff.js';
 import { setVimModeEnabled } from './vim.js';
 import { showHelp } from './shortcuts.js';
 import { initSettingsModal } from './settings-form.js';
+import { drawFileDetails } from './status.js';
 
 export function isAutoRevealEnabled() {
   if (S.settings) {
@@ -43,6 +44,7 @@ function queueTypography() {
     const lh = parseFloat(S.settings['editor.lineHeight']) || 21.0;
     const ts = parseInt(S.settings['editor.tabSize'], 10) || 4;
     applyEditorTypography(fs, ff, lh, ts);
+    drawFileDetails(); // the bar's Tab Size and Col
   });
 }
 

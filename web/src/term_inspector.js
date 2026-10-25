@@ -1,7 +1,7 @@
 // web/src/term_inspector.js
 import { $, S } from './state.js';
 import { sideShown, rightView, showRightView } from './sideviews.js';
-import { on } from './bus.js';
+import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
 
@@ -156,38 +156,78 @@ function getWorkspaceID() {
   return S.meta?.workspace || S.meta?.workspaceId || '';
 }
 
-export async function refreshWorkspaceTabs() {
+// loadWorkspaceTabs fetches this editor's workspace tabs into workspaceTabs,
+// attaching nothing, and says whether it got them; termtabs:changed tells the
+// status bar.
+async function loadWorkspaceTabs() {
   const wsId = getWorkspaceID();
-  if (!wsId) return;
-
+  if (!wsId) return false;
   try {
     const res = await fetch(parentURL(`api/workspaces/${encodeURIComponent(wsId)}/tabs`));
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const data = await res.json();
     workspaceTabs = data.tabs || [];
-    if (activeTabId && workspaceTabs.some(t => t.id === activeTabId)) {
-      renderTabChips();
-      return;
-    }
-    // Attaching starts a stopped tab's process (handleTerm calls Shell()), so a
-    // page load or poll only reattaches to a tab that is already running.
-    // A stopped tab starts when the user clicks it.
-    const running = workspaceTabs.find(t => t.running);
-    if (running) {
-      attachTab(running.id);
-      return;
-    }
-    if (activeSocket) {
-      activeSocket.onclose = null;
-      activeSocket.close();
-      activeSocket = null;
-    }
-    activeTabId = null;
+  } catch {
+    return false;
+  }
+  emit('termtabs:changed');
+  return true;
+}
+
+export async function refreshWorkspaceTabs() {
+  if (!await loadWorkspaceTabs()) return;
+  if (activeTabId && workspaceTabs.some(t => t.id === activeTabId)) {
     renderTabChips();
-    showIdleNotice(workspaceTabs.length
-      ? 'Tabs are stopped. Click one to start it, or use + for a new one.'
-      : 'No terminal tabs. Click + to start an agent or a shell.');
-  } catch {}
+    return;
+  }
+  // Attaching starts a stopped tab's process (handleTerm calls Shell()), so a
+  // page load or poll only reattaches to a tab that is already running.
+  // A stopped tab starts when the user clicks it.
+  const running = workspaceTabs.find(t => t.running);
+  if (running) {
+    attachTab(running.id);
+    return;
+  }
+  if (activeSocket) {
+    activeSocket.onclose = null;
+    activeSocket.close();
+    activeSocket = null;
+  }
+  activeTabId = null;
+  renderTabChips();
+  showIdleNotice(workspaceTabs.length
+    ? 'Tabs are stopped. Click one to start it, or use + for a new one.'
+    : 'No terminal tabs. Click + to start an agent or a shell.');
+}
+
+// The running agent tabs with that status, in tab order: what the status
+// bar's needs-you and working buttons count and step through.
+const agentTabs = status => workspaceTabs.filter(t => t.running && t.status === status);
+export const agentTabCount = status => agentTabs(status).length;
+
+// nextAgentTab shows the tab after the shown one with that status, so
+// clicking again walks through all of them.
+export function nextAgentTab(status) {
+  const list = agentTabs(status);
+  if (!list.length) return;
+  const { id } = list[(list.findIndex(t => t.id === activeTabId) + 1) % list.length];
+  if (id === activeTabId) showTerminal();
+  else openTab(id);
+}
+
+// watchWorkspaceTabs refreshes the tabs every 3 s while the page is visible,
+// for the status bar's counts; while the terminal shows, the refresh also
+// reattaches it.
+export function watchWorkspaceTabs() {
+  if (pollTimer || !getWorkspaceID()) return;
+  const tick = () => {
+    if (document.hidden) return;
+    if (termShown()) refreshWorkspaceTabs();
+    else loadWorkspaceTabs();
+  };
+  pollTimer = setInterval(tick, 3000);
+  document.addEventListener('visibilitychange', tick);
+  tick();
 }
 
 let idleNotice = '';
@@ -371,13 +411,7 @@ export function onTermInspectorShown() {
       xtermInstance.term.focus();
     }, 50);
   }
-  if (!pollTimer) {
-    pollTimer = setInterval(() => {
-      if (termShown()) {
-        refreshWorkspaceTabs();
-      }
-    }, 3000);
-  }
+  watchWorkspaceTabs();
 }
 
 const SUPPORTED_AGENTS = [

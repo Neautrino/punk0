@@ -2,33 +2,66 @@ import { $, S, doc_, api, apiPost, withKeys } from './state.js';
 import { previewing, previewKind } from './markdown.js';
 import { layoutPref } from './diff.js';
 import { lspServers, lspRows, lspAllButton } from './lspmenu.js';
-import { fmtBytes } from './format.js';
 import { createResPanel } from './respanel.js';
+import { drawFileStatus, drawAgentStates, tabCol, langName } from './statusparts.js';
+import { rowFor } from './renderer.js';
+import { editTextarea } from './editview.js';
+import { on } from './bus.js';
+import { agentTabCount, nextAgentTab, watchWorkspaceTabs } from './term_inspector.js';
+
+// cursorText is the front tab's Ln / Col, as the agents page shows it: the
+// column counts a tab to the next tab stop. Empty where there is no caret
+// in the text: the diff and the preview.
+function cursorText(d, tabSize) {
+  if (d.isEditing) {
+    const v = editTextarea.value, at = editTextarea.selectionStart;
+    const from = v.lastIndexOf('\n', at - 1) + 1;
+    let line = 1;
+    for (let i = v.indexOf('\n'); i !== -1 && i < at; i = v.indexOf('\n', i + 1)) line++;
+    return `Ln ${line}, Col ${tabCol(v.slice(from, at), tabSize)}`;
+  }
+  if (d.diffMode || previewing(d)) return '';
+  const row = rowFor(d.cur);
+  const text = row ? $('.c', row)?.textContent ?? '' : '';
+  const col = d.col === Infinity ? text.length : Math.min(d.col || 0, row ? text.length : Infinity);
+  return `Ln ${d.cur}, Col ${row ? tabCol(text.slice(0, col), tabSize) : col + 1}`;
+}
+
+// lineCount is the lines in the file, or in the text being edited.
+function lineCount(d) {
+  if (!d.isEditing) return d.total;
+  const v = editTextarea.value;
+  let n = 1;
+  for (let i = v.indexOf('\n'); i !== -1; i = v.indexOf('\n', i + 1)) n++;
+  return n;
+}
+
+// drawFileDetails fills the bar's #st-file for the front tab: an image's
+// size and zoom, a text file's cursor, lines, size, tab size, encoding and
+// line endings. Cheap enough for every caret move.
+export function drawFileDetails() {
+  const d = doc_();
+  if (!d || d.deleted) return drawFileStatus(null);
+  if (d.isImage) {
+    const pct = Math.round((d.imageScale || 1) * 100);
+    const zoom = d.imageFit ? `Fit (${pct}%)` : `${pct}%`;
+    return drawFileStatus({ pos: d.imageMeta ? `${d.imageMeta.width} × ${d.imageMeta.height} px · ${zoom}` : zoom, size: d.size });
+  }
+  const tabSize = parseInt(S.settings?.['editor.tabSize'], 10) || 4;
+  drawFileStatus({
+    pos: cursorText(d, tabSize), total: lineCount(d), size: d.size,
+    tabSize, encoding: d.encoding, eol: d.eol,
+  });
+}
 
 export function updateStatus() {
   const d = doc_();
-  const sizeEl = $('#st-size');
-  if (sizeEl) sizeEl.textContent = d ? fmtBytes(d.size) : '';
-
-  if (d && d.isImage) {
-    const posEl = $('#st-pos');
-    if (posEl) {
-      const zoomText = d.imageFit ? `Fit (${Math.round((d.imageScale || 1) * 100)}%)` : `${Math.round((d.imageScale || 1) * 100)}%`;
-      posEl.textContent = d.imageMeta ? `${d.imageMeta.width} × ${d.imageMeta.height} px · ${zoomText}` : zoomText;
-    }
-  }
+  drawFileDetails();
 
   // Markdown and CSV/TSV tabs share the preview switch; only its label differs.
   // Hidden while editing: the editor is the source, and the switch has nothing to show.
   const kind = d && d.isEditing ? '' : previewKind(d), isMd = !!kind, shown = previewing(d);
   const label = kind === 'table' ? 'Table' : 'Preview';
-  const mdBtn = $('[data-action="md-preview"]');
-  if (mdBtn) {
-    mdBtn.hidden = !isMd;
-    mdBtn.classList.toggle('active', shown);
-    const l = $('.footer-btn-label', mdBtn);
-    if (l && isMd) l.textContent = label;
-  }
   const sw = $('#md-switch');
   if (sw) {
     sw.hidden = !isMd;
@@ -74,7 +107,7 @@ export function updateStatus() {
   const verEl = $('#st-ver');
   if (verEl && S.meta?.version) {
     verEl.textContent = 'v' + S.meta.version;
-    verEl.title = `px0 v${S.meta.version} (Click for shortcuts & help)`;
+    verEl.title = `punk0 v${S.meta.version} (Click for shortcuts & help)`;
   }
   drawLspStatus();
 }
@@ -86,7 +119,7 @@ export function setStatusNote(msg, timeoutMs = 0) {
     clearTimeout(noteTimer);
     noteTimer = null;
   }
-  const el = $('#st-pos');
+  const el = $('#st-note');
   if (el) el.textContent = msg || '';
   if (msg && timeoutMs > 0) {
     noteTimer = setTimeout(() => {
@@ -111,7 +144,9 @@ export function drawLspStatus() {
   const el = $('#st-lsp');
   if (!el) return;
   const anyRunning = S.lsp.anyRunning || S.lsp.state === 'ready' || S.lsp.state === 'indexing';
-  el.textContent = 'LSP';
+  // Named after the front file's language, as on the agents page; LSP without one.
+  const d = doc_();
+  el.textContent = d && !d.isImage && d.lang ? langName(d.lang) : 'LSP';
   if (anyRunning) {
     el.dataset.state = S.lsp.state === 'indexing' ? 'indexing' : 'ready';
     el.title = 'Language Servers: Active (Click to manage)';
@@ -245,6 +280,17 @@ export function noteMetrics(m) {
   drawLspStatus();
 }
 
+/* This workspace's agents needing you and working, as on the agents page
+   (statusparts.js); a click shows the next one in the terminal. Opened
+   without the agents page there are no tabs, so both stay hidden. */
+export function initAgentStates() {
+  const draw = () => drawAgentStates(agentTabCount('waiting'), agentTabCount('working'));
+  $('#st-waiting').addEventListener('click', () => nextAgentTab('waiting'));
+  $('#st-working').addEventListener('click', () => nextAgentTab('working'));
+  on('termtabs:changed', draw);
+  watchWorkspaceTabs();
+}
+
 /* The resource button and panel, as on the agents page (respanel.js). Opened
    from the agents page, the editor reads the workbench's /api/resources, so
    it shows all of punk0; a PR review run on its own is all of punk0 itself,
@@ -328,9 +374,10 @@ function scheduleFitStatus() {
 }
 
 export function initStatusFit() {
-  // Width changes come from the window and the sidebar resizers; content changes
-  // from metrics, LSP state and the selection bar. Class changes are not observed,
-  // so fitStatus() toggling them cannot re-trigger itself.
+  // Width changes come from the window; content changes from metrics, LSP
+  // state and the selection bar. The first and last sections are a fixed
+  // width, whatever the panels' widths. Class changes are not observed, so
+  // fitStatus() toggling them cannot re-trigger itself.
   new ResizeObserver(fitStatus).observe(statusEl);
   new MutationObserver(scheduleFitStatus).observe(statusEl, { childList: true, subtree: true, characterData: true });
   document.fonts?.ready.then(fitStatus);

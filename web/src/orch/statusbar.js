@@ -5,6 +5,7 @@
 // open file's details are viewer.js's. Right: the resource button and panel
 // (resources.js, respanel.js).
 import { $, esc, keyCaps } from '../state.js';
+import { drawAgentStates } from '../statusparts.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
 import { state, subscribe, termTab, selectWorkspace, selectTab } from './store.js';
 import { initResources, refreshResources } from './resources.js';
@@ -53,20 +54,11 @@ function nextAgent(status) {
   selectTab(t.id);
 }
 
-// renderState shows n with its verb, which agrees with it: "1 needs you".
-function renderState(el, n, verb) {
-  const v = verb[n === 1 ? 0 : 1];
-  el.hidden = !n;
-  el.textContent = n ? `${n} ${v}` : '';
-  el.title = n ? `${n} agent${n === 1 ? '' : 's'} ${v}: click for the next one` : '';
-}
-
 function renderStatus() {
   const { version } = state.wb;
   $('#o-empty-ver').textContent = version ? 'v' + version : '';
   $('#st-ver').textContent = version ? 'v' + version : '';
-  renderState($('#st-waiting'), agentTabs('waiting').length, ['needs you', 'need you']);
-  renderState($('#st-working'), agentTabs('working').length, ['working', 'working']);
+  drawAgentStates(agentTabs('waiting').length, agentTabs('working').length);
 }
 
 export function initStatusBar() {

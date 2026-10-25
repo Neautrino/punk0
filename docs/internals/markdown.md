@@ -2,7 +2,7 @@
 
 This document describes how px0 renders Markdown files: the server-side conversion, the browser-side sanitizer, and the logic that keeps the rendered view and the source view in step.
 
-A Markdown tab (`.md` or `.markdown`) opens rendered by default. The reader switches to the raw source with the Preview / Source switch in the tab bar, the Preview button in the status bar, or Alt+M. The code lives in two files: [`internal/render/render.go`](../../internal/render/render.go) on the server and [`web/src/markdown.js`](../../web/src/markdown.js) in the browser.
+A Markdown tab (`.md` or `.markdown`) opens rendered by default. The reader switches to the raw source with the Preview / Source switch in the tab bar or Alt+M. The code lives in two files: [`internal/render/render.go`](../../internal/render/render.go) on the server and [`web/src/markdown.js`](../../web/src/markdown.js) in the browser.
 
 ## 1. Request Flow
 
@@ -234,10 +234,9 @@ Three controls call `togglePreview()`:
 | Control                          | Location                                     | Wiring                            |
 | -------------------------------- | -------------------------------------------- | --------------------------------- |
 | Preview / Source switch          | `#md-switch`, right end of the tab bar       | `initMarkdown()` in `markdown.js` |
-| Preview button                   | `data-action="md-preview"` in the status bar | Footer handler in `shortcuts.js`  |
 | Alt+M, "Toggle Markdown Preview" | Keyboard, command palette                    | `shortcuts.js`, `palette.js`      |
 
-`updateStatus()` in [`web/src/status.js`](../../web/src/status.js) owns the visible state. It shows `#md-switch` and the status button only on Markdown tabs, marks the active half with `.on`, and toggles `body.md-tab`. That class pads the end of `#tabs` so the last tab can scroll clear of the absolutely positioned switch. The switch buttons cancel `mousedown`, so focus stays where it was and arrow keys keep scrolling the view.
+`updateStatus()` in [`web/src/status.js`](../../web/src/status.js) owns the visible state. It shows `#md-switch` only on Markdown tabs, marks the active half with `.on`, and toggles `body.md-tab`. That class pads the end of `#tabs` so the last tab can scroll clear of the absolutely positioned switch. The switch buttons cancel `mousedown`, so focus stays where it was and arrow keys keep scrolling the view.
 
 Clicking the half that is already selected does nothing. The handler toggles only when the requested view differs from `previewing()`.
 

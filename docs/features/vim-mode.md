@@ -66,7 +66,7 @@ Alternatively, set `"editor.vimMode": true` in `~/.px0/settings.json`.
 
 ## Status Bar Indicator
 
-When Vim mode is active, the left side of the bottom status bar renders a distinct mode pill:
+When Vim mode is active, the right part of the bottom status bar renders a distinct mode pill:
 - `-- NORMAL --`
 - `-- VISUAL --`
 - `-- VISUAL LINE --`

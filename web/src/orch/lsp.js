@@ -13,6 +13,7 @@
 // Stop, Install and each server's memory, the same as in the editor.
 import { $, esc } from '../state.js';
 import { lspServers, lspRows } from '../lspmenu.js';
+import { langName } from '../statusparts.js';
 import { on } from '../bus.js';
 import { call, failed } from './api.js';
 import { subscribe, reload, workspace, projectOf, wsLabel, tildify } from './store.js';
@@ -187,13 +188,6 @@ async function warm(w) {
     await new Promise(r => setTimeout(r, 900));
     if (my !== warmSeq) return;
   }
-}
-
-// langName is how the item names a highlighter's language. Some are lower
-// case ("markdown"), and plain text is "plaintext".
-function langName(lang) {
-  if (lang === 'plaintext') return 'Plain Text';
-  return lang === lang.toLowerCase() ? lang.charAt(0).toUpperCase() + lang.slice(1) : lang;
 }
 
 function toggle() {

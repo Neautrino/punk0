@@ -2,7 +2,7 @@
 import { $, S, doc_, MOD, LH } from './state.js';
 import { vp, rowsEl } from './ui.js';
 import { paint, render, rowFor, placeCaret, toPoint, getLH, lineTopY, lineHeightAt } from './renderer.js';
-import { updateStatus } from './status.js';
+import { updateStatus, drawFileDetails } from './status.js';
 import { gotoDefinition } from './lsp.js';
 import { pushHistory } from './history.js';
 
@@ -99,6 +99,7 @@ export function revealCaretX(x) {
 export function updateDomSelection() {
   const d = doc_();
   if (!d) return;
+  drawFileDetails(); // every caret move ends here: the bar's Ln / Col
   const sel = window.getSelection();
   if (!sel) return;
   if (!d.selAnchor) {

@@ -18,7 +18,6 @@ import { showCalls } from './calls.js';
 import { SEL_KEYS, runSelectionAction, selectAll, clearSelectAll, copySelectAll, getSelectedRangeInfo } from './selbar.js';
 import { openQuickEdit, quickEditOpen, closeQuickEdit } from './quick_edit.js';
 
-import { cycleTheme } from './theme.js';
 import { previewing, togglePreview, previewKey, selectPreview } from './markdown.js';
 import { exitMermaidFullscreen } from './mermaid.js';
 import { toggleDiff, stepDiffHunk, stepChangedFile } from './diff.js';
@@ -90,7 +89,8 @@ export function closeHelp() {
 export const inField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
 
 export function initShortcuts() {
-  $('#btn-theme')?.addEventListener('click', cycleTheme);
+  // Ln / Col, as on the agents page, opens Go to; an image's zoom there does not.
+  $('#st-pos')?.addEventListener('click', () => { if (!doc_()?.isImage) openPalette('line'); });
   $('#btn-settings')?.addEventListener('click', () => openSettings('ui'));
   $('#btn-help')?.addEventListener('click', () => navigateToTips());
   $('#st-ver')?.addEventListener('click', () => showHelp());
@@ -110,17 +110,8 @@ export function initShortcuts() {
     const btn = e.target.closest('.footer-btn');
     if (!btn) return;
     const act = btn.dataset.action;
-    if (act === 'quick-open') openPalette('file');
-    else if (act === 'search') showSideView('search');
-    else if (act === 'symbols') openPalette('symbol');
-    else if (act === 'find') openFind(S.lastWord);
-    else if (act === 'goto') openPalette('line');
+    if (act === 'goto') openPalette('line');
     else if (act === 'wrap') toggleWordWrap();
-    else if (act === 'md-preview') togglePreview();
-    else if (act === 'palette') openPalette('command');
-    else if (act === 'settings') openSettings('ui');
-    else if (act === 'vim-help') showHelp('vim');
-    else if (act === 'help') showHelp();
   });
 
   addEventListener('keydown', e => {

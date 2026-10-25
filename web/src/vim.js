@@ -42,8 +42,6 @@ export function setVimModeEnabled(enabled, persist = true) {
 
   const chip = $('#st-vim');
   if (chip) chip.hidden = !vimEnabled;
-  const helpBtn = $('#btn-vim-help');
-  if (helpBtn) helpBtn.hidden = !vimEnabled;
 
   if (persist) {
     try {
@@ -701,7 +699,6 @@ export function initVim() {
   }
   setVimModeEnabled(initial, false);
 
-  // The status chip and the footer button open the help card's Vim tab.
+  // The status chip opens the help card's Vim tab.
   $('#st-vim')?.addEventListener('click', () => showHelp('vim'));
-  $('#btn-vim-help')?.addEventListener('click', () => showHelp('vim'));
 }

@@ -3,8 +3,8 @@
    (panel buttons, tree rows, tabs, code rows, palette rows, the #status bar,
    resource button and panel, kbd, toast); this file only lays them out.
    Colours come from theme tokens only. */
-/* --wb-left / --wb-right: the side panes' widths, set by resize.js; the
-   status bar's left section follows --wb-left. */
+/* --wb-left / --wb-right: the side panes' widths, set by resize.js. The
+   status bar's sections do not follow them (style.css's --pane-w). */
 #wb-app { display: flex; flex-direction: column; height: 100vh; --wb-left: 260px; --wb-right: 260px; }
 .wb .grow { flex: 1; }
 .wb-faint { color: var(--faint); }
@@ -45,21 +45,12 @@
 /* The app's status bar, standing alone at the bottom of the page, in the
    columns of the panes above it. */
 .wb-status { gap: 0; }
-/* punk[0]: drawn in text in the style of px0's px[0] logo, so it follows the theme. */
-.wb-logo {
-  flex: none; padding: 1px 3px; border-radius: var(--r);
-  font: 600 12px/1 var(--mono); color: var(--fg); text-decoration: none;
-}
-.wb-logo span { color: var(--mark-active); }
-.wb-logo:hover { background: var(--bg4); }
-/* Logo and version at the left, the buttons at the right: exactly the
-   sidebar's width, with its border carried down, as px0's footer sits under
-   its file tree. The bar's own left padding moves inside this box. */
-#status.wb-status { padding: 0; } /* the id: style.css sets #status padding */
-/* Spacing as px0's .side-foot: 6px between logo, version and buttons; the
-   buttons keep style.css's 2px apart. */
+/* Logo and version at the left, the buttons at the right: a fixed --pane-w
+   wide (style.css), the panes' opening width, whatever they are now. Spacing
+   as px0's .side-foot: 6px between logo, version and buttons; the buttons
+   keep style.css's 2px apart. */
 .wb-status-side {
-  width: var(--wb-left); align-self: stretch; display: flex; align-items: center; gap: 6px;
+  width: var(--pane-w); align-self: stretch; display: flex; align-items: center; gap: 6px;
   padding: 0 8px; border-right: 1px solid var(--line);
 }
 /* The middle: agent states at its left; the open file's details, then the
@@ -69,27 +60,12 @@
   flex: 1 !important; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 12px;
   padding: 0 6px; overflow: hidden; container-type: inline-size;
 }
-.wb-agent-states { flex: none; display: flex; align-items: center; gap: 2px; margin-right: auto; }
-.wb-agent-state, .wb-st-btn {
-  display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 6px;
-  border: 0; border-radius: var(--r); background: none; cursor: pointer;
-  font: 11px var(--mono); color: var(--dim);
-}
-.wb-agent-state[hidden], .wb-st-btn[hidden] { display: none; }
-.wb-agent-state:hover, .wb-st-btn:hover, .wb-st-btn[aria-expanded="true"] { color: var(--fg); background: var(--bg4); }
-.wb-agent-state:focus-visible, .wb-st-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-.wb-agent-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.wb-agent-state.working::before { background: var(--accent-fg); }
-.wb-agent-state.waiting { color: var(--mark-active); font-weight: 600; }
-@media (prefers-reduced-motion: no-preference) {
-  .wb-agent-state.working::before { animation: o-pulse 1.2s ease-in-out infinite; }
-}
-#st-file:not([hidden]) { flex: none; display: flex; align-items: center; gap: 12px; }
-#st-file .wb-st-btn { margin: 0 -6px; }
+/* The agent states (style.css) at the middle's left. */
+.wb-status-mid .agent-states { margin-right: auto; }
 /* Shed the least useful first as the middle narrows. */
 @container (max-width: 520px) { #st-tabsize, #st-eol, #st-lines, #st-size { display: none; } }
 @container (max-width: 420px) { #st-enc { display: none; } }
-@container (max-width: 300px) { .wb-agent-state.working { display: none; } }
+@container (max-width: 300px) { .agent-state.working { display: none; } }
 
 /* Go to line: a one-field box over the bar, its right edge on Ln / Col's. */
 .o-goto {
@@ -104,13 +80,6 @@
 .o-goto input:focus { border-color: var(--accent); }
 /* The LSP item's file has no server installed: a hollow dot. */
 #st-lsp[data-state="missing"]::before { background: none; box-shadow: inset 0 0 0 1px var(--faint); }
-/* Under the files pane, exactly its width; shrinks to its contents while
-   the pane is hidden, like the left section. */
-.wb-status-end {
-  width: var(--wb-right); align-self: stretch; display: flex; align-items: center; justify-content: flex-end;
-  padding: 0 10px 0 8px; border-left: 1px solid var(--line);
-}
-#wb-app.hide-right .wb-status-end { width: auto; border-left: 0; }
 /* #lsp-menu (style.css) opens up from the item, its right edge on the item's. */
 #lsp-menu .lsp-empty-note { font-size: 11.5px; line-height: 1.5; color: var(--dim); }
 #lsp-menu .lsp-folder { font: 11px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -194,7 +163,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
    filled, as the pane is. */
 .o-head .mini.o-hide[data-hide="right"] { margin-left: 2px; width: 22px; height: 22px; border-radius: var(--r); background: var(--bg4); color: var(--fg); }
 .o-show[data-show="left"] { margin: 0 4px 0 6px; }
-#wb-app.hide-left .wb-status-side { width: auto; border-right: 0; }
 /* The center is a grid of four rows and five columns. Rows: top rows; the
    file group's tabs and the files pane's head; the file group's path row;
    bodies. Columns: terminal group, split border, file group, files pane
@@ -276,8 +244,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-err { color: var(--err); white-space: pre-wrap; word-break: break-word; }
 .o-mono { font-family: var(--mono); word-break: break-all; }
 
-/* Something is under way: starting editors, working agents. */
-@keyframes o-pulse { 50% { opacity: .35; } }
+/* Something is under way: starting editors, working agents (o-pulse is style.css's). */
 @keyframes o-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: no-preference) {
   .o-backend.starting, .o-tab-dot.working, .o-badge.working::before { animation: o-pulse 1.2s ease-in-out infinite; }

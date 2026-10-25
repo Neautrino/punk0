@@ -6,7 +6,7 @@ import { lineTopY } from './renderer.js';
 import { syncPreview, previewing, previewTopLine, previewKind } from './markdown.js';
 import { syncDiffView } from './diff.js';
 import { triggerRefresh } from './gitstream.js';
-import { updateStatus } from './status.js';
+import { updateStatus, drawFileDetails } from './status.js';
 
 export const editViewEl = $('#editview');
 export const editGutterEl = $('#editview-gutter');
@@ -272,6 +272,7 @@ export async function enterEditMode(line) {
 
   editTextarea.focus();
   editTextarea.setSelectionRange(charOffset, charOffset);
+  drawFileDetails(); // focus drew the caret before it moved here
   editTextarea.scrollTop = Math.max(0, editLineTop(Math.max(1, targetLine - 4)));
   if (editGutterEl) editGutterEl.scrollTop = editTextarea.scrollTop;
 }
@@ -294,12 +295,14 @@ export async function exitEditMode(force = false) {
   d.isEditing = false;
   document.body.classList.remove('editing-file');
   syncEditUI();
+  drawFileDetails(); // the diff has no Ln / Col; the source's comes below
 
   if (d.diffMode) {
     syncDiffView();
     return;
   }
   d.cur = top;
+  drawFileDetails();
   vp.scrollTop = lineTopY(top, d);
   if (previewKind(d)) d.mdLine = top;
   // Reloads the source and, through a fresh doc, the preview: a save made in
@@ -355,6 +358,8 @@ export function initEditView() {
     if (loadedDoc) loadedDoc.editScrollTop = editTextarea.scrollTop;
     if (editGutterEl) editGutterEl.scrollTop = editTextarea.scrollTop;
   }, { passive: true });
+  // The bar's Ln / Col and line count follow the caret and the text.
+  for (const type of ['input', 'keyup', 'mouseup', 'focus']) editTextarea.addEventListener(type, drawFileDetails);
 
   editTextarea.addEventListener('input', () => {
     const d = doc_();

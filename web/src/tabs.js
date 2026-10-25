@@ -134,7 +134,7 @@ export async function openFile(path, opts = {}) {
     const d = {
       path, name: path.split('/').pop(), lang: isImg ? 'image' : j.lang,
       total: isImg ? 0 : j.total, maxCols: isImg ? 0 : j.maxCols,
-      size: j.size, lines: isImg ? [] : new Array(j.total),
+      size: j.size, eol: j.eol || '', encoding: j.encoding || '', lines: isImg ? [] : new Array(j.total),
       chunks: new Set(isImg ? [] : [start / CHUNK]),
       pending: new Set(), refining: new Set(), scrollTop: 0, cur: line || 1,
       outline: null, gen: 0, markdown: !isImg && !!j.markdown, table: !isImg && !!j.table, isImage: isImg,
@@ -330,6 +330,8 @@ export async function reloadOpenTabs({ onlyIfChanged = false } = {}) {
       total: j.total,
       maxCols: j.maxCols,
       size: j.size,
+      eol: j.eol || '',
+      encoding: j.encoding || '',
       lines: new Array(j.total),
       chunks: new Set([tgt.start / CHUNK]),
       pending: new Set(),

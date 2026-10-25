@@ -102,6 +102,9 @@ export const LH = 20, CHUNK = 1000, OVERSCAN = 24;
  * @property {number} total - Total line count
  * @property {number} maxCols - Maximum column width
  * @property {number} size - File size in bytes
+ * @property {string} [eol] - Line endings: LF, CRLF or Mixed
+ * @property {string} [encoding] - UTF-8, UTF-8 with BOM or Not UTF-8
+ * @property {boolean} [deleted] - The file no longer exists on disk
  * @property {string[]|null} lines - Windowed line buffer
  * @property {Set<number>} [chunks]
  * @property {Set<number>} [pending]

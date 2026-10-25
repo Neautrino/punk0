@@ -21,7 +21,7 @@ import { initTheme } from './theme.js';
 import { initMarkdown } from './markdown.js';
 import { initDiff } from './diff.js';
 import { applyAgentMeta, loadAgentAsync } from './agent.js';
-import { initResources, initLspMenu, refreshLspMenu, initStatusFit, noteMetrics, updateStatus } from './status.js';
+import { initResources, initAgentStates, initLspMenu, refreshLspMenu, initStatusFit, noteMetrics, updateStatus } from './status.js';
 import { initSettings } from './settings.js';
 import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
@@ -97,6 +97,7 @@ initPRScope();
   S.meta = await api('/api/meta');
   noteMetrics(S.meta.metrics);
   initResources(); // after /api/meta: it says whether there is a workbench to ask
+  initAgentStates(); // after /api/meta too: its workspace id
   refreshLspMenu();
   updateSidebarToggleState();
   syncGitPanelMeta();
