@@ -21,12 +21,17 @@ import (
 	"px0/internal/metrics"
 )
 
-// usage is one row: CPU in percent of one core, RSS in bytes, and for a
-// punk0 process (the parent, an editor, a review) its goroutines, as px0's
+// usage is one row: CPU in percent of one core, RSS and PSS in bytes, and for
+// a punk0 process (the parent, an editor, a review) its goroutines, as px0's
 // metrics showed them; 0 for anything else, or a child that did not answer.
+// PSS is what the panel shows: RSS counts memory shared between processes
+// (the agent binary every tab of one agent runs) once per process, so RSS
+// rows add up to more than is used; PSS splits it between them. Where PSS
+// cannot be read it equals RSS (metrics.Proc).
 type usage struct {
 	CPU        float64 `json:"cpu"`
 	RSS        uint64  `json:"rss"`
+	PSS        uint64  `json:"pss"`
 	Goroutines int     `json:"goroutines,omitempty"`
 }
 
@@ -134,7 +139,7 @@ func (wb *workbench) resources() resources {
 	if table == nil { // no process table here: only the parent can be measured
 		<-gorDone
 		m := getProcessMetrics(nil)
-		out.Self = usage{CPU: m.CPUUsage, RSS: m.RSSBytes, Goroutines: selfGoroutines}
+		out.Self = usage{CPU: m.CPUUsage, RSS: m.RSSBytes, PSS: m.RSSBytes, Goroutines: selfGoroutines}
 		out.usage = out.Self
 		return out
 	}
@@ -143,21 +148,21 @@ func (wb *workbench) resources() resources {
 	// pass, so all rows share one interval.
 	cpuTimes := map[string]time.Duration{}
 	rss := map[string]uint64{}
+	pss := map[string]uint64{}
 	measure := func(key string, pid int) {
 		p := table.Tree(pid)
-		cpuTimes[key], rss[key] = p.CPU, p.RSS
+		cpuTimes[key], rss[key], pss[key] = p.CPU, p.RSS, p.PSS
 	}
 	// An editor's tree splits in two rows: its own process, and everything
 	// below it (its language servers). Together they are the tree, so the
 	// claimed sum below stays a sum of disjoint trees.
 	measureEditor := func(id string, pid int) {
-		tree, own := table.Tree(pid), table[pid]
-		cpuTimes["editor:"+id], rss["editor:"+id] = own.CPU, own.RSS
-		cpuTimes["lsp:"+id], rss["lsp:"+id] = tree.CPU-own.CPU, tree.RSS-own.RSS
+		tree, own := table.Tree(pid), table.One(pid)
+		cpuTimes["editor:"+id], rss["editor:"+id], pss["editor:"+id] = own.CPU, own.RSS, own.PSS
+		cpuTimes["lsp:"+id], rss["lsp:"+id], pss["lsp:"+id] = tree.CPU-own.CPU, tree.RSS-own.RSS, tree.PSS-own.PSS
 	}
 	all := table.Tree(os.Getpid())
-	cpuTimes["total"], rss["total"] = all.CPU, all.RSS
-
+	cpuTimes["total"], rss["total"], pss["total"] = all.CPU, all.RSS, all.PSS
 	editorOf := map[string]int{} // child id -> pid, until a workspace claims it
 	for _, c := range children {
 		editorOf[c.id] = c.pid
@@ -188,24 +193,28 @@ func (wb *workbench) resources() resources {
 		}
 	}
 	var claimedCPU time.Duration
-	var claimedRSS uint64
+	var claimedRSS, claimedPSS uint64
 	for k, v := range cpuTimes {
 		if k != "total" {
 			claimedCPU += v
 			claimedRSS += rss[k]
+			claimedPSS += pss[k]
 		}
 	}
 	// The claimed trees all sit below the parent, so they fit in the total.
-	cpuTimes["self"], rss["self"] = 0, 0
+	cpuTimes["self"], rss["self"], pss["self"] = 0, 0, 0
 	if all.CPU > claimedCPU {
 		cpuTimes["self"] = all.CPU - claimedCPU
 	}
 	if all.RSS > claimedRSS {
 		rss["self"] = all.RSS - claimedRSS
 	}
+	if all.PSS > claimedPSS {
+		pss["self"] = all.PSS - claimedPSS
+	}
 
 	pct := wb.cpu.sample(time.Now(), cpuTimes)
-	row := func(key string) usage { return usage{CPU: pct[key], RSS: rss[key]} }
+	row := func(key string) usage { return usage{CPU: pct[key], RSS: rss[key], PSS: pss[key]} }
 	gor := <-gorDone
 
 	out.usage, out.Self = row("total"), row("self")
@@ -220,13 +229,14 @@ func (wb *workbench) resources() resources {
 			e, l := row("editor:"+s.editor), row("lsp:"+s.editor)
 			e.Goroutines = gor[s.editor]
 			ws.Editor, ws.LSP = &e, &l
-			ws.CPU, ws.RSS = e.CPU+l.CPU, e.RSS+l.RSS
+			ws.CPU, ws.RSS, ws.PSS = e.CPU+l.CPU, e.RSS+l.RSS, e.PSS+l.PSS
 		}
 		for _, t := range s.ws.tabs {
 			u := row("tab:" + t.id)
 			ws.Tabs = append(ws.Tabs, resTab{ID: t.id, Name: t.name, Kind: t.kind, Status: t.status, usage: u})
 			ws.CPU += u.CPU
 			ws.RSS += u.RSS
+			ws.PSS += u.PSS
 		}
 		out.Workspaces = append(out.Workspaces, ws)
 	}

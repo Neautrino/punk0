@@ -67,3 +67,26 @@ func TestProcessesSeesThisProcess(t *testing.T) {
 		t.Fatalf("self: %+v, %v", p, ok)
 	}
 }
+
+func TestParseRollupPSS(t *testing.T) {
+	rollup := "55d0c0a00000-7ffd8a1f2000 ---p 00000000 00:00 0                          [rollup]\nRss:              309160 kB\nPss:              234741 kB\nPss_Dirty:        190000 kB\n"
+	if got, ok := parseRollupPSS(rollup); !ok || got != 234741*1024 {
+		t.Fatalf("parseRollupPSS = %d, %v", got, ok)
+	}
+	if _, ok := parseRollupPSS("Rss: 1 kB\n"); ok {
+		t.Fatal("a rollup without Pss was read")
+	}
+}
+
+// This process's PSS is read from smaps_rollup. It is not compared with the
+// RSS: that comes from /proc/<pid>/stat at snapshot time, PSS a moment
+// later, and a running process grows in between.
+func TestTreeReadsPSS(t *testing.T) {
+	if _, err := os.Stat("/proc/self/smaps_rollup"); err != nil {
+		t.Skip("no smaps_rollup here; PSS falls back to RSS")
+	}
+	tbl := Processes()
+	if self := tbl.Tree(os.Getpid()); self.PSS == 0 {
+		t.Fatalf("self tree: no PSS (RSS %d)", self.RSS)
+	}
+}

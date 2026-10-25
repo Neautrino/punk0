@@ -11,8 +11,16 @@ import (
 // Proc is one process in a Table snapshot.
 type Proc struct {
 	PPID int
-	RSS  uint64        // resident set size in bytes
-	CPU  time.Duration // user + system time consumed so far
+	RSS  uint64 // resident set size in bytes
+	// PSS is the proportional set size in bytes: RSS with each page shared by
+	// n processes counted 1/n, so the PSS of several processes adds up to what
+	// they really use (one agent binary run by three tabs is counted once, not
+	// three times). Tree and One read it from /proc/<pid>/smaps_rollup; where
+	// that cannot be read (macOS, another user's process) it is the RSS.
+	PSS uint64
+	CPU time.Duration // user + system time consumed so far
+
+	pssRead bool
 }
 
 // Table is a snapshot of every process the user can see, keyed by pid.
@@ -35,7 +43,7 @@ func Processes() Table {
 	return parsePS(string(out))
 }
 
-// Tree sums the RSS and CPU time of pid and every process below it.
+// Tree sums the RSS, PSS and CPU time of pid and every process below it.
 func (t Table) Tree(pid int) Proc {
 	kids := make(map[int][]int, len(t))
 	for p, proc := range t {
@@ -53,10 +61,46 @@ func (t Table) Tree(pid int) Proc {
 		}
 		seen[p] = true
 		sum.RSS += proc.RSS
+		sum.PSS += t.One(p).PSS
 		sum.CPU += proc.CPU
 		stack = append(stack, kids[p]...)
 	}
 	return sum
+}
+
+// One is process pid alone, with its PSS read. PSS is read once per snapshot
+// and only for the processes asked about: smaps_rollup makes the kernel walk
+// the process's memory, too much to do for every process on the machine.
+func (t Table) One(pid int) Proc {
+	p, ok := t[pid]
+	if !ok || p.pssRead {
+		return p
+	}
+	p.PSS, p.pssRead = p.RSS, true
+	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/smaps_rollup"); err == nil {
+		if pss, ok := parseRollupPSS(string(data)); ok {
+			p.PSS = pss
+		}
+	}
+	t[pid] = p
+	return p
+}
+
+// parseRollupPSS reads the "Pss:" line of /proc/<pid>/smaps_rollup, in kB.
+func parseRollupPSS(s string) (uint64, bool) {
+	for line := range strings.Lines(s) {
+		rest, ok := strings.CutPrefix(line, "Pss:")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(rest)
+		if len(f) == 0 {
+			return 0, false
+		}
+		kb, err := strconv.ParseUint(f[0], 10, 64)
+		return kb * 1024, err == nil
+	}
+	return 0, false
 }
 
 func procfsTable() Table {

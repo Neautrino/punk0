@@ -59,7 +59,7 @@ export function initLsp() {
   // where its language servers are on.
   on('resources', r => {
     const all = r.workspaces || [];
-    usage = all.map(x => ({ w: workspace(x.id), bytes: x.lsp?.rss || 0 }))
+    usage = all.map(x => ({ w: workspace(x.id), bytes: x.lsp?.pss || x.lsp?.rss || 0 }))
       .filter(x => x.w?.lsp && x.bytes > 0);
     // The file's server stopped after being idle: its memory went to nothing
     // while the dot said running. Shown off without a warm, which would

@@ -45,7 +45,18 @@ const PANEL = `
 
 // goroutines is a punk0 process's count, faint after its name.
 const goroutines = u => (u.goroutines ? `<span class="res-gor" title="Goroutines">${plural(u.goroutines, 'goroutine')}</span>` : '');
-const figures = u => `<span class="res-num">${fmtCPU(u.cpu)}</span><span class="res-num">${fmtRAM(u.rss)}</span>`;
+// mem is the RAM a row is charged: PSS, which splits memory shared between
+// processes (one agent binary run by several tabs) among them, so the rows add
+// up to what is really used. A payload without it (an editor run on its own)
+// has RSS only.
+const mem = u => u.pss || u.rss || 0;
+// memTitle says what the RAM figure is, with the RSS a process monitor shows.
+function memTitle(u) {
+  if (!u.pss || u.pss === u.rss) return `RSS ${fmtRAM(u.rss || 0)}: resident memory`;
+  const shared = u.rss > u.pss ? `; ${fmtRAM(u.rss - u.pss)} of the RSS is shared with other processes and charged to them` : '';
+  return `PSS ${fmtRAM(u.pss)}: its own memory plus its share of memory shared with other processes. RSS ${fmtRAM(u.rss)}, what ps and top show${shared}`;
+}
+const figures = u => `<span class="res-num">${fmtCPU(u.cpu)}</span><span class="res-num" title="${esc(memTitle(u))}">${fmtRAM(mem(u))}</span>`;
 
 /**
  * createResPanel puts the button into slot and the panel into the page.
@@ -96,7 +107,7 @@ export function createResPanel(slot, load, onData) {
 
   function render() {
     if (!last) return;
-    part('sum').innerHTML = `<span class="res-big">${fmtCPU(last.cpu)}</span><span class="metric-divider">·</span><span class="res-big">${fmtRAM(last.rss)}</span><span class="res-faint">total</span>` +
+    part('sum').innerHTML = `<span class="res-big">${fmtCPU(last.cpu)}</span><span class="metric-divider">·</span><span class="res-big" title="${esc(memTitle(last))}">${fmtRAM(mem(last))}</span><span class="res-faint">total</span>` +
       (last.goroutines ? `<span class="metric-divider">·</span><span class="res-big">${last.goroutines}</span><span class="res-faint">goroutines</span>` : '');
     const out = [];
     for (const ws of last.workspaces) {
@@ -110,7 +121,7 @@ export function createResPanel(slot, load, onData) {
           <span class="res-name"><span class="res-ic">${ICON_EDITOR}</span><span class="res-label">Editor</span>${goroutines(ws.editor)}</span>
           <span></span>${figures(ws.editor)}</div>`);
       }
-      if (ws.lsp?.rss > 0) {
+      if (mem(ws.lsp || {}) > 0) {
         out.push(`<div class="res-row res-sub" title="The folder's language servers (and a git command now and then)">
           <span class="res-name"><span class="res-ic">${ICON_LSP}</span><span class="res-label">Language servers</span></span>
           <span></span>${figures(ws.lsp)}</div>`);
@@ -129,7 +140,7 @@ export function createResPanel(slot, load, onData) {
     }
     // A PR review run on its own (standalone): its own process and its
     // language servers are all there is.
-    if (last.lsp?.rss > 0) {
+    if (mem(last.lsp || {}) > 0) {
       out.push(`<div class="res-row" title="This editor's language servers">
         <span class="res-name"><span class="res-ic">${ICON_LSP}</span><span class="res-label">Language servers</span></span>
         <span></span>${figures(last.lsp)}</div>`);
@@ -148,7 +159,7 @@ export function createResPanel(slot, load, onData) {
     const terms = tabs.length - agents;
     part('terms').textContent = String(terms);
     part('agents').textContent = String(agents);
-    part('mem').textContent = fmtRAM(last.rss);
+    part('mem').textContent = fmtRAM(mem(last));
     btn.title = `${plural(terms, 'terminal')} and ${plural(agents, 'agent')} running. Click for what each uses`;
   }
 
