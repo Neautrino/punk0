@@ -2,7 +2,7 @@
 import { $, $$, esc, S, doc_, api, keyLabel } from './state.js';
 import { updateStatus, setStatusNote, setLspState } from './status.js';
 import { openFile } from './tabs.js';
-import { showRightInspector } from './inspector.js';
+import { showSideView, setRefsMode } from './sideviews.js';
 import { positionNow, flashFind } from './lsp.js';
 import { renderLspSetup, cancelLspSetup } from './lspsetup.js';
 
@@ -16,7 +16,7 @@ let dirPref = 'in'; // 'in' = callers, 'out' = callees
 let callSeq = 0;
 const flat = [];    // node by row index, rebuilt on every draw
 
-const listEl = () => $('#right-calls-list');
+const listEl = () => $('#calls-list');
 const hint = html => { const el = listEl(); if (el) el.innerHTML = '<div class="hint">' + html + '</div>'; };
 const base = p => p.split('/').pop();
 // Some servers crash on particular call hierarchy requests; say so plainly.
@@ -42,13 +42,14 @@ function target(node) {
 export async function showCalls(arg) {
   const d = doc_();
   const at = (arg && arg.word) ? arg : positionNow(typeof arg === 'string' ? arg : S.lastWord);
-  showRightInspector('calls');
+  showSideView('refs');
+  setRefsMode(dirPref);
   cancelLspSetup();
   if (!d) return;
   // Without a server there is nothing to trace: offer to install or start one, then come back here.
   if (S.lsp.state === 'off' || S.lsp.state === 'failed') {
     T = null;
-    $('#right-calls-target').textContent = at ? at.word : '-';
+    $('#calls-target').textContent = at ? at.word : '-';
     renderLspSetup(listEl(), () => showCalls(arg));
     return;
   }
@@ -56,7 +57,7 @@ export async function showCalls(arg) {
 
   const my = ++callSeq;
   T = null;
-  $('#right-calls-target').textContent = at.word;
+  $('#calls-target').textContent = at.word;
   hint('Tracing calls for "' + esc(at.word) + '"…');
   setStatusNote('call trail for ' + at.word + '…', 8000);
   let j;
@@ -100,7 +101,7 @@ async function expand(node) {
 
 function setDir(dir) {
   dirPref = dir;
-  $$('#calls-dir [data-dir]').forEach(b => b.classList.toggle('on', b.dataset.dir === dir));
+  setRefsMode(dir);
   if (!T || T.dir === dir) return;
   T.dir = dir;
   for (const r of T.roots) Object.assign(r, { kids: null, open: false, loading: false, err: '' });
@@ -135,18 +136,20 @@ function draw() {
 
 // Opens the setup panel whatever the server's state, for the palette command.
 export function openLspSetup() {
-  showRightInspector('calls');
+  showSideView('refs');
+  setRefsMode(dirPref);
   T = null;
   renderLspSetup(listEl(), () => showCalls(S.at));
 }
 
 export function initCalls() {
-  $('#calls-dir')?.addEventListener('click', e => {
-    const b = e.target.closest('[data-dir]');
-    if (b) setDir(b.dataset.dir);
-  });
-
-  $('.inspector-tab[data-itab="calls"]')?.addEventListener('click', () => {
+  // The References mode's switch: References, or this trail's direction
+  // (traced now for the word at the caret, if nothing is traced yet).
+  $('#refs-mode').addEventListener('click', e => {
+    const b = e.target.closest('[data-refs]');
+    if (!b) return;
+    if (b.dataset.refs === 'refs') return setRefsMode('refs');
+    setDir(b.dataset.refs);
     if (!T && (S.at || S.lsp.state === 'off' || S.lsp.state === 'failed')) showCalls(S.at);
   });
 
@@ -159,7 +162,7 @@ export function initCalls() {
       if (node.open) { node.open = false; draw(); } else expand(node);
       return;
     }
-    $$('#right-calls-list .cnode.sel').forEach(x => x.classList.remove('sel'));
+    $$('.cnode.sel', listEl()).forEach(x => x.classList.remove('sel'));
     row.classList.add('sel');
     const t = target(node);
     await openFile(t.path, { line: t.line });

@@ -1,20 +1,19 @@
 // web/src/panels.js
-import { $, $$, S, api } from './state.js';
+import { $, S, api } from './state.js';
 import { layout, render } from './renderer.js';
 import { updateStatus } from './status.js';
-import { loadOutline } from './outline.js';
-import { treeEl, refreshTree, setSidebarMode, hasGitView } from './tree.js';
+import { refreshTree, setSidebarMode, hasGitView } from './tree.js';
 import { reloadOpenTabs } from './tabs.js';
 import { showToast } from './ui.js';
 import { refreshGraph } from './gitgraph.js';
+import { showSideView } from './sideviews.js';
 
+// showPanel('files') shows the sidebar's Files mode on all files.
 export async function showPanel(name) {
-  document.body.classList.remove('side-hidden');
   if (name === 'files') {
+    showSideView('files');
     await setSidebarMode('files');
   }
-  layout();
-  render();
 }
 
 export async function reindexWorkspace() {

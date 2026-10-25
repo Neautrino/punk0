@@ -56,6 +56,38 @@ input { font: inherit; color: inherit; background: none; border: 0; outline: 0; 
   display: flex; flex-direction: column; overflow: hidden;
 }
 body.side-hidden #side, body.side-hidden #resizer { display: none; }
+
+/* A pane's mode switch (paneviews.js): icons, the active one filled. The
+   agents page's right side and the editor's sidebar both have one. */
+.pane-tabs { flex: none; display: flex; gap: 2px; }
+.pane-tabs button { width: 26px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); color: var(--dim); }
+.pane-tabs button:hover { color: var(--fg); background: var(--bg3); }
+.pane-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg4); }
+.pane-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* The editor's side panes' top row, level with the tab bar: the sidebar's
+   mode switch or the terminal's tabs, and at the right end their buttons,
+   the pane's hide button last. While a pane is hidden its show button sits
+   in the tab bar at that edge (.side-open). */
+.side-top {
+  height: 28px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 6px;
+  background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line);
+}
+.side-top-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: 2px; position: relative; }
+.side-btn {
+  flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r); color: var(--dim);
+}
+.side-btn:hover { color: var(--fg); background: var(--bg3); }
+.side-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.side-btn svg { display: block; }
+.side-btn[hidden] { display: none; }
+.side-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.side-view[hidden] { display: none; }
+.side-open { display: none; align-self: center; margin: 0 4px; }
+body.side-hidden #tab-head .side-open[data-toggle-side="left"] { display: inline-flex; }
+#tab-head .side-open-right { display: none; align-items: center; gap: 2px; }
+body.right-hidden #tab-head .side-open-right { display: inline-flex; }
 .panel { display: none; flex-direction: column; height: 100%; overflow: hidden; }
 .panel.active { display: flex; }
 .panel-head {
@@ -63,7 +95,6 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
   font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--dim);
 }
 .panel-head #root-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.panel-head .wb-back { margin-left: 0; flex: none; display: inline-flex; padding: 3px; }
 .panel-actions { margin-left: auto; flex: none; display: flex; align-items: center; gap: 4px; }
 .panel-actions .mini { margin-left: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; }
 .panel-actions .mini svg { display: block; }
@@ -663,12 +694,11 @@ a.cc-who:hover { color: var(--accent-fg); }
 
 /* ---------- search panel ---------- */
 .search-form { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
-.search-form input, #outline-filter, #right-symbols-filter {
+.search-form input {
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
   padding: 5px 8px; font-size: 12.5px; width: 100%;
 }
-.search-form input:focus, #outline-filter:focus, #right-symbols-filter:focus { border-color: var(--accent); }
-#outline-filter { width: calc(100% - 24px); margin: 0 12px 8px; }
+.search-form input:focus { border-color: var(--accent); }
 .opts { display: flex; gap: 4px; }
 .opt {
   font: 600 10.5px/1 var(--mono); padding: 4px 6px; border-radius: var(--r);
@@ -721,29 +751,115 @@ a.cc-who:hover { color: var(--accent-fg); }
 #right-resizer { margin-right: -2px; }
 #resizer:hover, #resizer.drag, #right-resizer:hover, #right-resizer.drag { background: var(--accent); }
 
-/* ---------- right-side inspector ---------- */
+/* ---------- right side: the terminal ---------- */
 #right-side {
   width: 384px; flex: none; background: var(--bg2); border-left: 1px solid var(--line);
   display: flex; flex-direction: column; overflow: hidden;
 }
 body.right-hidden #right-side, body.right-hidden #right-resizer { display: none; }
 
-.inspector-head {
-  height: 35px; flex: none; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 8px 0 12px; border-bottom: 1px solid var(--line);
+/* Zoom (⛶ in its top row): the right side takes the editor's whole width. */
+body.right-zoom #side, body.right-zoom #resizer, body.right-zoom #main, body.right-zoom #right-resizer { display: none; }
+body.right-zoom #right-side { flex: 1; width: auto !important; border-left: 0; }
+body.right-zoom .status-side { width: auto; border-right: 0; }
+.side-btn .ic-restore, body.right-zoom #btn-right-zoom .ic-max { display: none; }
+body.right-zoom #btn-right-zoom .ic-restore { display: block; }
+/* A mode's own row under the top row: the terminal's tabs and +, the chat
+   search. */
+.side-sub {
+  height: 30px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 6px;
+  background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line);
 }
-.inspector-tabs { display: flex; gap: 2px; min-width: 0; }
-.inspector-tab {
-  font-size: 12px; font-weight: 500; color: var(--faint); padding: 4px 6px; border-radius: var(--r);
-  white-space: nowrap; cursor: pointer; transition: color .1s, background .1s;
-}
-.inspector-tab:hover { color: var(--fg); background: var(--bg3); }
-.inspector-tab.active { color: var(--accent-fg); background: var(--bg3); font-weight: 600; }
-.inspector-head-actions { display: flex; align-items: center; }
-.inspector-head-actions button { font-size: 11px; padding: 2px 6px; }
+.side-sub .tips-search-wrap { height: 22px; margin-right: 2px; }
+.side-sub #chats-q { flex: 1; min-width: 0; font-size: 12px; background: transparent; border: 0; outline: 0; color: var(--fg); }
+#chats-list { padding: 2px 0 16px; }
+/* The funnel: tinted, with how many choices are on, while it narrows the list. */
+.side-btn.chat-filter { width: auto; min-width: 22px; padding: 0 4px; gap: 3px; }
+.chat-filter.on { color: var(--accent-fg); }
+.chat-filter-n { font: 600 9.5px/1 var(--mono); }
+.chat-filter-n:empty { display: none; }
+.chat-menu-check { display: inline-block; width: 14px; color: var(--accent-fg); }
 
-.inspector-pane { display: none; flex-direction: column; height: 100%; overflow: hidden; }
-.inspector-pane.active { display: flex; }
+/* ---------- chats (chatlist.js): the agents page's Chats mode and the
+   editor's ---------- */
+.chat-none { margin: 10px 12px; font-size: 12px; color: var(--faint); }
+/* A group header: small muted caps, count at the right. On the agents page
+   it folds the group (data-fold), its chevron turned down while open. */
+.chat-group {
+  display: flex; align-items: center; gap: 4px; height: 24px; margin: 6px 6px 0; padding: 0 8px 0 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint);
+  border-radius: var(--r); user-select: none;
+}
+.chat-group[data-fold] { padding-left: 4px; cursor: pointer; }
+.chat-group[data-fold]:hover { color: var(--fg); }
+.chat-group:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.chat-group .chat-chev { flex: none; transition: transform .12s; }
+.chat-group[aria-expanded="true"] .chat-chev { transform: rotate(90deg); }
+.chat-gname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-gcount { flex: none; margin-left: auto; font: 400 10.5px var(--mono); letter-spacing: 0; }
+/* A chat: one line, the whole of it a button that expands its preview; the
+   page's buttons (.chat-acts) cover the agent and age on hover or focus,
+   leaving the chevron. */
+.chat-row { margin: 0 6px; border-radius: var(--r); }
+.chat-line { position: relative; border-radius: var(--r); }
+.chat-line:hover, .chat-line:focus-within, .chat-row.shown .chat-line { background: var(--bg3); }
+.chat-open {
+  width: 100%; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 8px;
+  font-size: 12px; color: var(--fg); text-align: left; background: none; border: 0; border-radius: var(--r); cursor: pointer;
+}
+.chat-open:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.chat-open .chat-chev { flex: none; color: var(--faint); transition: transform .12s; }
+.chat-row.shown .chat-open .chat-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .chat-chev { transition: none !important; } }
+.chat-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--faint); }
+.chat-row.open .chat-dot { background: var(--gi); border-color: var(--gi); }
+.chat-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-row.removed .chat-title { color: var(--faint); font-style: italic; }
+.chat-row.missing .chat-title { color: var(--dim); }
+.chat-agent, .chat-age { flex: none; font: 10.5px var(--mono); color: var(--faint); white-space: nowrap; }
+.chat-age { min-width: 3ch; text-align: right; }
+.chat-acts { position: absolute; top: 3px; right: 22px; display: none; gap: 2px; padding-left: 8px; background: var(--bg3); }
+.chat-line:hover .chat-acts, .chat-line:focus-within .chat-acts { display: flex; }
+.chat-acts .mini { width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); }
+.chat-acts .mini:hover { background: var(--bg4); }
+.chat-acts .chat-del:hover { color: var(--err); }
+/* The expanded row: the conversation in plain text, clamped, then what can
+   be done with it. */
+.chat-prev {
+  display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px;
+  padding: 8px 10px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r);
+}
+.chat-facts, .chat-prev-note { margin: 0; font: 10.5px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+.chat-prev-h {
+  margin: 2px 0 0; font-size: 9.5px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--faint);
+}
+.chat-prompt, .chat-reply {
+  margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* A mask reads alpha only: opaque down to 72%, then faded out. */
+.chat-prompt { -webkit-line-clamp: 3; }
+.chat-reply { -webkit-line-clamp: 5; color: var(--dim); mask-image: linear-gradient(#000 72%, transparent); }
+.chat-started { color: var(--dim); }
+.chat-role { margin-right: 6px; font: 10.5px var(--mono); color: var(--faint); }
+.chat-prev-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.chat-btn {
+  display: inline-flex; align-items: center; padding: 2px 10px; font-size: 11px; white-space: nowrap;
+  color: var(--fg); background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r);
+}
+.chat-btn:hover { background: var(--bg3); }
+.chat-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chat-btn.primary:hover { filter: brightness(1.08); }
+.chat-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+/* The sidebar's References mode: References | Callers | Callees, then the
+   one picked (sideviews.js setRefsMode). */
+.refs-head { flex: none; padding: 8px 12px 0; }
+.refs-mode { height: 24px; }
+.refs-mode .toggle-btn { width: auto; height: 20px; padding: 0 10px; font-size: 11.5px; }
+.refs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.refs-body[hidden] { display: none; }
 
 .inspector-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -759,19 +875,13 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
 }
 
 /* call trail */
-.calls-dir { display: flex; gap: 2px; flex: none; }
 .cnode .car { width: 14px; flex: none; text-align: center; font-size: 9px; color: var(--faint); cursor: pointer; }
 .cnode .car:hover { color: var(--fg); }
 .cnode .car.cyc { cursor: default; font-size: 11px; }
 .cnone { padding-block: 1px; padding-right: 10px; font-size: 11px; font-style: italic; color: var(--faint); }
 
-/* Terminal inspector pane */
-.term-inspector-bar {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 4px 8px; border-bottom: 1px solid var(--line); font-size: 11px;
-  background: var(--bg2); flex: none;
-}
-.term-inspector-tabs { display: flex; gap: 4px; overflow-x: auto; flex: 1; align-items: center; }
+/* The terminal's tab chips, in the right side's top row. */
+.term-inspector-tabs { display: flex; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; align-items: center; scrollbar-width: none; }
 .term-tab-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
   border-radius: var(--r); background: transparent; border: 1px solid transparent;
@@ -784,12 +894,6 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
 .term-status-dot.idle { background: #a6e3a1; }
 .term-status-dot.busy { background: #f9e2af; animation: pulse-dot 1.2s infinite; }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.term-inspector-actions {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 .term-agent-menu {
   position: absolute;
   top: 100%;
@@ -1035,14 +1139,12 @@ body.right-hidden #right-side, body.right-hidden #right-resizer { display: none;
   flex: none; display: flex; align-items: stretch; height: 28px; position: relative; z-index: 7;
   background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line);
 }
-#tab-head:has(> #tabs:empty) { position: absolute; top: 0; right: 0; background: none; box-shadow: none; }
-.open-right {
-  width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--dim); background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r);
-}
-.open-right:hover { color: var(--accent-fg); border-color: var(--accent); }
-body:not(.right-hidden) .open-right { display: none; }
-#view-switches { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; }
+/* With no tab open the row takes no space: it floats over the empty view,
+   letting clicks through but to the switches and the side panes' show
+   buttons at its ends. */
+#tab-head:has(> #tabs:empty) { position: absolute; top: 0; left: 0; right: 0; background: none; box-shadow: none; pointer-events: none; }
+#tab-head:has(> #tabs:empty) > * { pointer-events: auto; }
+#view-switches { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; margin-left: auto; }
 .view-switch {
   height: 22px; display: flex; gap: 1px;
   padding: 1px; background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r);
@@ -1987,13 +2089,20 @@ kbd {
 #footer-sel .footer-btn { flex: none; }
 
 /* Right-click menu on a selection, tab, or tree item: context actions at the pointer. */
-#sel-menu, #tab-menu, #tree-menu {
+#sel-menu, #tab-menu, #tree-menu, #chat-menu {
   position: fixed; z-index: 70; min-width: 190px;
   display: flex; flex-direction: column; gap: 1px; padding: 4px;
   background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow);
   user-select: none;
 }
-#sel-menu[hidden], #tab-menu[hidden], #tree-menu[hidden] { display: none; }
+#sel-menu[hidden], #tab-menu[hidden], #tree-menu[hidden], #chat-menu[hidden] { display: none; }
+.chat-menu-sep { height: 1px; margin: 3px 4px; background: var(--line); }
+.chat-menu-note { font-size: 11px; color: var(--faint); }
+.chat-menu-head { padding: 4px 6px 2px; font-size: 11px; font-weight: 600; color: var(--dim); }
+.chat-menu-input {
+  margin: 2px; padding: 4px 7px; font: 12px var(--ui); color: var(--fg);
+  background: var(--bg); border: 1px solid var(--accent); border-radius: var(--r);
+}
 .sel-menu-item {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 5px 8px; border-radius: var(--r); text-align: left;
@@ -2247,7 +2356,7 @@ kbd {
 #helpsheet {
   position: fixed; inset: 0; background: var(--scrim);
   backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  z-index: 130; display: grid; place-items: center;
+  z-index: 135; display: grid; place-items: center;
 }
 .help-card { background: var(--bg3); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 24px 28px; max-height: 82vh; overflow: auto; }
 .help-header { display: flex; align-items: baseline; gap: 8px; margin: 0 0 16px; }
@@ -2291,23 +2400,23 @@ body.vim-normal-caret #caret {
   opacity: 0.65;
 }
 
-/* ---------- Vim Help Sheet Overlay ---------- */
-#vim-helpsheet {
-  position: fixed; inset: 0; background: var(--scrim);
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  z-index: 135; display: grid; place-items: center;
+/* ---------- the editor's help card: Shortcuts | Tips | Vim ---------- */
+.help-card.help-tabbed {
+  width: min(1000px, 92vw); height: min(720px, 86vh); max-height: none;
+  display: flex; flex-direction: column; overflow: hidden; padding: 18px 24px 16px;
 }
-#vim-helpsheet[hidden] { display: none; }
-.vim-help-card {
-  max-width: 820px; width: 92vw; max-height: 86vh;
-  display: flex; flex-direction: column; padding: 22px 26px 18px;
-}
-.vim-help-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid var(--line);
-}
-.vim-help-title { display: flex; align-items: baseline; gap: 8px; }
-.vim-toggle-row { display: flex; align-items: center; gap: 14px; }
+.help-tabbed .help-header { align-items: center; margin: 0 0 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.help-tabbed #help-close { margin-left: auto; }
+.help-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
+.help-tabs button { padding: 3px 12px; border-radius: var(--r); font-size: 12px; color: var(--dim); }
+.help-tabs button:hover { color: var(--fg); }
+.help-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg4); font-weight: 600; }
+.help-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.help-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.help-body > section { flex: 1; min-height: 0; overflow-y: auto; }
+.help-body > section[hidden] { display: none; }
+.help-body > .help-tips, .help-body > .help-vim { display: flex; flex-direction: column; overflow: hidden; }
+.vim-toggle-row { flex: none; display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .vim-switch-label {
   display: inline-flex; align-items: center; gap: 8px;
   cursor: pointer; user-select: none; font-size: 12px; color: var(--fg);
@@ -2326,7 +2435,7 @@ body.vim-normal-caret #caret {
 .vim-switch-label input:checked + .vim-switch-slider::after { transform: translateX(14px); background: var(--on-accent); }
 .vim-switch-text { font: 600 11.5px var(--mono); color: var(--dim); }
 .vim-help-content {
-  overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 6px;
+  flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 6px;
 }
 .vim-help-section { display: flex; flex-direction: column; gap: 6px; }
 .vim-sec-title {
@@ -2334,11 +2443,6 @@ body.vim-normal-caret #caret {
   letter-spacing: .06em; margin-bottom: 2px;
 }
 .vim-help-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-.vim-help-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line);
-  font-size: 11.5px; color: var(--faint);
-}
 
 #measure { position: absolute; visibility: hidden; font: var(--fs)/var(--lh) var(--mono); white-space: pre; top: -999px; }
 
@@ -3588,23 +3692,13 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   opacity: 0.85;
 }
 
-/* ---------- Tips Inspector Pane ---------- */
-#pane-right-tips {
-  display: none;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-#pane-right-tips.active {
-  display: flex;
-}
+/* ---------- the help card's Tips tab ---------- */
 .tips-header-bar {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg2);
+  gap: 10px;
+  padding: 0 0 10px;
 }
 .tips-search-wrap {
   flex: 1;
@@ -3630,15 +3724,6 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   outline: none;
   width: 100%;
 }
-.tips-toolbar-sub {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 12px;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--line);
-  font-size: 11px;
-}
 .tips-setting-toggle {
   display: inline-flex;
   align-items: center;
@@ -3646,6 +3731,7 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   cursor: pointer;
   user-select: none;
   color: var(--dim);
+  font-size: 11.5px;
 }
 .tips-setting-toggle input {
   cursor: pointer;
@@ -3655,14 +3741,15 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
 }
 #tips-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  align-content: start;
   gap: 10px;
 }
 .tip-item {
-  background: var(--bg3);
+  background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: var(--r);
   padding: 10px 12px;

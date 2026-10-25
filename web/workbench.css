@@ -290,13 +290,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
    in the projects pane after the Projects | Scratch switch. */
 .o-side-head { gap: 6px; padding: 0 4px 0 8px; }
 .o-files-head { height: 30px; gap: 6px; padding: 0 4px; }
-/* The right side's mode switch (paneviews.js), at the left of its top row:
-   icons, the active one filled. */
-.o-pane-tabs { flex: none; display: flex; gap: 2px; margin-left: 6px; }
-.o-pane-tabs button { width: 26px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); color: var(--dim); }
-.o-pane-tabs button:hover { color: var(--fg); background: var(--bg3); }
-.o-pane-tabs button[aria-selected="true"] { color: var(--fg); background: var(--bg4); }
-.o-pane-tabs button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+#o-file-head .pane-tabs { margin-left: 6px; }
 .o-hide[data-hide="left"] { margin-left: auto; }
 .o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
 .o-side-tabs button {
@@ -789,70 +783,8 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-hist-menu button[role="menuitemcheckbox"]::before { content: ""; width: 10px; height: 10px; flex: none; border: 1px solid var(--line); border-radius: 2px; }
 #o-hist-menu button[role="menuitemcheckbox"][aria-checked="true"]::before { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--bg3); }
 #o-hist-list { padding: 2px 0 16px; }
-.o-hist-none { margin: 10px 12px; font-size: 12px; color: var(--faint); }
-/* A group header: small muted caps, chevron turned down while open, count
-   at the right; the whole header folds the group. */
-.o-hist-fold {
-  display: flex; align-items: center; gap: 4px; height: 24px; margin: 6px 6px 0; padding: 0 8px 0 4px;
-  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint);
-  cursor: pointer; border-radius: var(--r); user-select: none;
-}
-.o-hist-fold:hover { color: var(--fg); }
-.o-hist-fold:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.o-hist-fold .o-chev { flex: none; transition: transform .12s; }
-.o-hist-fold[aria-expanded="true"] .o-chev { transform: rotate(90deg); }
-.o-hist-gname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.o-hist-gcount { flex: none; margin-left: auto; font: 400 10.5px var(--mono); letter-spacing: 0; }
-@media (prefers-reduced-motion: reduce) { .o-hist-fold .o-chev { transition: none; } }
-/* A chat: one line, the whole of it a button that expands its preview; the
-   trash covers the agent and age on hover or focus, leaving the chevron. */
-.o-hist-row { margin: 0 6px; border-radius: var(--r); }
-.o-hist-line { position: relative; border-radius: var(--r); }
-.o-hist-line:hover, .o-hist-line:focus-within, .o-hist-row.shown .o-hist-line { background: var(--bg3); }
-.o-hist-open {
-  width: 100%; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 8px;
-  font-size: 12px; color: var(--fg); text-align: left; background: none; border: 0; border-radius: var(--r); cursor: pointer;
-}
-.o-hist-open:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.o-hist-open .o-chev { flex: none; color: var(--faint); transition: transform .12s; }
-.o-hist-row.shown .o-hist-open .o-chev { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .o-hist-open .o-chev { transition: none; } }
-.o-hist-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--faint); }
-.o-hist-row.open .o-hist-dot { background: var(--gi); border-color: var(--gi); }
-.o-hist-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.o-hist-row.removed .o-hist-title { color: var(--faint); font-style: italic; }
-.o-hist-row.missing .o-hist-title { color: var(--dim); }
-.o-hist-agent, .o-hist-age { flex: none; font: 10.5px var(--mono); color: var(--faint); white-space: nowrap; }
-.o-hist-age { min-width: 3ch; text-align: right; }
 /* Narrow rows drop the agent's name first: the age and the chevron say more. */
-@container hist (max-width: 419px) { .o-hist-agent { display: none; } }
-.o-hist-acts { position: absolute; top: 3px; right: 22px; display: none; gap: 2px; padding-left: 8px; background: var(--bg3); }
-.o-hist-line:hover .o-hist-acts, .o-hist-line:focus-within .o-hist-acts { display: flex; }
-.o-hist-acts .mini { width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); }
-.o-hist-acts .mini:hover { background: var(--bg4); }
-.o-hist-acts .o-del:hover { color: var(--err); }
-/* The expanded row: the conversation in plain text, clamped, then what can
-   be done with it. */
-.o-hist-prev {
-  display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px;
-  padding: 8px 10px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r);
-}
-.o-hist-facts, .o-hist-prev-note { margin: 0; font: 10.5px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
-.o-hist-prev-h {
-  margin: 2px 0 0; font-size: 9.5px; font-weight: 600; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--faint);
-}
-.o-hist-prompt, .o-hist-reply {
-  margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
-}
-/* A mask reads alpha only: opaque down to 72%, then faded out. */
-.o-hist-prompt { -webkit-line-clamp: 3; }
-.o-hist-reply { -webkit-line-clamp: 5; color: var(--dim); mask-image: linear-gradient(#000 72%, transparent); }
-.o-hist-started { color: var(--dim); }
-.o-hist-role { margin-right: 6px; font: 10.5px var(--mono); color: var(--faint); }
-.o-hist-prev-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-.o-hist-prev-acts .wb-btn { padding: 2px 10px; font-size: 11px; }
+@container hist (max-width: 419px) { .chat-agent { display: none; } }
 /* An Open error names a folder and what to do: shown whole. */
 #toast .toast-msg.o-hist-err { white-space: normal; overflow-wrap: anywhere; max-width: min(420px, 70vw); }
 

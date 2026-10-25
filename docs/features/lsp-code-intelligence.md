@@ -15,7 +15,7 @@ px0 connects to official language servers already installed on your system (such
 ## Key Capabilities
 
 - **Go to Definition (`F12`, `Cmd/Ctrl+Click`)**: Jump directly to where any function, struct, interface, type, or variable is defined. If the definition lives in a different file or an external standard library module, px0 opens the file seamlessly and positions the cursor at the declaration line.
-- **Find All References (`Shift+F12`, `Alt+U`)**: Discover every location across the workspace where a symbol is referenced, called, or implemented. Results are organized by file in the right-hand Inspector pane, complete with line numbers and preview snippets.
+- **Find All References (`Shift+F12`, `Alt+U`)**: Discover every location across the workspace where a symbol is referenced, called, or implemented. Results are organized by file in the sidebar's References mode, complete with line numbers and preview snippets.
 - **Interactive Call Trails (`Alt+Shift+H`)**: Explore bidirectional call hierarchies for any function or method:
   - **Incoming Calls (Callers)**: See every function that calls the selected routine, expandable level-by-level into an interactive call tree.
   - **Outgoing Calls (Callees)**: See all functions invoked by the routine.
@@ -54,7 +54,7 @@ When verifying changes made by a coding agent, you often need to confirm that fu
 ### Deep Architectural Exploration via Call Trails
 To understand how an unfamiliar subsystem processes requests:
 1. Place your caret inside the core request handling function.
-2. Press **`Alt+Shift+H`** to open the Call Trail in the right Inspector.
+2. Press **`Alt+Shift+H`** to open the call trail in the sidebar's References mode (**Callers** / **Callees**).
 3. Expand incoming callers level-by-level to trace the entry point from CLI arguments or HTTP routes down to low-level storage engines.
 
 ### Instant Context via Hover Cards
@@ -67,7 +67,7 @@ Instead of navigating away from your current code to check parameter types or st
 | Shortcut | Context | Action |
 | :--- | :--- | :--- |
 | `F12` / `Cmd+Click` | Identifier | Go to Definition |
-| `Shift+F12` | Identifier | Find All References (opens Inspector) |
+| `Shift+F12` | Identifier | Find All References (opens the sidebar's References mode) |
 | `Alt+Shift+H` | Function/Method | Open Call Trail (Call Hierarchy) |
 | `Hover` | Identifier | Show Type Signature & Documentation Card |
 | `Alt+U` | Selected Code | Find usages of selected symbol |

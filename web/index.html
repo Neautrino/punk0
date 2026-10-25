@@ -18,8 +18,32 @@
 </head>
 <body>
 <div id="app">
-  <!-- SECTION: Sidebar (File explorer tree) -->
+  <!-- SECTION: Sidebar. Its top row, level with the tab bar: the mode switch
+       (Files | Search | Symbols | References; sideviews.js) and the hide
+       button. Each mode is a <section data-pane-view> below it. -->
   <aside id="side">
+    <header class="side-top">
+      <span class="pane-tabs" role="tablist" aria-label="Sidebar">
+        <button type="button" role="tab" data-view="files" title="Files" aria-label="Files">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg>
+        </button>
+        <button type="button" role="tab" data-view="search" title="Search in files ({Mod+Shift+F})" aria-label="Search in files">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+        <button type="button" role="tab" data-view="symbols" title="Symbols in this file ({Mod+Shift+O})" aria-label="Symbols in this file">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+        </button>
+        <button type="button" role="tab" data-view="refs" title="References and calls ({Shift+F12}, {Alt+Shift+H})" aria-label="References and calls">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
+        </button>
+      </span>
+      <span class="side-top-acts">
+        <button type="button" class="side-btn" data-toggle-side="left" title="Hide sidebar ({Mod+B})" aria-label="Hide sidebar">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+      </span>
+    </header>
+    <section class="side-view" data-pane-view="files" aria-label="Files">
     <header class="panel-head"><span id="root-name">-</span><span class="panel-actions"><div class="sidebar-toggle" role="group" aria-label="Explorer view mode"><button id="btn-files" class="toggle-btn active" title="File Explorer (show all files)" aria-label="File Explorer"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button id="btn-changed" class="toggle-btn" title="Git changes (show changed files only)" aria-label="Git changes"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg></button></div><button id="btn-new-file" class="mini" title="New File" aria-label="New File"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></button><button id="btn-new-folder" class="mini" title="New Folder" aria-label="New Folder"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button><button id="btn-fold-tree" class="mini" title="Expand all project folders (ignored folders stay closed)" aria-label="Expand all project folders"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></button><button id="btn-reindex" class="mini" title="Re-index"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button></span></header>
     <!-- PR review only (web/src/prscope.js): whole PR vs just your own changes -->
     <div id="scope-bar" class="scope-bar" role="group" aria-label="Changes to show" hidden>
@@ -76,6 +100,57 @@
         </div>
       </div>
     </div>
+    </section>
+    <!-- Search: text across every indexed file (search.js). -->
+    <section class="side-view" data-pane-view="search" aria-label="Search" hidden>
+      <div class="search-form">
+        <input id="q" type="text" spellcheck="false" placeholder="Search in files" autocomplete="off">
+        <div class="opts">
+          <button class="opt" id="o-case" title="Match case">Aa</button>
+          <button class="opt" id="o-word" title="Whole word">|ab|</button>
+          <button class="opt" id="o-re" title="Regular expression">.*</button>
+        </div>
+        <input id="glob" type="text" spellcheck="false" placeholder="files to include e.g. *.go" autocomplete="off">
+      </div>
+      <div class="panel-body" id="results">
+        <div class="hint">Search text across every indexed file.</div>
+      </div>
+    </section>
+    <!-- Symbols: the open file's outline (outline.js). -->
+    <section class="side-view" data-pane-view="symbols" aria-label="Symbols" hidden>
+      <div class="search-form">
+        <input id="symbols-filter" type="text" spellcheck="false" placeholder="Filter file symbols" autocomplete="off">
+      </div>
+      <div class="panel-body" id="symbols-list"></div>
+    </section>
+    <!-- References: who uses a symbol, as its references (refs.js) or
+         its callers or callees (calls.js); the switch picks one. -->
+    <section class="side-view" data-pane-view="refs" aria-label="References" hidden>
+      <div class="refs-head">
+        <span id="refs-mode" class="sidebar-toggle refs-mode" role="group" aria-label="Who uses it">
+          <button type="button" class="toggle-btn" data-refs="refs" title="Every reference to the symbol ({Shift+F12})">References</button>
+          <button type="button" class="toggle-btn" data-refs="in" title="Functions that call this one, up toward entry points ({Alt+Shift+H})">Callers</button>
+          <button type="button" class="toggle-btn" data-refs="out" title="Functions this one calls, down toward leaves">Callees</button>
+        </span>
+      </div>
+      <div class="refs-body" data-refs-body="refs">
+        <div class="inspector-bar">
+          <span class="inspector-sym-title" id="refs-target">-</span>
+          <span class="inspector-badge" id="refs-badge">0</span>
+        </div>
+        <div class="panel-body" id="refs-list">
+          <div class="hint">Click a symbol in the editor, then press <b data-keys="Shift+F12"></b> to list its references.</div>
+        </div>
+      </div>
+      <div class="refs-body" data-refs-body="calls" hidden>
+        <div class="inspector-bar">
+          <span class="inspector-sym-title" id="calls-target">-</span>
+        </div>
+        <div class="panel-body" id="calls-list">
+          <div class="hint">Click a function name, then press <b data-keys="Alt+Shift+H"></b> to trace its calls.</div>
+        </div>
+      </div>
+    </section>
   </aside>
 
   <!-- Sidebar Resizer Divider -->
@@ -86,6 +161,7 @@
     <!-- Tab bar: the file tabs scroll sideways; the view-mode switches sit
          beside them, so a tab never slides under a switch -->
     <div id="tab-head">
+    <button type="button" class="side-btn side-open" data-toggle-side="left" title="Show sidebar ({Mod+B})" aria-label="Show sidebar"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     <div id="tabs"></div>
     <div id="view-switches">
       <!-- Markdown tabs only: switch between the rendered file and its source -->
@@ -139,8 +215,12 @@
           <span>Done</span>
         </button>
       </div>
-      <!-- Opens the right sidebar; shown only while it is closed -->
-      <button id="btn-open-right" class="open-right" title="Open sidebar ({Mod+J})" aria-label="Open right sidebar"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+      <!-- While the terminal is hidden, its row's buttons come here: the
+           agents page (opened from punk0 only) and the show button. -->
+      <span class="side-open-right">
+        <a class="side-btn wb-open" target="punk0-agents" title="punk0 agents" aria-label="punk0 agents" hidden><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+        <button type="button" class="side-btn" data-toggle-side="right" title="Show terminal ({Mod+J})" aria-label="Show terminal"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+      </span>
     </div>
     </div>
 
@@ -202,7 +282,7 @@
             <dt data-caps="Mod+K"></dt><dd>quick search / palette</dd>
             <dt data-caps="Mod+P"></dt><dd>go to file</dd>
             <dt data-caps="Mod+Shift+F"></dt><dd>search everywhere</dd>
-            <dt data-caps="Mod+Shift+O"></dt><dd>go to symbol</dd>
+            <dt data-caps="Mod+Shift+O"></dt><dd>symbols in file</dd>
             <dt data-caps="Mod+F"></dt><dd>find in file</dd>
             <dt data-caps="Mod+G"></dt><dd>go to line</dd>
             <dt data-caps="F12"></dt><dd>go to definition</dd>
@@ -335,101 +415,58 @@
   <!-- Right Inspector Resizer Divider -->
   <div id="right-resizer" title="Drag to resize inspector"></div>
 
-  <!-- SECTION: Right-side Inspector (Symbols & References) -->
-  <aside id="right-side">
-    <header class="inspector-head">
-      <div class="inspector-tabs">
-        <button class="inspector-tab active" data-itab="term" id="tab-term" title="Agent terminal ({Alt+T} to focus)">Terminal</button>
-        <button class="inspector-tab" data-itab="refs" title="View references across workspace">References</button>
-        <button class="inspector-tab" data-itab="symbols" title="View file symbols outline">Symbols</button>
-        <button class="inspector-tab" data-itab="calls" title="Trace callers and callees ({Alt+Shift+H})">Calls</button>
-        <button class="inspector-tab" data-itab="search" title="Search text across workspace ({Mod+Shift+F})">Search</button>
-        <button class="inspector-tab" data-itab="tips" id="tab-tips" title="Tips & Tricks">Tips</button>
-      </div>
-      <div class="inspector-head-actions">
-        <button id="btn-close-right" class="mini" title="Close inspector (Esc)">&#10005;</button>
-      </div>
+  <!-- SECTION: Right side: the workspace's agents. Its top row, level with
+       the tab bar: the mode switch (Terminal | Chats; sideviews.js), then
+       zoom, the agents page (opened from punk0 only) and the hide button.
+       Each mode is a <section data-pane-view> holding its own row and body. -->
+  <aside id="right-side" aria-label="Agents">
+    <header class="side-top">
+      <span class="pane-tabs" role="tablist" aria-label="Right side">
+        <button type="button" role="tab" data-view="term" title="Terminal ({Alt+T})" aria-label="Terminal">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+        </button>
+        <button type="button" role="tab" data-view="chats" title="Chats in this folder" aria-label="Chats in this folder">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+        </button>
+      </span>
+      <span class="side-top-acts">
+        <button id="btn-right-zoom" type="button" class="side-btn" title="Maximize" aria-label="Maximize" aria-pressed="false">
+          <svg class="ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+          <svg class="ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+        </button>
+        <a class="side-btn wb-open" target="punk0-agents" title="punk0 agents" aria-label="punk0 agents" hidden><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></a>
+        <button type="button" class="side-btn" data-toggle-side="right" title="Hide ({Mod+J})" aria-label="Hide the right side"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+      </span>
     </header>
-
-    <!-- Right Pane 1: References for active symbol -->
-    <section class="inspector-pane" id="pane-right-refs">
-      <div class="inspector-bar">
-        <span class="inspector-sym-title" id="right-ref-target">-</span>
-        <span class="inspector-badge" id="right-ref-badge">0</span>
-      </div>
-      <div class="panel-body" id="right-refs-list">
-        <div class="hint">Select or click a symbol to inspect references.</div>
-      </div>
-    </section>
-
-    <!-- Right Pane 2: Symbols outline for active file -->
-    <section class="inspector-pane" id="pane-right-symbols">
-      <div class="search-form">
-        <input id="right-symbols-filter" type="text" spellcheck="false" placeholder="Filter file symbols" autocomplete="off">
-      </div>
-      <div class="panel-body" id="right-symbols-list"></div>
-    </section>
-
-    <!-- Right Pane 3: Call trail (callers / callees) for a function -->
-    <section class="inspector-pane" id="pane-right-calls">
-      <div class="inspector-bar">
-        <span class="inspector-sym-title" id="right-calls-target">-</span>
-        <span class="calls-dir" id="calls-dir">
-          <button class="opt on" data-dir="in" title="Functions that call this one, up toward entry points">Callers</button>
-          <button class="opt" data-dir="out" title="Functions this one calls, down toward leaves">Callees</button>
-        </span>
-      </div>
-      <div class="panel-body" id="right-calls-list">
-        <div class="hint">Click a function name, then press <b data-keys="Alt+Shift+H"></b> to trace its calls.</div>
-      </div>
-    </section>
-
-    <!-- Right Pane 4: Full-text search across the workspace -->
-    <section class="inspector-pane" id="pane-right-search">
-      <div class="search-form">
-        <input id="q" type="text" spellcheck="false" placeholder="Search in files" autocomplete="off">
-        <div class="opts">
-          <button class="opt" id="o-case" title="Match case">Aa</button>
-          <button class="opt" id="o-word" title="Whole word">|ab|</button>
-          <button class="opt" id="o-re" title="Regular expression">.*</button>
-        </div>
-        <input id="glob" type="text" spellcheck="false" placeholder="files to include e.g. *.go" autocomplete="off">
-      </div>
-      <div class="panel-body" id="results">
-        <div class="hint">Search text across every indexed file.</div>
-      </div>
-    </section>
-    <!-- Right Pane: Agent Terminal -->
-    <section class="inspector-pane active" id="pane-right-term">
-      <div class="term-inspector-bar" id="term-inspector-bar">
+    <!-- Terminal: the tab chips and + (an agent or a shell), then the
+         terminal (term_inspector.js). -->
+    <section class="side-view" data-pane-view="term" aria-label="Terminal">
+      <header class="side-sub" id="term-inspector-bar">
         <div class="term-inspector-tabs" id="term-inspector-tabs"></div>
-        <div class="term-inspector-actions">
-          <button id="btn-term-add-agent" class="mini" title="New Agent Tab">+ Agent</button>
-          <button id="btn-term-add-shell" class="mini" title="New Shell Tab">+ Shell</button>
-          <div id="term-agent-menu" class="term-agent-menu" hidden></div>
-        </div>
-      </div>
+        <span class="side-top-acts">
+          <button id="btn-term-add" type="button" class="side-btn" title="New tab: an agent or a shell" aria-label="New terminal tab" aria-haspopup="menu"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+          <div id="term-agent-menu" class="term-agent-menu" role="menu" hidden></div>
+        </span>
+      </header>
       <div class="term-inspector-body" id="editor-term-container"></div>
     </section>
-
-    <!-- Right Pane 6: Tips & Tricks. Browse, search and filter all px0 tips. web/src/tips.js owns it. -->
-    <section class="inspector-pane" id="pane-right-tips">
-      <div class="inspector-bar tips-header-bar">
+    <!-- Chats: the agents' chats in this folder, to read and resume
+         (chats.js). -->
+    <section class="side-view" data-pane-view="chats" aria-label="Chats" hidden>
+      <header class="side-sub">
         <div class="tips-search-wrap">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="tips-filter" placeholder="Filter tips..." autocomplete="off" spellcheck="false">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="chats-q" type="text" spellcheck="false" autocomplete="off" placeholder="Search chats in this folder" aria-label="Search chats">
         </div>
-        <span id="tips-count-badge" class="inspector-badge">0 tips</span>
-        <button id="btn-refresh-tips" class="mini" title="Reload tips from px0.ai">&#x21bb;</button>
-      </div>
-      <div class="tips-toolbar-sub">
-        <label class="tips-setting-toggle" title="Toggle automatic tip popups in interface">
-          <input type="checkbox" id="tips-toggle-popup" checked>
-          <span>Show tip popups in interface</span>
-        </label>
-      </div>
-      <div class="panel-body" id="tips-list"></div>
+        <button id="chats-filter" type="button" class="side-btn chat-filter" title="Group and filter" aria-label="Group and filter chats" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5Z"/></svg>
+          <span class="chat-filter-n"></span>
+        </button>
+      </header>
+      <div class="panel-body" id="chats-list"></div>
     </section>
+    <!-- Chats' right-click menu: resume, groups, copy id (chats.js) -->
+    <div id="chat-menu" role="menu" hidden></div>
   </aside>
 </div>
 <!-- Bottom Status Bar: the full width. Its first section sits under the
@@ -496,9 +533,43 @@
   </div>
 </div>
 
-<!-- SECTION: Keyboard Shortcuts Cheat Sheet Overlay (?) -->
-<div id="helpsheet" hidden></div>
-<div id="vim-helpsheet" hidden></div>
+<!-- SECTION: Help (?, the status bar's help, All Tips): Shortcuts | Tips |
+     Vim over one card. shortcuts.js opens it; tips.js and vim.js fill their
+     tabs. -->
+<div id="helpsheet" hidden>
+  <div class="help-card help-tabbed" role="dialog" aria-modal="true" aria-label="Help">
+    <header class="help-header">
+      <span class="help-tabs" role="tablist" aria-label="Help">
+        <button type="button" role="tab" data-view="keys">Shortcuts</button>
+        <button type="button" role="tab" data-view="tips">Tips</button>
+        <button type="button" role="tab" data-view="vim">Vim</button>
+      </span>
+      <span id="help-ver" class="help-version" hidden></span>
+      <button id="help-close" type="button" class="side-btn" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="help-body">
+      <section data-pane-view="keys" aria-label="Keyboard shortcuts"><dl class="help-grid" id="help-keys"></dl></section>
+      <!-- Every tip, searchable (tips.js). -->
+      <section data-pane-view="tips" aria-label="Tips" class="help-tips" hidden>
+        <div class="tips-header-bar">
+          <div class="tips-search-wrap">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="tips-filter" placeholder="Filter tips..." autocomplete="off" spellcheck="false">
+          </div>
+          <span id="tips-count-badge" class="inspector-badge">0 tips</span>
+          <button id="btn-refresh-tips" type="button" class="side-btn" title="Reload tips from px0.ai" aria-label="Reload tips"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg></button>
+          <label class="tips-setting-toggle" title="Toggle automatic tip popups in interface">
+            <input type="checkbox" id="tips-toggle-popup" checked>
+            <span>Show tip popups</span>
+          </label>
+        </div>
+        <div id="tips-list"></div>
+      </section>
+      <!-- Vim keybindings and the on/off switch (vim.js renderVimHelp). -->
+      <section data-pane-view="vim" aria-label="Vim keybindings" class="help-vim" hidden></section>
+    </div>
+  </div>
+</div>
 
 <!-- SECTION: Settings Modal (Cmd+, / Ctrl+,) -->
 <!-- PR merge dialog: method, commit title/message (rewritable by the harness), and what blocks merging now (web/src/prmerge.js) -->

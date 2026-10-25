@@ -1,22 +1,26 @@
 # Editor Terminal, Selection Pill & Quick Edit
 
-Each folder's editor has an agent terminal in its right inspector, a small pill of actions over any code selection, and Quick Edit, which rewrites the selected lines with your coding harness and shows the result before anything is written.
+Each folder's editor has the workspace's agents on its right side, a small pill of actions over any code selection, and Quick Edit, which rewrites the selected lines with your coding harness and shows the result before anything is written.
 
 - **Terminal**: the workspace's shell and agent tabs, the same ones the [Agents Page](workbench.md) shows, inside the editor.
+- **Chats**: the agents' earlier chats in this folder, to read and resume.
 - **Selection pill**: Quick Edit, Add to Chat and Copy Ref, floating above a code selection.
 - **Quick Edit**: one instruction, one harness run on the selected lines, a -/+ preview, then Accept or Reject.
 
 ---
 
-## The Terminal Tab
+## The Right Side
 
-The right inspector's tabs are, in order: **Terminal**, References, Symbols, Calls, Search and Tips. Terminal is the one shown when the inspector opens. `Alt+T` focuses it.
+The right side has two modes, picked with the icons at the left of its top row: **Terminal** (`>_`) and **Chats** (the chat bubble), the same switch as the sidebar's and the agents page's. The top row's right end holds **Maximize** (the right side takes the whole editor width; click again, or `Cmd/Ctrl+B`, to restore), ⊞ (the punk0 agents page, only when the editor was opened from punk0) and ◫ (hide). `Cmd/Ctrl+J` hides or shows the right side; `Alt+T` shows the Terminal mode and focuses it. `Esc` does not close it. While the side is hidden, ⊞ and ◫ sit at the end of the editor tab bar.
+
+## The Terminal
+
+The Terminal mode's own row holds the tab chips and **+**.
 
 The pane is an xterm.js terminal connected to the orchestrator's PTY for the editor's workspace folder. The tabs are the workspace's own terminal tabs, so a tab opened here also appears on the agents page and the other way round.
 
 - **Chips**: one per tab, with a status dot that lights while an agent is working or waiting. Click a chip to show that tab. A stopped tab starts when you click it.
-- **`+ Agent`**: opens a menu of agents (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent) and starts a tab running the one you pick.
-- **`+ Shell`**: starts a shell tab.
+- **`+`**: opens a menu of agents (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent), then Shell, and starts a tab running the one you pick.
 - **`×`** on a chip closes that tab.
 
 Shells and agents run in the orchestrator, not the page: closing the browser or the editor leaves them running, and reconnecting replays their scrollback. When the connection ends, the terminal says so; press any key to reconnect.
@@ -24,6 +28,16 @@ Shells and agents run in the orchestrator, not the page: closing the browser or 
 While focus is in the terminal, every key goes to the shell or agent. Editor shortcuts such as `Esc`, `Ctrl+W`, `Ctrl+K`, `Ctrl+P`, `Ctrl+D`, `Ctrl+E`, `Ctrl+F` and `Ctrl+B` do not fire there. Click the code to give the keyboard back to the editor. `Shift+Enter` sends a newline to the agent's prompt rather than submitting it.
 
 The agents page and the editor can show the same tab at once. A PTY has one size, so the agent draws at the width of whichever view you last typed into or clicked.
+
+## Chats
+
+The Chats mode lists the chats Claude Code, Codex and OpenCode kept for this folder; the box above the list searches their titles. A filled dot and **· open** mark a chat a tab has open. Clicking a row expands it: how many messages, the last exchange, how the chat started, and two buttons. **Resume** (**Show** for an open chat) opens the chat in a terminal tab, on that exact session, and switches to the Terminal mode; **Copy id** copies the session id.
+
+**Groups.** Right-click a chat (or press the context-menu key or `Shift+F10` on it) for **Resume**, then **Add to group**: every group of this folder (the chat's own ticked; picking another moves it there) and **New group…**, whose name box opens right under the chat. Then **Remove from “group”** for a grouped chat, and **Copy id**. Your groups come first, the one used last on top, each folding on its header; the chats in no group follow under **Today**, **Yesterday** and **Older**. Right-click a group's header to **Rename** (the name box opens under the header) or **Delete** it; deleting a group keeps its chats. A group lasts while a chat is in it, and punk0 keeps groups in its records, so they survive a restart.
+
+**Group and filter.** The funnel beside the search sets how the list is grouped — **Your groups** (yours first, then the rest by day; the default), **Date**, **Agent** (each agent's chats under a header that folds) or **None** (one list, newest first) — and what it shows: one agent, only the chats open in a tab, or no untitled chats (ones no prompt was ever sent in). The funnel shows how many filters are on. Both choices are remembered in this browser.
+
+Removing or deleting chats, and the chats of other folders, are on the agents page's Chats mode.
 
 ---
 

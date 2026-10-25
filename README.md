@@ -51,7 +51,7 @@ In progress, moving over from the `scratch` branch.
 
 **02 · Terminal tabs** — Shell and Claude Code tabs beside your files; Claude tabs resume their own chat when reopened.
 
-**03 · Agents beside the code** — The editor's right inspector opens on a Terminal tab with the workspace's shell and agent tabs (`Alt+T`). Select code to get a pill: **Add to Chat** (`Alt+L`) sends it to the agent in the active tab, and **Quick Edit** (`Cmd/Ctrl+K`) has your coding harness rewrite the lines and shows a -/+ preview before anything is written. See [Editor Terminal & Quick Edit](docs/features/editor-terminal-and-quick-edit.md).
+**03 · Agents beside the code** — The editor's right side has the workspace's shell and agent tabs and, one icon over, this folder's earlier chats to resume (`Alt+T` focuses the terminal, `Cmd/Ctrl+J` hides or shows the side). Select code to get a pill: **Add to Chat** (`Alt+L`) sends it to the agent in the active tab, and **Quick Edit** (`Cmd/Ctrl+K`) has your coding harness rewrite the lines and shows a -/+ preview before anything is written. See [Editor Terminal & Quick Edit](docs/features/editor-terminal-and-quick-edit.md).
 
 **04 · Shells that outlive the browser** — Closing or reloading the page keeps every tab running; reconnecting replays recent output.
 

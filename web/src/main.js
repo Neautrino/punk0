@@ -1,5 +1,5 @@
 // web/src/main.js
-import { $, S, api, applyKeyLabels } from './state.js';
+import { $, $$, S, api, applyKeyLabels } from './state.js';
 import { measure, layout, render, initRenderer, updateEditorOptionControls } from './renderer.js';
 import { initTabs, openFile, switchTab } from './tabs.js';
 import { initCursor } from './cursor.js';
@@ -9,7 +9,10 @@ import { drawTree, treeEl, initTree, revealFile, refreshTree, collapseAllDirs, e
 import { initSearch } from './search.js';
 import { initOutline } from './outline.js';
 import { initPanels } from './panels.js';
-import { initInspector, showRightInspector } from './inspector.js';
+import { initSideViews, sideShown, rightView } from './sideviews.js';
+import { initRefs } from './refs.js';
+import { initTermInspector, onTermInspectorShown } from './term_inspector.js';
+import { initChats, startChats } from './chats.js';
 import { initCalls } from './calls.js';
 import { initFind } from './find.js';
 import { initPalette } from './palette.js';
@@ -46,7 +49,10 @@ initGitPanel();
 initSearch();
 initOutline();
 initPanels();
-initInspector();
+initSideViews();
+initRefs();
+initTermInspector();
+initChats();
 initCalls();
 initFind();
 initPalette();
@@ -96,21 +102,19 @@ initPRScope();
   syncGitPanelMeta();
   applyAgentMeta();
   initPR();
-  showRightInspector();
+  // The right side's mode in front loads now that the orchestrator is known.
+  if (sideShown('right') && rightView() === 'term') onTermInspectorShown();
+  startChats();
   document.title = S.meta.name + ' - punk0';
   $('#root-name').textContent = S.meta.name;
   $('#root-name').title = S.meta.root;
   if (S.meta.workbench) {
-    // Opened from the punk0 orchestrator (workbench.go): link back to it, in
-    // the window it names punk0-agents rather than this one.
-    const back = document.createElement('a');
-    back.className = 'mini wb-back';
-    back.href = S.meta.workbench;
-    back.target = 'punk0-agents';
-    back.title = 'punk0 agents';
-    back.setAttribute('aria-label', 'punk0 agents');
-    back.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>';
-    $('#root-name').before(back);
+    // Opened from the punk0 orchestrator (workbench.go): its agents page,
+    // in the window it names punk0-agents rather than this one.
+    for (const a of $$('.wb-open')) {
+      a.href = S.meta.workbench;
+      a.hidden = false;
+    }
   }
   if (S.meta.version) {
     const emptyVerEl = $('#empty-ver');

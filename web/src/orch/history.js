@@ -8,10 +8,11 @@
 // dropdown while the pane is wide and a filter button with a menu while it
 // is narrow (CSS swaps them); both set the same agent.
 //
-// A chat is one line: whether a tab has it open, its title, agent, age and a
-// chevron. Clicking the row EXPANDS it into a preview -- first prompt, last
-// turns, and the Resume / Copy id / Remove buttons -- rather than opening it:
-// resuming starts a process, and a mis-click must not. Resume is
+// A chat is one line (../chatlist.js, shared with the editor's Chats mode):
+// whether a tab has it open, its title, agent, age and a chevron. Clicking
+// the row EXPANDS it into a preview -- first prompt, last turns, and the
+// Resume / Copy id / Remove buttons -- rather than opening it: resuming
+// starts a process, and a mis-click must not. Resume is
 // POST api/history/open, which opens the tab on that exact session. The trash
 // over the row end opens one popup for both ways of letting a chat go:
 // Remove takes the row out of punk0's list (POST api/history/remove, Sync
@@ -28,15 +29,14 @@ import { call, failed } from './api.js';
 import { state, subscribe, reload, workspace, projectOf, wsLabel, tildify, selectWorkspace, selectTab } from './store.js';
 import { paneView } from './paneviews.js';
 import { openRemoveDialog } from './removedialog.js';
+import { AGENT_NAMES, agentName, ICON_CHEV, chatKey as keyOf, chatRow } from '../chatlist.js';
 
 const SCOPE_KEY = 'punk0.historyScope';
 const FOLD_KEY = 'punk0.histFolded';
 const AGENT_KEY = 'punk0.histAgent';
 const SCOPES = ['workspace', 'project', 'all'];
-const AGENT = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 const OTHER = 'other'; // the group of folders in no project
 const EMPTY = { workspace: 'No chats in this workspace yet', project: 'No chats in this project yet', all: 'No chats yet' };
-const ICON_CHEV = '<svg class="o-chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
 const ICON_TRASH = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
 const ICON_BACK = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 4v4h4"/></svg>';
 // What a permanent delete does, in the agent's own terms.
@@ -294,14 +294,13 @@ function render() {
   const mark = focusMark();
   drawAgents();
   if (!list.length) {
-    listEl.innerHTML = `<p class="o-hist-none">${esc(note || (query ? 'No chat matches' : EMPTY[scope]))}</p>`;
+    listEl.innerHTML = `<p class="chat-none">${esc(note || (query ? 'No chat matches' : EMPTY[scope]))}</p>`;
     return;
   }
   listEl.innerHTML = scope === 'workspace' ? list.map(row).join('') : groups(list);
   refocus(mark);
 }
 
-const keyOf = r => `${r.agent}:${r.id}`;
 const rowEl = key => listEl.querySelector(`[data-key="${CSS.escape(key)}"]`);
 
 // picked is the agent the list is narrowed to: the stored one while the
@@ -338,11 +337,11 @@ function refocus(mark) {
 // set changes. The filter button counts 1 while an agent is picked.
 function drawAgents() {
   const have = new Set(rows.map(r => r.agent));
-  const ids = [...Object.keys(AGENT), ...[...have].filter(a => !AGENT[a]).sort()].filter(a => have.has(a));
+  const ids = [...Object.keys(AGENT_NAMES), ...[...have].filter(a => !AGENT_NAMES[a]).sort()].filter(a => have.has(a));
   const key = ids.join(' ');
   if (agentEl.dataset.agents !== key) {
     agentEl.dataset.agents = key;
-    const all = [['', 'All agents'], ...ids.map(a => [a, AGENT[a] || a])];
+    const all = [['', 'All agents'], ...ids.map(a => [a, agentName(a)])];
     agentEl.innerHTML = all.map(([a, name]) => `<option value="${esc(a)}">${esc(name)}</option>`).join('');
     agentsEl.innerHTML = all.map(([a, name]) =>
       `<button type="button" role="menuitemradio" aria-checked="false" data-agent="${esc(a)}">${esc(name)}</button>`).join('');
@@ -354,7 +353,7 @@ function drawAgents() {
   count.textContent = a ? '1' : '';
   count.hidden = !a;
   filterEl.classList.toggle('on', !!a);
-  filterEl.title = a ? `Agent: ${AGENT[a] || a}` : 'Agent';
+  filterEl.title = a ? `Agent: ${agentName(a)}` : 'Agent';
   filterEl.setAttribute('aria-label', filterEl.title);
 }
 
@@ -386,9 +385,9 @@ function groups(list) {
   return all.map(g => {
     const open = isOpen(g.key);
     return `
-    <div class="o-hist-group">
-      <div class="o-hist-fold" data-fold="${esc(g.key)}" role="button" tabindex="0" aria-expanded="${open}">
-        ${ICON_CHEV}<span class="o-hist-gname">${esc(g.name)}</span><span class="o-hist-gcount">${g.chats.length}</span>
+    <div class="chat-group-wrap">
+      <div class="chat-group" data-fold="${esc(g.key)}" role="button" tabindex="0" aria-expanded="${open}">
+        ${ICON_CHEV}<span class="chat-gname">${esc(g.name)}</span><span class="chat-gcount">${g.chats.length}</span>
       </div>
       ${open ? g.chats.map(row).join('') : ''}
     </div>`;
@@ -426,79 +425,26 @@ function loadFolded() {
   }
 }
 
-// row is one chat: a button that expands its preview (status dot, title,
-// agent, age, chevron), the trash -- Restore for a removed chat -- over its
-// right end, and the preview itself while this is the expanded row.
+// row is one chat (chatRow): the trash -- Restore for a removed chat -- over
+// its right end, and while it is the expanded row its preview with Resume,
+// Copy id and Remove.
 function row(r) {
   const key = keyOf(r);
-  const name = AGENT[r.agent] || r.agent;
-  const where = r.missing ? `${tildify(r.dir)} (gone)` : tildify(r.dir);
-  const open = key === openKey;
-  const cls = ['o-hist-row', r.open ? 'open' : '', r.removed ? 'removed' : '', r.missing ? 'missing' : '', open ? 'shown' : ''].filter(Boolean).join(' ');
-  return `
-    <div class="${cls}" data-key="${esc(key)}">
-      <div class="o-hist-line">
-        <button type="button" class="o-hist-open" data-act="row" aria-expanded="${open}" title="${esc(r.title)}\n${esc(where)}">
-          <span class="o-hist-dot" aria-label="${r.open ? 'Open in a tab' : 'Not open'}"></span>
-          <span class="o-hist-title">${esc(r.title)}</span>
-          <span class="o-hist-agent">${esc(name)}${r.open ? ' · open' : ''}</span>
-          <span class="o-hist-age">${esc(ago(r.updated))}</span>
-          ${ICON_CHEV}
-        </button>
-        <span class="o-hist-acts">${r.removed
-          ? `<button type="button" class="mini" data-act="restore" title="Restore" aria-label="Restore chat">${ICON_BACK}</button>`
-          : `<button type="button" class="mini o-del" data-act="remove" title="Remove…" aria-label="Remove chat">${ICON_TRASH}</button>`}
-        </span>
-      </div>
-      ${open ? previewHTML(r) : ''}
-    </div>`;
-}
-
-// previewHTML is the expanded row: the last exchange and how it started, then
-// what can be done with it. Everything read from a transcript is escaped --
-// it is an agent's or the user's own text, never markup.
-function previewHTML(r) {
-  const p = preview?.key === keyOf(r) ? preview : null;
-  let body = '<p class="o-hist-prev-note">Reading the conversation…</p>';
-  if (p?.error) body = `<p class="o-hist-prev-note">${esc(p.error)}</p>`;
-  else if (p?.data) {
-    const d = p.data;
-    // A detached head names no branch: punk0 never sends HEAD, and this keeps it so.
-    const branch = d.branch && d.branch !== 'HEAD' ? d.branch : '';
-    const facts = [d.messages ? `${d.messages} msg${d.messages === 1 ? '' : 's'}` : '', tildify(d.dir || r.dir), branch].filter(Boolean);
-    const agent = AGENT[r.agent] || r.agent;
-    body = `
-      <p class="o-hist-facts">${facts.map(esc).join(' · ')}</p>
-      ${d.lastPrompt ? `<h4 class="o-hist-prev-h">Last exchange</h4>
-        <p class="o-hist-prompt"><span class="o-hist-role">You</span>${esc(d.lastPrompt)}</p>
-        ${d.lastReply ? `<p class="o-hist-reply"><span class="o-hist-role">${esc(agent)}</span>${esc(d.lastReply)}</p>` : ''}` : ''}
-      ${d.started ? `<h4 class="o-hist-prev-h">Started with</h4><p class="o-hist-prompt o-hist-started">${esc(d.started)}</p>` : ''}
-      ${!d.lastPrompt ? '<p class="o-hist-prev-note">Nothing was said in this chat yet.</p>' : ''}`;
-  }
-  return `
-      <div class="o-hist-prev">
-        ${body}
-        <div class="o-hist-prev-acts">
-          <button type="button" class="wb-btn wb-primary" data-act="resume">Resume</button>
-          <button type="button" class="wb-btn" data-act="copy">Copy id</button>
+  return chatRow(r, {
+    shown: key === openKey,
+    preview: preview?.key === key ? preview : null,
+    where: r.missing ? `${tildify(r.dir)} (gone)` : tildify(r.dir),
+    dir: tildify,
+    acts: r.removed
+      ? `<button type="button" class="mini" data-act="restore" title="Restore" aria-label="Restore chat">${ICON_BACK}</button>`
+      : `<button type="button" class="mini chat-del" data-act="remove" title="Remove…" aria-label="Remove chat">${ICON_TRASH}</button>`,
+    prevActs: `
+          <button type="button" class="chat-btn primary" data-act="resume">Resume</button>
+          <button type="button" class="chat-btn" data-act="copy">Copy id</button>
           ${r.removed
-            ? '<button type="button" class="wb-btn" data-act="restore">Restore</button>'
-            : '<button type="button" class="wb-btn" data-act="remove">Remove…</button>'}
-        </div>
-      </div>`;
-}
-
-// ago is how long since a chat was touched, as short as the row needs.
-function ago(ms) {
-  if (!ms) return '';
-  const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 60) return 'now';
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  const d = Math.floor(s / 86400);
-  if (d < 7) return `${d}d`;
-  if (d < 365) return `${Math.floor(d / 7)}w`;
-  return `${Math.floor(d / 365)}y`;
+            ? '<button type="button" class="chat-btn" data-act="restore">Restore</button>'
+            : '<button type="button" class="chat-btn" data-act="remove">Remove…</button>'}`,
+  });
 }
 
 function onClick(e) {
@@ -623,7 +569,7 @@ function openFailed(res) {
 // checkbox clear it only stops being listed, and Sync brings it back; ticked,
 // the agent's own copy goes for good and the tabs on it close first.
 async function removeChat(r, from) {
-  const perm = (DELETES[r.agent] || (id => `${AGENT[r.agent] || r.agent} deletes ${id} for good. This cannot be undone.`))(r.id);
+  const perm = (DELETES[r.agent] || (id => `${agentName(r.agent)} deletes ${id} for good. This cannot be undone.`))(r.id);
   const answers = await openRemoveDialog({
     heading: 'Remove chat',
     go: { off: 'Remove', on: 'Delete' },

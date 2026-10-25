@@ -657,16 +657,9 @@ export const VIM_SHORTCUT_SECTIONS = [
   }
 ];
 
-export function showVimHelp() {
-  let modal = $('#vim-helpsheet');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'vim-helpsheet';
-    document.body.appendChild(modal);
-  }
-
-  const isChecked = vimEnabled ? 'checked' : '';
-
+// renderVimHelp draws the help card's Vim tab into el: the keys, by
+// section, and the switch that turns Vim mode on or off.
+export function renderVimHelp(el) {
   const sectionsHtml = VIM_SHORTCUT_SECTIONS.map(sec => {
     const itemsHtml = sec.items.map(([combos, v]) => {
       const comboList = Array.isArray(combos) ? combos : [combos];
@@ -679,52 +672,21 @@ export function showVimHelp() {
       '</div>';
   }).join('');
 
-  modal.innerHTML = '<div class="help-card vim-help-card">' +
-    '<div class="help-header vim-help-header">' +
-    '<div class="vim-help-title"><h2>Vim Keybindings</h2><span class="help-version">Modal Navigation</span></div>' +
-    '<div class="vim-toggle-row">' +
+  el.innerHTML = '<div class="vim-toggle-row">' +
     '<label class="vim-switch-label">' +
-    '<input type="checkbox" id="vim-toggle-input" ' + isChecked + '>' +
+    '<input type="checkbox" id="vim-toggle-input"' + (vimEnabled ? ' checked' : '') + '>' +
     '<span class="vim-switch-slider"></span>' +
     '<span class="vim-switch-text">' + (vimEnabled ? 'Enabled' : 'Disabled') + '</span>' +
     '</label>' +
-    '<button id="btn-close-vim-help" class="mini" title="Close (Esc)">✕</button>' +
     '</div>' +
-    '</div>' +
-    '<div class="vim-help-content">' + sectionsHtml + '</div>' +
-    '<div class="vim-help-footer">' +
-    '<button id="btn-switch-to-std-help" class="settings-btn-link" title="View Standard Shortcuts (?)">View Standard Shortcuts (?)</button>' +
-    '<span class="agent-hint">Press Esc or click outside to dismiss</span>' +
-    '</div>' +
-    '</div>';
+    '<div class="vim-help-content">' + sectionsHtml + '</div>';
 
-  modal.hidden = false;
-
-  // Toggle listener inside help sheet
-  const toggleInput = modal.querySelector('#vim-toggle-input');
-  if (toggleInput) {
-    toggleInput.addEventListener('change', e => {
-      const active = e.target.checked;
-      setVimModeEnabled(active, true);
-      const txt = modal.querySelector('.vim-switch-text');
-      if (txt) txt.textContent = active ? 'Enabled' : 'Disabled';
-      showToast('✓', active ? 'Vim mode enabled' : 'Vim mode disabled');
-    });
-  }
-
-  modal.querySelector('#btn-close-vim-help')?.addEventListener('click', closeVimHelp);
-  modal.querySelector('#btn-switch-to-std-help')?.addEventListener('click', () => {
-    closeVimHelp();
-    showHelp();
+  el.querySelector('#vim-toggle-input').addEventListener('change', e => {
+    const active = e.target.checked;
+    setVimModeEnabled(active, true);
+    el.querySelector('.vim-switch-text').textContent = active ? 'Enabled' : 'Disabled';
+    showToast('✓', active ? 'Vim mode enabled' : 'Vim mode disabled');
   });
-  modal.addEventListener('click', e => {
-    if (e.target === modal) closeVimHelp();
-  });
-}
-
-export function closeVimHelp() {
-  const modal = $('#vim-helpsheet');
-  if (modal) modal.hidden = true;
 }
 
 export function initVim() {
@@ -739,19 +701,7 @@ export function initVim() {
   }
   setVimModeEnabled(initial, false);
 
-  // Status chip click -> show help
-  const chip = $('#st-vim');
-  if (chip) {
-    chip.addEventListener('click', () => {
-      showVimHelp();
-    });
-  }
-
-  // Footer button click
-  const helpBtn = $('#btn-vim-help');
-  if (helpBtn) {
-    helpBtn.addEventListener('click', () => {
-      showVimHelp();
-    });
-  }
+  // The status chip and the footer button open the help card's Vim tab.
+  $('#st-vim')?.addEventListener('click', () => showHelp('vim'));
+  $('#btn-vim-help')?.addEventListener('click', () => showHelp('vim'));
 }

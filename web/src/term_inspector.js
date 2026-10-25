@@ -1,6 +1,6 @@
 // web/src/term_inspector.js
 import { $, S } from './state.js';
-import { showRightInspector } from './inspector.js';
+import { sideShown, rightView, showRightView } from './sideviews.js';
 import { on } from './bus.js';
 import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
@@ -17,7 +17,8 @@ let pollTimer = null;
 let isEnded = false;
 const enc = new TextEncoder();
 
-const parentURL = path => {
+// parentURL is a path of the orchestrator that opened this editor.
+export const parentURL = path => {
   const p = path.startsWith('/') ? path.slice(1) : path;
   const base = new URL(S.meta?.workbench || '/', window.location.origin);
   return new URL(p, base).href;
@@ -184,8 +185,8 @@ export async function refreshWorkspaceTabs() {
     activeTabId = null;
     renderTabChips();
     showIdleNotice(workspaceTabs.length
-      ? 'Tabs are stopped. Click one to start it, or use + Agent / + Shell.'
-      : 'No terminal tabs. Click + Agent or + Shell to start.');
+      ? 'Tabs are stopped. Click one to start it, or use + for a new one.'
+      : 'No terminal tabs. Click + to start an agent or a shell.');
   } catch {}
 }
 
@@ -308,11 +309,11 @@ function chatTab() {
    the newlines stay in the input and nothing is sent until the user presses
    Enter. Control characters are dropped so the text cannot end the paste. */
 export async function sendToActiveTerminal(text) {
-  showRightInspector('term');
+  showTerminal();
   await refreshWorkspaceTabs();
   const tab = chatTab();
   if (!tab) {
-    showToast('!', 'Start an agent tab first (+ Agent)');
+    showToast('!', 'Start an agent tab first (+ in the terminal\'s row)');
     return false;
   }
   if (tab.status === 'waiting') {
@@ -342,6 +343,24 @@ export async function sendToActiveTerminal(text) {
   return true;
 }
 
+const termShown = () => sideShown('right') && rightView() === 'term';
+
+// showTerminal shows the right side on its Terminal mode and puts the caret
+// in it.
+export function showTerminal() {
+  if (termShown()) return onTermInspectorShown();
+  showRightView('term'); // 'side:toggled' or 'rightview:changed' calls onTermInspectorShown
+}
+
+// openTab shows tab id in the terminal, a tab the orchestrator has just
+// opened (a resumed chat). Attaching first keeps the tab list's refresh from
+// picking another running tab meanwhile.
+export function openTab(id) {
+  showTerminal();
+  attachTab(id);
+  refreshWorkspaceTabs();
+}
+
 export function onTermInspectorShown() {
   refreshWorkspaceTabs();
   if (xtermInstance?.fit) {
@@ -352,7 +371,7 @@ export function onTermInspectorShown() {
   }
   if (!pollTimer) {
     pollTimer = setInterval(() => {
-      if ($('#pane-right-term')?.classList.contains('active')) {
+      if (termShown()) {
         refreshWorkspaceTabs();
       }
     }, 3000);
@@ -367,26 +386,29 @@ const SUPPORTED_AGENTS = [
   { id: 'cursor-agent', label: 'Cursor Agent', icon: '◆' },
 ];
 
+// The + menu: a tab for each agent, then a shell.
 function toggleAgentMenu(e) {
-  if (!agentMenuEl) return;
   e.stopPropagation();
   if (!agentMenuEl.hidden) {
     agentMenuEl.hidden = true;
     return;
   }
-
-  agentMenuEl.innerHTML = '';
-  for (const agent of SUPPORTED_AGENTS) {
+  const item = (icon, label, run) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.innerHTML = `<span class="agent-icon${agent.id === 'claude' ? ' claude' : ''}">${agent.icon}</span><span>${agent.label}</span>`;
-    btn.onclick = (ev) => {
+    btn.setAttribute('role', 'menuitem');
+    btn.innerHTML = `${icon}<span>${label}</span>`;
+    btn.onclick = ev => {
       ev.stopPropagation();
       agentMenuEl.hidden = true;
-      addAgentTab(agent.id);
+      run();
     };
-    agentMenuEl.appendChild(btn);
-  }
+    return btn;
+  };
+  agentMenuEl.replaceChildren(
+    ...SUPPORTED_AGENTS.map(a => item(`<span class="agent-icon${a.id === 'claude' ? ' claude' : ''}">${a.icon}</span>`, a.label, () => addAgentTab(a.id))),
+    item('<span class="agent-icon">$</span>', 'Shell', addShellTab),
+  );
   agentMenuEl.hidden = false;
 }
 
@@ -394,18 +416,11 @@ export function initTermInspector() {
   termEl = $('#editor-term-container');
   tabListEl = $('#term-inspector-tabs');
   agentMenuEl = $('#term-agent-menu');
-  const addShellBtn = $('#btn-term-add-shell');
-  const addAgentBtn = $('#btn-term-add-agent');
-
-  if (addShellBtn) {
-    addShellBtn.onclick = () => addShellTab();
-  }
-  if (addAgentBtn) {
-    addAgentBtn.onclick = (e) => toggleAgentMenu(e);
-  }
-  document.addEventListener('click', (e) => {
-    if (agentMenuEl && !agentMenuEl.hidden && !agentMenuEl.contains(e.target) && e.target !== addAgentBtn) {
-      agentMenuEl.hidden = true;
-    }
+  const addBtn = $('#btn-term-add');
+  addBtn.onclick = toggleAgentMenu;
+  document.addEventListener('click', e => {
+    if (!agentMenuEl.hidden && !agentMenuEl.contains(e.target) && !addBtn.contains(e.target)) agentMenuEl.hidden = true;
   });
+  on('side:toggled', ({ side, shown }) => { if (side === 'right' && shown && rightView() === 'term') onTermInspectorShown(); });
+  on('rightview:changed', ({ view }) => { if (view === 'term' && sideShown('right')) onTermInspectorShown(); });
 }

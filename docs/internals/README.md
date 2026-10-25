@@ -12,7 +12,7 @@ flowchart TD
         UI["DOM Shell (Rail, Sidebar, Tabs, Status)"]
         VirtEditor["Virtualized Code Viewer (~60 DOM rows)"]
         MDViewer["Sanitized Markdown Preview Engine"]
-        Inspector["Right Inspector (Terminal / References / Call Hierarchy)"]
+        Inspector["Sidebar modes (Files / Search / Symbols / References) + Right Terminal"]
         Palette["Command Palette & Fuzzy Picker"]
     end
 

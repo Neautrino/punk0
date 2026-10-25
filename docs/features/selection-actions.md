@@ -24,7 +24,7 @@ Sharing code with a teammate or an AI agent usually means selecting lines, copyi
 Opens a box below the selected lines. Type an instruction and your coding harness returns a replacement, shown as a -/+ preview; **Accept** (`Mod+Enter`) writes it, **Reject** (`Esc`) writes nothing. Source view only. With no selection, `Mod+K` opens Quick Open instead. See [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit).
 
 ### 2. Add to Chat (`Alt+L`)
-Sends the selection to the agent in the active tab of the editor's [Terminal](editor-terminal-and-quick-edit.md#the-terminal-tab) as `@path lines a-b` followed by the code in a fenced block, the same text Copy with Context copies. Works in the source and diff views.
+Sends the selection to the agent in the active tab of the editor's [Terminal](editor-terminal-and-quick-edit.md#the-terminal) as `@path lines a-b` followed by the code in a fenced block, the same text Copy with Context copies. Works in the source and diff views.
 
 ### 3. Copy Source (`Mod+C`)
 Copies the highlighted code as is:
@@ -52,7 +52,7 @@ Copies a block ready for an LLM prompt:
 ````
 
 ### 8. Find Usages (`Alt+U`)
-Searches the workspace for the selected symbol and opens the results in the right inspector.
+Searches the workspace for the selected symbol and opens the results in the sidebar's Search mode.
 
 ---
 

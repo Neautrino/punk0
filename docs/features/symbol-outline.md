@@ -1,6 +1,6 @@
 # Symbol Outline & Navigation
 
-The symbol outline provides a structural overview of all declarations within the active file. Accessible via `Cmd/Ctrl+Shift+O` or through the right Inspector pane, it allows you to quickly locate and jump between functions, methods, classes, interfaces, structs, and constants.
+The symbol outline provides a structural overview of all declarations within the active file. Accessible via `Cmd/Ctrl+Shift+O` or through the sidebar's Symbols mode, it allows you to quickly locate and jump between functions, methods, classes, interfaces, structs, and constants.
 
 ---
 
@@ -22,7 +22,7 @@ The symbol outline extracts every structural symbol from the current document in
 - **Visual Symbol Badges**: Each entry displays an informative badge indicating its kind (e.g., `func`, `struct`, `interface`, `class`, `const`, `var`), allowing you to distinguish methods from types at a glance.
 - **Two Presentation Modes**:
   - **Quick Outline Modal (`Cmd/Ctrl+Shift+O`)**: A fast centered popover for rapid search and keyboard-driven jumping.
-  - **Inspector Symbols Tab**: A persistent right-hand sidebar tab allowing you to browse the file structure while reviewing code side-by-side.
+  - **Sidebar Symbols Mode**: A left sidebar mode allowing you to browse the file structure while reviewing code side-by-side.
 
 ---
 

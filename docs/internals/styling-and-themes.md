@@ -87,7 +87,7 @@ Four progressive elevation steps radiating from the editor viewport outward:
 | Token  | Required | Controls                                                                                                                |
 | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `--bg` | Yes      | Editor background, line gutter, active tab, text inputs, hovercard signature block, Markdown preview background.        |
-| `--bg2`| Yes      | File explorer sidebar, tab bar, right inspector, status bar, hovercard action row, Markdown code blocks and table headers.|
+| `--bg2`| Yes      | File explorer sidebar, tab bar, right-side terminal, status bar, hovercard action row, Markdown code blocks and table headers.|
 | `--bg3`| Yes      | Floating surfaces (hovercard, findbar, command palette, shortcut cheatsheet, toast), row hover state, keycaps, badge fills.|
 | `--bg4`| Yes      | Small button hovers (close tab, status bar icons), active status buttons, double-click occurrence highlight, scrollbar thumb.|
 
@@ -108,7 +108,7 @@ Four progressive elevation steps radiating from the editor viewport outward:
 | ---------------- | -------- | ------------------------------------------------------------------------------------------------------- |
 | `--line`         | Yes      | Dividers, pane borders, occurrence outlines, Markdown table borders, code block borders.                |
 | `--accent`       | Yes      | Active tab top indicator, input focus borders, resizer drag handle, Ctrl+hover link underlines, button hovers.|
-| `--accent-fg`    | Yes      | Accent-colored text: active inspector tab, palette match characters, Markdown links, status button hovers.|
+| `--accent-fg`    | Yes      | Accent-colored text: active mode switch / toggle button, palette match characters, Markdown links, status button hovers.|
 | `--sel`          | Yes      | Selected tree row, palette row, native text selection, whole-file selection (Ctrl+A).                   |
 | `--mark`         | Yes      | Background of search and find matches.                                                                  |
 | `--mark-active`  | Yes      | Active find match, minimap match indicators, pulsing LSP status dot.                                   |

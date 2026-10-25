@@ -7,7 +7,8 @@ import { applyEditorTypography, toggleWordWrap, toggleLineNumbers } from './rend
 import { setTheme } from './theme.js';
 import { chooseThemePreference, DEFAULT_THEME } from './theme-preference.js';
 import { setLayoutPref } from './diff.js';
-import { setVimModeEnabled, showVimHelp } from './vim.js';
+import { setVimModeEnabled } from './vim.js';
+import { showHelp } from './shortcuts.js';
 import { initSettingsModal } from './settings-form.js';
 
 export function isAutoRevealEnabled() {
@@ -146,7 +147,7 @@ export function initSettings() {
     apply: applySettingLive,
     toast: showToast,
     cardActions: {
-      'editor.vimMode': { label: 'View Vim Keybindings Cheat Sheet', kbd: '?', run: showVimHelp },
+      'editor.vimMode': { label: 'View Vim Keybindings Cheat Sheet', kbd: '?', run: () => showHelp('vim') },
     },
     // shortcuts.js orders Escape across the editor's overlays.
     escape: false,

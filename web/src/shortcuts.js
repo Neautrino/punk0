@@ -1,14 +1,17 @@
 // web/src/shortcuts.js
 import { $, $$, esc, S, doc_, isMac, MOD, LH, keyCaps } from './state.js';
 import { vp, sizer } from './ui.js';
-import { layout, render, paint, toggleWordWrap } from './renderer.js';
+import { render, paint, toggleWordWrap } from './renderer.js';
 import { updateStatus } from './status.js';
 import { closeTab, switchTab, reopenClosedTab } from './tabs.js';
 import { go } from './history.js';
 import { clearLink, hovercard } from './hover.js';
 import { openFind, clearFind, findbar, findNextMatch } from './find.js';
 import { gotoDefinition, findReferences } from './lsp.js';
-import { showRightInspector, hideRightInspector } from './inspector.js';
+import { showSideView, toggleSide } from './sideviews.js';
+import { showTerminal } from './term_inspector.js';
+import { paneViews } from './paneviews.js';
+import { emit } from './bus.js';
 import { overlay, openPalette, closePalette } from './palette.js';
 import { moveCursor, moveCol, moveWord, caretToEdge } from './cursor.js';
 import { showCalls } from './calls.js';
@@ -20,7 +23,7 @@ import { previewing, togglePreview, previewKey, selectPreview } from './markdown
 import { exitMermaidFullscreen } from './mermaid.js';
 import { toggleDiff, stepDiffHunk, stepChangedFile } from './diff.js';
 import { openSettings, closeSettings, isSettingsOpen } from './settings-form.js';
-import { handleVimKeyDown, isVimEnabled, getVimMode, showVimHelp, closeVimHelp } from './vim.js';
+import { handleVimKeyDown, isVimEnabled, getVimMode, renderVimHelp } from './vim.js';
 import { handleImageKey } from './imageview.js';
 import { reindexWorkspace } from './panels.js';
 import { enterEditMode, exitEditMode, saveActiveFile, editTextarea } from './editview.js';
@@ -32,7 +35,7 @@ import { navigateToTips } from './tips.js';
 export const SHORTCUTS = [
   [['Mod+,'], 'Open settings'],
   [['Mod+K'], 'Quick search / palette'], [['Mod+P'], 'Go to file'],
-  [['Mod+Shift+P'], 'Command palette'], [['Mod+Shift+O'], 'Go to symbol'],
+  [['Mod+Shift+P'], 'Command palette'], [['Mod+Shift+O'], 'Symbols in this file'],
   [['Mod+Shift+F'], 'Search in files'], [['Mod+Shift+R'], 'Refresh workspace'], [['Mod+F'], 'Find in file'],
   [['Mod+E'], 'Toggle edit mode'], [['Mod+S'], 'Save file (in edit mode)'],
   [['Mod+G'], 'Go to line'], [['Mod+D'], 'Toggle diff view (git)'], [['Alt+Z'], 'Toggle word wrap'],
@@ -41,7 +44,7 @@ export const SHORTCUTS = [
   [['Enter', 'Shift+Enter'], 'Next / previous match'],
   [['F12', 'Mod+Click'], 'Go to definition'], [['Shift+F12'], 'Find all references'],
   [['Alt+Shift+H'], 'Call trail (callers / callees)'],
-  [['Mod+J'], 'Toggle right sidebar / inspector'],
+  [['Mod+J'], 'Toggle terminal'],
   [['Alt+Left', 'Alt+Right'], 'Navigate back / forward'], [['Mod+B'], 'Toggle sidebar'],
   [['Alt+W'], 'Close tab'], [['Alt+Shift+T'], 'Reopen closed tab'], [['Ctrl+Tab'], 'Next tab'],
   [['Alt+1…9'], 'Select tab'], [['Double click'], 'Highlight all occurrences'],
@@ -58,30 +61,30 @@ export const SHORTCUTS = [
   [['Esc'], 'Dismiss'],
 ];
 
-export function showHelp() {
-  const h = $('#helpsheet');
-  const ver = S.meta?.version ? ` <span class="help-version">v${esc(S.meta.version)}</span>` : '';
-  h.innerHTML = '<div class="help-card"><div class="help-header"><h2>Keyboard Shortcuts</h2>' + ver +
-    '<div style="margin-left:auto;display:flex;gap:12px;align-items:center;">' +
-    '<button id="btn-switch-to-tips" class="settings-btn-link" style="font-size:12px;cursor:pointer;" title="View Tips & Tricks">💡 Tips & Tricks</button>' +
-    '<button id="btn-switch-to-vim-help" class="settings-btn-link" style="font-size:12px;cursor:pointer;" title="View Vim Keybindings">View Vim Keybindings</button>' +
-    '</div></div><dl class="help-grid">' +
-    SHORTCUTS.map(([combos, v]) => {
-      const comboList = Array.isArray(combos) ? combos : [combos];
-      return '<dt>' + comboList.map(keyCaps).filter(Boolean).join('<span class="key-or">/</span>') + '</dt>' +
-        '<dd>' + esc(v) + '</dd>';
-    }).join('') + '</dl></div>';
-  h.hidden = false;
-  h.querySelector('#btn-switch-to-vim-help')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    h.hidden = true;
-    showVimHelp();
-  });
-  h.querySelector('#btn-switch-to-tips')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    h.hidden = true;
-    navigateToTips();
-  });
+let helpViews = null;
+
+// fillHelp draws the help card's tab view as it comes to the front: tips.js
+// lists the tips, vim.js draws its keys and on/off switch.
+function fillHelp(view) {
+  if (view === 'tips') emit('tips:shown');
+  if (view === 'vim') renderVimHelp($('#helpsheet [data-pane-view="vim"]'));
+}
+
+// showHelp opens the help card on view: 'keys' (the shortcuts), 'tips' or
+// 'vim'.
+export function showHelp(view = 'keys') {
+  const ver = $('#help-ver');
+  if (S.meta?.version) {
+    ver.textContent = 'v' + S.meta.version;
+    ver.hidden = false;
+  }
+  $('#helpsheet').hidden = false;
+  if (helpViews.current() === view) fillHelp(view);
+  else helpViews.set(view);
+}
+
+export function closeHelp() {
+  $('#helpsheet').hidden = true;
 }
 
 export const inField = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
@@ -90,8 +93,17 @@ export function initShortcuts() {
   $('#btn-theme')?.addEventListener('click', cycleTheme);
   $('#btn-settings')?.addEventListener('click', () => openSettings('ui'));
   $('#btn-help')?.addEventListener('click', () => navigateToTips());
-  $('#st-ver')?.addEventListener('click', showHelp);
-  $('#helpsheet').addEventListener('click', () => { $('#helpsheet').hidden = true; });
+  $('#st-ver')?.addEventListener('click', () => showHelp());
+  $('#help-keys').innerHTML = SHORTCUTS.map(([combos, v]) =>
+    '<dt>' + combos.map(keyCaps).filter(Boolean).join('<span class="key-or">/</span>') + '</dt><dd>' + esc(v) + '</dd>').join('');
+  helpViews = paneViews({
+    host: $('#helpsheet .help-body'),
+    bars: [$('#helpsheet .help-tabs')],
+    fallback: 'keys',
+    onChange: view => { if (!$('#helpsheet').hidden) fillHelp(view); },
+  });
+  $('#help-close').addEventListener('click', closeHelp);
+  $('#helpsheet').addEventListener('click', e => { if (e.target === e.currentTarget) closeHelp(); });
 
   // Footer quick action buttons
   $('#footer-actions')?.addEventListener('click', e => {
@@ -99,7 +111,7 @@ export function initShortcuts() {
     if (!btn) return;
     const act = btn.dataset.action;
     if (act === 'quick-open') openPalette('file');
-    else if (act === 'search') { showRightInspector('search'); $('#q')?.select(); }
+    else if (act === 'search') showSideView('search');
     else if (act === 'symbols') openPalette('symbol');
     else if (act === 'find') openFind(S.lastWord);
     else if (act === 'goto') openPalette('line');
@@ -107,14 +119,14 @@ export function initShortcuts() {
     else if (act === 'md-preview') togglePreview();
     else if (act === 'palette') openPalette('command');
     else if (act === 'settings') openSettings('ui');
-    else if (act === 'vim-help') showVimHelp();
+    else if (act === 'vim-help') showHelp('vim');
     else if (act === 'help') showHelp();
   });
 
   addEventListener('keydown', e => {
     // The terminal and the Quick Edit box own their keys: a shell needs Ctrl+W/D/K/E,
     // and an agent's TUI reads Esc; none of them should reach the viewer.
-    if (/** @type {Element|null} */ (e.target)?.closest?.('#pane-right-term, #quick-edit-container')) return;
+    if (/** @type {Element|null} */ (e.target)?.closest?.('#editor-term-container, #quick-edit-container')) return;
     const mod = e[MOD];
 
     if (e.key === 'Escape') {
@@ -122,11 +134,11 @@ export function initShortcuts() {
       if (quickEditOpen()) { closeQuickEdit(); return; }
       const lb = $('#img-lightbox');
       if (lb && !lb.hidden) { lb.hidden = true; return; }
-      if (!$('#vim-helpsheet')?.hidden) { closeVimHelp(); return; }
+      // The help card can open over settings (its Vim action), so it closes first.
+      if (!$('#helpsheet').hidden) { closeHelp(); return; }
       if (isVimEnabled() && handleVimKeyDown(e)) return;
       if (isSettingsOpen()) { closeSettings(); return; }
       if (!overlay.hidden) { closePalette(); return; }
-      if (!$('#helpsheet').hidden) { $('#helpsheet').hidden = true; return; }
       if (!hovercard.hidden) { clearLink(); return; }
       if (!findbar.hidden) {
         clearFind();
@@ -135,7 +147,6 @@ export function initShortcuts() {
         return;
       }
       if (S.selAll) { clearSelectAll(); return; }
-      if (!document.body.classList.contains('right-hidden')) { hideRightInspector(); return; }
       if (S.occ) { S.occ = null; paint(); return; }
       if (inField(document.activeElement)) /** @type {HTMLElement} */ (document.activeElement).blur();
       return;
@@ -160,20 +171,19 @@ export function initShortcuts() {
     }
     if (e.altKey && !mod && !e.shiftKey && e.code === 'KeyT') {
       e.preventDefault();
-      showRightInspector('term');
+      showTerminal();
       return;
     }
 
     if (mod && (e.key === 'j' || e.key === 'J')) {
       e.preventDefault();
-      if (document.body.classList.contains('right-hidden')) showRightInspector();
-      else hideRightInspector();
+      toggleSide('right');
       return;
     }
 
     if (mod && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); openPalette('command'); return; }
-    if (mod && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); showRightInspector('symbols'); return; }
-    if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); showRightInspector('search'); $('#q')?.select(); return; }
+    if (mod && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); showSideView('symbols'); return; }
+    if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); showSideView('search'); return; }
     if (mod && e.shiftKey && (e.key === 'R' || e.key === 'r')) { e.preventDefault(); reindexWorkspace(); return; }
     if (mod && !e.shiftKey && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); openPalette('file'); return; }
     if (mod && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); openPalette('line'); return; }
@@ -192,7 +202,7 @@ export function initShortcuts() {
         return;
       }
     }
-    if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); document.body.classList.toggle('side-hidden'); layout(); render(); return; }
+    if (mod && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); toggleSide('left'); return; }
     // Diff view of the open file (git only; fails quiet when git is off).
     if (mod && !e.shiftKey && (e.key === 'd' || e.key === 'D')) { if (S.meta?.git) { e.preventDefault(); toggleDiff(); } return; }
     // Alt shortcuts match e.code: on a Mac, Option+letter types a symbol, so e.key is not the letter.

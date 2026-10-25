@@ -8,14 +8,15 @@ import { showPanel, reindexWorkspace } from './panels.js';
 import { openFind } from './find.js';
 import { gotoDefinition, findReferences } from './lsp.js';
 import { revealFile } from './tree.js';
-import { showRightInspector, hideRightInspector } from './inspector.js';
+import { showSideView, toggleSide } from './sideviews.js';
+import { showTerminal } from './term_inspector.js';
 import { showCalls } from './calls.js';
 import { showHelp } from './shortcuts.js';
 import { listThemes, currentTheme, setTheme, cycleTheme } from './theme.js';
 import { togglePreview } from './markdown.js';
 import { isAutoRevealEnabled } from './settings.js';
 import { openSettings } from './settings-form.js';
-import { showVimHelp, isVimEnabled, setVimModeEnabled } from './vim.js';
+import { isVimEnabled, setVimModeEnabled } from './vim.js';
 import { launchPR } from './pr.js';
 import { copyToClipboard, copyRichToClipboard } from './ui.js';
 import { getDocRaw } from './markdown.js';
@@ -78,35 +79,32 @@ export const COMMANDS = [
   { name: 'Go to File…', run: () => openPalette('file') },
   { name: 'Go to Symbol in File…', run: () => openPalette('symbol') },
   { name: 'Go to Line…', run: () => openPalette('line') },
-  { name: 'Search in Files', run: () => showRightInspector('search') },
+  { name: withKeys('Search in Files ({Mod+Shift+F})'), run: () => showSideView('search') },
   { name: 'Find in Current File', run: () => openFind(S.lastWord) },
   { name: 'Go to Definition', run: () => gotoDefinition() },
-  { name: 'Find All References (Right Panel)', run: () => findReferences() },
+  { name: withKeys('Find All References ({Shift+F12})'), run: () => findReferences() },
   { name: withKeys('Show Call Trail: Callers / Callees ({Alt+Shift+H})'), run: () => showCalls() },
   { name: 'Language Servers: Setup & Manage…', run: () => openLspMenu() },
   { name: 'Set Up Language Server…', run: () => openLspMenu() },
-  { name: 'Toggle Right Sidebar / Inspector', run: () => {
-    if (document.body.classList.contains('right-hidden')) showRightInspector();
-    else hideRightInspector();
-  } },
-  { name: 'Show File Symbols (Right Panel)', run: () => showRightInspector('symbols') },
+  { name: withKeys('Toggle Terminal ({Mod+J})'), run: () => toggleSide('right') },
+  { name: withKeys('Show File Symbols ({Mod+Shift+O})'), run: () => showSideView('symbols') },
   { name: 'Reveal Active File in Explorer', run: () => { const d = doc_(); if (d) { showPanel('files'); revealFile(d.path); } } },
   { name: withKeys('Toggle Word Wrap ({Alt+Z})'), run: () => toggleWordWrap() },
   { name: withKeys('Toggle Markdown / Table Preview ({Alt+M})'), run: () => togglePreview() },
-  { name: withKeys('Toggle Sidebar ({Mod+B})'), run: () => document.body.classList.toggle('side-hidden') },
+  { name: withKeys('Toggle Sidebar ({Mod+B})'), run: () => toggleSide('left') },
   { name: 'Select Theme…', run: () => openPalette('theme') },
   { name: 'Next Theme', run: cycleTheme },
   { name: 'Re-index Workspace', run: reindexWorkspace },
   { name: 'Close Tab', run: () => { if (S.active >= 0) closeTab(S.active); } },
   { name: 'Close All Tabs', run: () => closeAllTabs() },
   { name: withKeys('Reopen Closed Tab ({Alt+Shift+T})'), run: () => reopenClosedTab() },
-  { name: withKeys('Terminal: Show Agent Terminal ({Alt+T})'), run: () => showRightInspector('term') },
+  { name: withKeys('Terminal: Show Agent Terminal ({Alt+T})'), run: showTerminal },
   { name: 'Git: Open Pull Request…', run: () => openPalette('openpr', '') },
   { name: 'Preferences: Toggle Vim Keybindings', run: () => setVimModeEnabled(!isVimEnabled(), true) },
-  { name: 'Help: Vim Keybindings Cheat Sheet', run: showVimHelp },
+  { name: 'Help: Vim Keybindings Cheat Sheet', run: () => showHelp('vim') },
   { name: 'Help: Tips & Tricks (All Tips)', run: () => navigateToTips() },
   { name: 'Help: Show Tip', run: () => showTipWidget() },
-  { name: 'Keyboard Shortcuts', run: showHelp },
+  { name: 'Keyboard Shortcuts', run: () => showHelp() },
 ];
 
 export const PAL_MODES = {

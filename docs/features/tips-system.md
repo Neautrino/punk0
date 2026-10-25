@@ -9,20 +9,20 @@ px0 includes an interactive tips and tricks system designed to introduce develop
 Unlike heavy IDEs that display large intrusive modals on startup, px0 loads tips asynchronously in the background.
 
 - **Non-Intrusive Floating Widget**: Appears gently in the bottom-right corner after an initial delay (~1.8 seconds), presenting one tip at a time with previous/next navigation and automatic progression.
-- **Dedicated Tips Section in IDE**: An inspector tab labeled **Tips** (`#pane-right-tips`) displays all available tips in a searchable, filterable list directly alongside your code.
-- **Left Bottom Bar Help Button**: The `#btn-help` button in the status bar's first section (`.status-side`, under the sidebar) navigates directly to the Tips section in the inspector.
+- **Tips Tab in the Help Card**: The help card (`#helpsheet`) has tabs **Shortcuts | Tips | Vim**. The Tips tab lists all tips in a two-column grid (`#tips-list`) with a filter (`#tips-filter`), a count, a reload button and a **Show tip popups** checkbox.
+- **Left Bottom Bar Help Button**: The `#btn-help` button in the status bar's first section (`.status-side`, under the sidebar) opens the help card on its Tips tab.
 - **Public URL Delivery**: Tips are loaded live from `https://px0.ai/tips.json` (hosted in the `../web` repository) and cached locally, with built-in offline fallbacks (`web/src/tips-util.js`).
-- **Permanent Dismissal**: Users can permanently hide the floating tip popups at any time via the "Don't show tips" button, the inspector checkbox, or the `tips.enabled` preference in Settings (`Cmd/Ctrl+,`).
+- **Permanent Dismissal**: Users can permanently hide the floating tip popups at any time via the "Don't show tips" button, the Tips tab's **Show tip popups** checkbox, or the `tips.enabled` preference in Settings (`Cmd/Ctrl+,`).
 
 ---
 
 ## How to Access Tips
 
 1. **Floating Tip Widget**: Automatically appears shortly after opening px0 unless permanently hidden. Use **‹** and **›** to browse tips one after another.
-2. **Help Button**: Click the question mark icon in the left bottom bar (beside the theme and settings buttons) to open the Tips inspector panel.
-3. **Inspector Tab**: Click the **Tips** tab in the right-side inspector header.
+2. **Help Button**: Click the question mark icon in the left bottom bar (beside the theme and settings buttons) to open the help card on its Tips tab.
+3. **Tip Widget**: Click **All Tips** on the floating tip widget.
 4. **Command Palette**: Press **`Cmd/Ctrl + Shift + P`** and choose **Help: Tips & Tricks (All Tips)** or **Help: Show Tip**.
-5. **Keyboard Shortcuts Sheet**: Press **`?`** to open the keyboard cheat sheet, then click **💡 Tips & Tricks**.
+5. **Keyboard Shortcuts Sheet**: Press **`?`** to open the keyboard cheat sheet, then click the **Tips** tab.
 
 ---
 

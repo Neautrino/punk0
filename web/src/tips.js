@@ -2,7 +2,7 @@
 import { $, $$, esc, S, api, keyCaps } from './state.js';
 import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
-import { showRightInspector } from './inspector.js';
+import { showHelp } from './shortcuts.js';
 import { TIPS_URL, TIPS_STORAGE_KEY_HIDDEN, TIPS_STORAGE_KEY_CACHE, TIPS_STORAGE_KEY_INDEX, DEFAULT_TIPS, renderTipMarkdown } from './tips-util.js';
 
 export {
@@ -192,12 +192,12 @@ function stopTipAutoAdvance() {
 }
 
 /**
- * Navigates to the Tips inspector pane and renders all tips as a list.
+ * Opens the help card's Tips tab, the list narrowed to filter.
  */
 export function navigateToTips(filter = '') {
   const query = typeof filter === 'string' ? filter : '';
   hideTipWidget();
-  showRightInspector('tips');
+  showHelp('tips');
   const filterInput = $('#tips-filter');
   if (filterInput) {
     filterInput.value = query;
@@ -208,7 +208,7 @@ export function navigateToTips(filter = '') {
 }
 
 /**
- * Renders all tips matching the search query into the Tips panel.
+ * Renders all tips matching the search query into the help card's Tips tab.
  */
 export function renderTipsList() {
   const listEl = $('#tips-list');
@@ -293,12 +293,7 @@ export function initTips() {
     setTipsPermanentlyHidden(true);
   });
 
-  // Left bottom bar Help button
-  $('#btn-help')?.addEventListener('click', () => {
-    navigateToTips();
-  });
-
-  // Inspector Tips panel events
+  // The help card's Tips tab
   $('#tips-filter')?.addEventListener('input', (e) => {
     tipsFilterQuery = e.target.value.trim().toLowerCase();
     renderTipsList();
@@ -319,19 +314,11 @@ export function initTips() {
     });
   }
 
-  // Right sidebar tab switch listener
+  // The Tips tab coming to the front (shortcuts.js)
   on('tips:shown', () => {
     renderTipsList();
     const toggleEl = $('#tips-toggle-popup');
     if (toggleEl) toggleEl.checked = !isTipsPermanentlyHidden();
-  });
-
-  // Add click handler to shortcuts sheet to link to tips
-  $('#btn-switch-to-tips')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const hs = $('#helpsheet');
-    if (hs) hs.hidden = true;
-    navigateToTips();
   });
 }
 

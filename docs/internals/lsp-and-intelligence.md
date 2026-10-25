@@ -99,7 +99,7 @@ sequenceDiagram
 
 ## 5. Stateless Call Hierarchy Trails ([`lsp.go`](../../lsp.go))
 
-px0 provides full incoming and outgoing call hierarchy navigation (`Calls` tab in the right inspector) without holding complex graph state in server memory.
+px0 provides full incoming and outgoing call hierarchy navigation (Callers / Callees in the sidebar's References mode) without holding complex graph state in server memory.
 
 ### Opaque Item Round-Tripping
 
