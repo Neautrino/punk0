@@ -192,11 +192,12 @@ type Records struct {
 	// it (newworkspace.go).
 	mu           sync.Mutex
 	projects     []*Project
-	removed      []RemovedProject // newest first, at most maxRemoved
-	lsp          map[string]bool  // folder -> language servers wanted there
-	hookBase     string           // this punk0's loopback URL, for PUNK0_HOOK_URL
-	creating     map[string]bool  // folders and names of workspaces whose git is running
-	removedChats []string         // chats Chats mode leaves out, agent+":"+id
+	removed      []RemovedProject  // newest first, at most maxRemoved
+	lsp          map[string]bool   // folder -> language servers wanted there
+	hookBase     string            // this punk0's loopback URL, for PUNK0_HOOK_URL
+	creating     map[string]bool   // folders and names of workspaces whose git is running
+	removedChats []string          // chats Chats mode leaves out, agent+":"+id
+	chatGroups   map[string]string // chat (agent+":"+id) -> the group it is in, by name
 
 	chats *chatHistory // the agents' own chat history (history.go), read-only after this
 }
@@ -219,7 +220,8 @@ type recordsFile struct {
 	LSP      map[string]bool  `json:"lsp,omitempty"`
 	// RemovedChats keeps the JSON key hiddenChats: records.json files already
 	// on disk hold it, and `removed` is the removed projects' key.
-	RemovedChats []string `json:"hiddenChats,omitempty"`
+	RemovedChats []string          `json:"hiddenChats,omitempty"`
+	ChatGroups   map[string]string `json:"chatGroups,omitempty"`
 }
 
 // OpenRecords loads <state>/records.json; a missing file is an empty list. A
@@ -249,6 +251,10 @@ func OpenRecords(home string) (*Records, error) {
 		}
 	}
 	r.projects, r.removed, r.removedChats = f.Projects, f.Removed, f.RemovedChats
+	r.chatGroups = f.ChatGroups
+	if r.chatGroups == nil {
+		r.chatGroups = map[string]string{}
+	}
 	for k, v := range f.LSP {
 		r.lsp[k] = v
 	}
@@ -294,7 +300,7 @@ func (r *Records) adoptLocked(w *Workspace) {
 }
 
 func (r *Records) saveLocked() error {
-	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats})
+	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats, ChatGroups: r.chatGroups})
 }
 
 type projectView struct {
@@ -872,9 +878,9 @@ func (r *Records) Workspace(id string) *Workspace {
 	return nil
 }
 
-// WorkspaceAt is Workspace for an editor's terminal, which knows only its
-// folder's backend id (/w/<id>/): that names the folder's first workspace.
-// Every other route takes a workspace id only.
+// WorkspaceAt is Workspace for an editor's terminal and Chats mode, which
+// know only their folder's backend id (/w/<id>/): that names the folder's
+// first workspace. Every other route takes a workspace id only.
 func (r *Records) WorkspaceAt(id string) *Workspace {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -940,6 +946,30 @@ func (r *Records) RestoreAllChats() (int, error) {
 	}
 	r.removedChats = nil
 	return n, r.saveLocked()
+}
+
+// GroupChats puts chats (agent+":"+id) in the group named name, or out of
+// theirs when name is "". A group is only its name, kept on its chats: it
+// lasts while a chat is in it, so renaming one moves its chats to the new
+// name and deleting it takes them all out.
+func (r *Records) GroupChats(keys []string, name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, k := range keys {
+		if name == "" {
+			delete(r.chatGroups, k)
+		} else {
+			r.chatGroups[k] = name
+		}
+	}
+	return r.saveLocked()
+}
+
+// ChatGroups is each grouped chat's group, for one listing.
+func (r *Records) ChatGroups() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return maps.Clone(r.chatGroups)
 }
 
 // CloseSessionTabs stops and forgets every tab resuming one chat, wherever it

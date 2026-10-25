@@ -452,10 +452,12 @@ type historyView struct {
 	Open      bool   `json:"open,omitempty"`    // a tab resumes this chat
 	Missing   bool   `json:"missing,omitempty"` // its folder is gone
 	Workspace string `json:"workspace,omitempty"`
+	Group     string `json:"group,omitempty"` // the Chats group it is in (Records.GroupChats)
 }
 
 // handleHistory lists the agents' chats, most recently updated first.
-// scope=workspace|project|all is how wide the list is around ws, q matches
+// scope=workspace|project|all is how wide the list is around ws (a
+// workspace id, or an editor's folder backend id: WorkspaceAt), q matches
 // the title, and removed=1 lists the chats the user removed as well.
 func (wb *workbench) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
@@ -467,7 +469,7 @@ func (wb *workbench) handleHistory(w http.ResponseWriter, r *http.Request) {
 	case "all":
 		sessions = wb.records.Chats().Sessions(r.Context())
 	case "workspace", "project":
-		ws := wb.records.Workspace(q.Get("ws"))
+		ws := wb.records.WorkspaceAt(q.Get("ws"))
 		if ws == nil {
 			fail(w, http.StatusNotFound, "workspace not found")
 			return
@@ -481,7 +483,7 @@ func (wb *workbench) handleHistory(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "unknown scope "+scope)
 		return
 	}
-	removed, byDir, tabs := wb.records.RemovedChats(), wb.records.WorkspaceByDir(), wb.records.TabSessions()
+	removed, byDir, tabs, groups := wb.records.RemovedChats(), wb.records.WorkspaceByDir(), wb.records.TabSessions(), wb.records.ChatGroups()
 	match, showRemoved := strings.ToLower(strings.TrimSpace(q.Get("q"))), q.Get("removed") == "1"
 	out := make([]historyView, 0, len(sessions))
 	for _, c := range sessions {
@@ -498,6 +500,7 @@ func (wb *workbench) handleHistory(w http.ResponseWriter, r *http.Request) {
 			Open:        tabs[chatKey(c.Agent, c.ID)] != "",
 			Missing:     !isDir(c.Dir),
 			Workspace:   workspaceIn(byDir, c.Dir),
+			Group:       groups[chatKey(c.Agent, c.ID)],
 		})
 	}
 	writeJSON(w, map[string]any{"sessions": out})
@@ -541,6 +544,44 @@ func (wb *workbench) handleHistorySync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"restored": n})
+}
+
+// handleHistoryGroup puts chats in a group, by its name, or takes them out
+// of theirs (group ""). Renaming a group is putting all its chats in the new
+// name, deleting it taking them all out: the chats themselves stay.
+func (wb *workbench) handleHistoryGroup(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Chats []struct {
+			Agent string `json:"agent"`
+			ID    string `json:"id"`
+		} `json:"chats"`
+		Group string `json:"group"`
+	}
+	if readJSONBody(r, &body) != nil || len(body.Chats) == 0 {
+		fail(w, http.StatusBadRequest, "chats are required")
+		return
+	}
+	name := strings.TrimSpace(body.Group)
+	if len([]rune(name)) > 60 {
+		fail(w, http.StatusBadRequest, "a group name is at most 60 characters")
+		return
+	}
+	keys := make([]string, 0, len(body.Chats))
+	for _, c := range body.Chats {
+		if c.Agent == "" || c.ID == "" {
+			fail(w, http.StatusBadRequest, "each chat needs its agent and id")
+			return
+		}
+		keys = append(keys, chatKey(c.Agent, c.ID))
+	}
+	if err := wb.records.GroupChats(keys, name); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"group": name})
 }
 
 // handleHistoryPreview reads the chat's last exchange and how it started, on
@@ -695,7 +736,12 @@ func (wb *workbench) handleHistoryDelete(w http.ResponseWriter, r *http.Request)
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := wb.records.RemoveChat(agent, id, false); err != nil { // nothing left to remember
+	// Nothing left to remember: not its removal, not its group.
+	if err := wb.records.RemoveChat(agent, id, false); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := wb.records.GroupChats([]string{chatKey(agent, id)}, ""); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}

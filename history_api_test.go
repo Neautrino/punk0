@@ -41,10 +41,10 @@ func historyWorkbench(t *testing.T) (*workbench, string, string) {
 
 type historyList struct {
 	Sessions []struct {
-		Agent, ID, Dir, Title, Workspace string
-		Messages                         int
-		Updated                          int64
-		Open, Missing, Removed           bool
+		Agent, ID, Dir, Title, Workspace, Group string
+		Messages                                int
+		Updated                                 int64
+		Open, Missing, Removed                  bool
 	}
 }
 
@@ -72,6 +72,14 @@ func TestHistoryListScopesAndSearch(t *testing.T) {
 	}
 	if mine.Sessions[0].Workspace != ws.ID || mine.Sessions[0].Open || mine.Sessions[0].Missing {
 		t.Fatalf("chat in a registered folder: %+v", mine.Sessions[0])
+	}
+
+	// The editor knows only its folder's backend id (/w/<id>/), and lists the
+	// same chats by it.
+	var editor historyList
+	getJSON(t, wb, "/api/history?scope=workspace&ws="+wbItemID("dir", ws.Dir), &editor)
+	if len(editor.Sessions) != 1 || editor.Sessions[0].ID != mine.Sessions[0].ID {
+		t.Fatalf("scope=workspace by backend id listed %+v", editor.Sessions)
 	}
 
 	// The search matches the title, ignoring case.
@@ -168,6 +176,63 @@ func TestHistoryRemovesAChatAndSyncRestoresIt(t *testing.T) {
 	getJSON(t, wb, "/api/history?scope=all", &back)
 	if len(back.Sessions) != 1 || back.Sessions[0].Removed {
 		t.Fatalf("after Sync: %+v", back.Sessions)
+	}
+}
+
+// A group is a name kept on its chats: putting chats in a name groups them,
+// moving them to another name renames it, the empty name takes them out, and
+// deleting a chat for good forgets its group too. Groups outlive a restart.
+func TestHistoryGroupsChats(t *testing.T) {
+	wb, claude, repo := historyWorkbench(t)
+	const a, b = "77777777-0000-4000-8000-000000000007", "88888888-0000-4000-8000-000000000008"
+	writeChat(t, claude, "-repo", a, claudeUser(repo, a, "first"))
+	writeChat(t, claude, "-repo", b, claudeUser(repo, b, "second"))
+	group := func(body string) {
+		t.Helper()
+		if w := postJSON(t, wb, "/api/history/group", body); w.Code != http.StatusOK {
+			t.Fatalf("group %s: %d %s", body, w.Code, w.Body.String())
+		}
+	}
+	groups := func() map[string]string {
+		t.Helper()
+		var list historyList
+		getJSON(t, wb, "/api/history?scope=all", &list)
+		out := map[string]string{}
+		for _, s := range list.Sessions {
+			out[s.ID] = s.Group
+		}
+		return out
+	}
+
+	group(`{"chats":[{"agent":"claude","id":"` + a + `"},{"agent":"claude","id":"` + b + `"}],"group":"  auth work "}`)
+	if g := groups(); g[a] != "auth work" || g[b] != "auth work" {
+		t.Fatalf("after grouping: %v", g)
+	}
+	group(`{"chats":[{"agent":"claude","id":"` + a + `"},{"agent":"claude","id":"` + b + `"}],"group":"login"}`)
+	group(`{"chats":[{"agent":"claude","id":"` + b + `"}],"group":""}`)
+	if g := groups(); g[a] != "login" || g[b] != "" {
+		t.Fatalf("after renaming and taking one out: %v", g)
+	}
+
+	again, err := OpenRecords(wb.records.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := again.ChatGroups(); g[chatKey("claude", a)] != "login" || len(g) != 1 {
+		t.Fatalf("groups after a restart: %v", g)
+	}
+
+	if w := reqJSON(t, wb, "DELETE", "/api/history/claude/"+a, ""); w.Code != http.StatusOK {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	if g := wb.records.ChatGroups(); len(g) != 0 {
+		t.Fatalf("a deleted chat kept its group: %v", g)
+	}
+
+	for _, bad := range []string{`{"chats":[],"group":"x"}`, `{"chats":[{"agent":"claude"}],"group":"x"}`, `{"chats":[{"agent":"claude","id":"` + b + `"}],"group":"` + strings.Repeat("x", 61) + `"}`} {
+		if w := postJSON(t, wb, "/api/history/group", bad); w.Code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", bad, w.Code)
+		}
 	}
 }
 

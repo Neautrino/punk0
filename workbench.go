@@ -461,6 +461,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("GET "+wb.route("/api/history/{agent}/{id}/preview"), wb.handleHistoryPreview)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/open"), wb.handleHistoryOpen)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/remove"), wb.handleHistoryRemove)
+	wb.mux.HandleFunc("POST "+wb.route("/api/history/group"), wb.handleHistoryGroup)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/sync"), wb.handleHistorySync)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/history/{agent}/{id}"), wb.handleHistoryDelete)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
