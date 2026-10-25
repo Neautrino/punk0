@@ -99,7 +99,9 @@ func (r *Records) NewChat(o ChatOptions) (*Workspace, error) {
 	}
 	w := newWorkspace(filepath.Base(dir), kindFolder, dir, "")
 	w.Group, w.Active, w.Created, w.Title = o.Group, now.UnixMilli(), now.UnixMilli(), title
-	w.Tabs = append(w.Tabs, newTab(o.Agent, dir, ""))
+	t := newTab(o.Agent, dir, "")
+	w.Tabs = append(w.Tabs, t)
+	r.fileTabLocked(w, t)
 	r.adoptLocked(w)
 	p.Workspaces = append(p.Workspaces, w)
 	return w, r.saveLocked()

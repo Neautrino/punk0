@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -196,6 +197,14 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	if status, ok := hookStatus(ev); ok {
 		tab.setStatus(status)
 	}
+	// The session it reports is filed under the tab's workspace, unless the
+	// user filed it elsewhere; a worktree it works in is listed under it.
+	if ev.Session != "" {
+		if err := wb.records.NoteSession(tab.ID, ev.Session); err != nil {
+			log.Printf("filing session of tab %s: %v", tab.ID, err)
+		}
+	}
+	wb.noteAgentDirs(tab.ID, ev)
 	if place, ok := wb.records.Place(tab.ID); ok {
 		if done := wb.ledgers.hook(place, ev); done != nil {
 			select {

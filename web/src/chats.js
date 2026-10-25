@@ -1,29 +1,35 @@
 // web/src/chats.js
 // The right side's Chats mode: the chats Claude Code, Codex and OpenCode
 // kept for this editor's folder, read from the orchestrator that opened it
-// (GET api/history, scope workspace, by the folder's backend id). Your
-// groups come first, each folding on its header, the most recently used
-// first; the chats in none follow under Today / Yesterday / Older. A row
-// expands into its preview (chatlist.js, shared with the agents page);
+// (GET api/history, scope workspace, by the folder's backend id). A
+// workspace is the group its chats belong to: the workspaces at this folder
+// come first, each folding on its header, with a + for a new chat in it and
+// links to the worktrees made under it; then other workspaces this folder's
+// chats belong to; the chats in none follow under Today / Yesterday / Older.
+// A row expands into its preview (chatlist.js, shared with the agents page);
 // Resume opens the chat in a terminal tab (POST api/history/open, which
-// reuses a tab already on it) and shows it. Right-click (or the context-menu
-// key) a chat to put it in a group, a new one or none; a group's header to
-// rename or delete it (POST api/history/group: a group is the name kept on
-// its chats, so it goes with its last chat). Removing or deleting chats,
-// and the chats of other folders, are the agents page's Chats mode. The list
-// is read again every 10 s while it shows: the agents write these files from
-// outside punk0.
+// reuses a tab already on it) and shows it, or opens the editor of the
+// workspace it answers with when that is at another folder. Right-click (or
+// the context-menu key) a chat to move it to another workspace of this
+// folder or a new one (POST api/history/workspace). Removing or deleting
+// chats, and the chats of other folders, are the agents page's Chats mode.
+// The list is read again every 10 s while it shows: the agents write these
+// files from outside punk0.
 import { $, S, esc } from './state.js';
 import { on } from './bus.js';
 import { showToast } from './ui.js';
 import { sideShown, rightView } from './sideviews.js';
-import { parentURL, openTab } from './term_inspector.js';
+import { parentURL, openTab, agentChoices } from './term_inspector.js';
 import { chatKey, chatRow, agentName, ICON_CHEV } from './chatlist.js';
 
 const FOLD_KEY = 'punk0.chatsFolded';
 
 let listEl, qEl, menuEl;
 let rows = [];
+// The workspaces the answer names ({id, name, kind, branch, parent, here,
+// href}; here: at this folder) and the project they are in ({id, name}).
+let workspaces = [];
+let project = null;
 let note = '';
 let query = '';
 let typing = 0;
@@ -106,9 +112,12 @@ export function refreshChats() {
     try {
       const res = await getJSON('api/history?' + p);
       rows = res.ok ? res.data?.sessions || [] : [];
+      workspaces = res.ok ? res.data?.workspaces || [] : [];
+      project = res.ok ? res.data?.project || null : null;
       note = res.ok ? '' : res.data?.error || 'Could not read the chat history';
     } catch {
-      rows = [];
+      rows = workspaces = [];
+      project = null;
       note = 'Could not reach punk0';
     }
     render();
@@ -131,8 +140,8 @@ function dayGroup(ms) {
   return 'Older';
 }
 
-// folded holds the sections folded by hand, by key ('g:' and a group's
-// name, 'a:' and an agent). A search shows every section with matches open.
+// folded holds the sections folded by hand, by key ('w:' and a workspace's
+// id, 'a:' and an agent). A search shows every section with matches open.
 const folded = new Set((() => {
   try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '[]'); } catch { return []; }
 })());
@@ -143,17 +152,33 @@ function toggleFold(key) {
   render();
 }
 
-// groupNames is this folder's groups, the one used last first (the rows come
-// newest first).
-const groupNames = () => [...new Set(rows.map(r => r.group).filter(Boolean))];
+const hereWorkspaces = () => workspaces.filter(w => w.here);
+
+// descendants is every workspace made under workspace id, at any depth
+// (worktrees agents made, then theirs), parents before children.
+function descendants(id) {
+  const out = [];
+  const walk = pid => {
+    for (const w of workspaces) {
+      if (w.parent === pid && w.id !== id && !out.includes(w)) {
+        out.push(w);
+        walk(w.id);
+      }
+    }
+  };
+  walk(id);
+  return out;
+}
 
 /* ---------- group by ---------- */
 
 const GROUP_BY_KEY = 'punk0.chatsGroupBy';
-// How the list is cut into sections: 'groups' your groups, then the rest by
-// day; 'date' by day only; 'agent' by agent; 'none' one list, newest first.
-const GROUP_BY = { groups: 'Your groups', date: 'Date', agent: 'Agent', none: 'None' };
-let groupBy = GROUP_BY[localStorage.getItem(GROUP_BY_KEY)] ? localStorage.getItem(GROUP_BY_KEY) : 'groups';
+// How the list is cut into sections: 'workspace' the workspace each chat
+// belongs to, then the rest by day; 'date' by day only; 'agent' by agent;
+// 'none' one list, newest first. (A stored 'groups', the name groups this
+// replaced, is not a key here, so it falls back to workspace.)
+const GROUP_BY = { workspace: 'Workspace', date: 'Date', agent: 'Agent', none: 'None' };
+let groupBy = GROUP_BY[localStorage.getItem(GROUP_BY_KEY)] ? localStorage.getItem(GROUP_BY_KEY) : 'workspace';
 
 function setGroupBy(by) {
   groupBy = by;
@@ -161,8 +186,8 @@ function setGroupBy(by) {
   render();
 }
 
-// sections cuts list into {key?, group?, name, chats}: key makes it fold,
-// group makes it one of yours (renamed and deleted on its header).
+// sections cuts list into {key?, ws?, name, chats}: key makes it fold, ws
+// makes it a workspace's (a + and its worktrees' links on the header).
 function sections(list) {
   const byDay = chats => {
     const out = [];
@@ -178,9 +203,13 @@ function sections(list) {
   if (groupBy === 'agent') {
     return [...new Set(list.map(r => r.agent))].map(a => ({ key: 'a:' + a, name: agentName(a), chats: list.filter(r => r.agent === a) }));
   }
+  // This folder's workspaces show even with no chats, so their + is there.
+  const known = new Map(workspaces.map(w => [w.id, w]));
+  const here = hereWorkspaces();
+  const others = [...new Set(list.map(r => r.workspace))].filter(id => known.has(id) && !known.get(id).here).map(id => known.get(id));
   return [
-    ...[...new Set(list.map(r => r.group).filter(Boolean))].map(g => ({ key: 'g:' + g, group: g, name: g, chats: list.filter(r => r.group === g) })),
-    ...byDay(list.filter(r => !r.group)),
+    ...[...here, ...others].map(w => ({ key: 'w:' + w.id, ws: w, name: w.name, chats: list.filter(r => r.workspace === w.id) })),
+    ...byDay(list.filter(r => !known.has(r.workspace))),
   ];
 }
 
@@ -249,26 +278,51 @@ function rowHTML(r) {
 function render() {
   if (openKey && !rows.some(r => chatKey(r) === openKey)) openKey = preview = null;
   const list = shown();
-  if (!list.length) {
+  // Narrowed (a search, a filter), a workspace with no match is left out;
+  // else this folder's workspaces show empty too, so their + is there.
+  const narrowed = !!query || filtersOn() > 0;
+  const secs = sections(list).filter(s => !narrowed || s.chats.length);
+  if (!secs.some(s => s.chats.length || s.ws)) {
     const why = note || (query ? 'No chat matches' : rows.length ? 'No chat matches the filter' : 'No chats in this folder yet');
     listEl.innerHTML = `<p class="chat-none">${esc(why)}</p>`;
     return;
   }
   let html = '';
-  for (const s of sections(list)) {
+  for (const s of secs) {
     const open = !s.key || !!query || !folded.has(s.key);
     if (s.key) {
-      html += `<div class="chat-group" data-fold="${esc(s.key)}"${s.group ? ` data-group="${esc(s.group)}" title="Right-click to rename or delete"` : ''} role="button" tabindex="0" aria-expanded="${open}">` +
-        `${ICON_CHEV}<span class="chat-gname">${esc(s.name)}</span><span class="chat-gcount">${s.chats.length}</span></div>`;
+      const w = s.ws;
+      const branch = w?.kind === 'worktree' && w.branch ? `<span class="chat-gbranch">⑂ ${esc(w.branch)}</span>` : '';
+      const add = w ? `<button type="button" class="chat-gadd" data-act="ws-new" data-ws="${esc(w.id)}" title="New chat in ${esc(w.name)}" aria-label="New chat in ${esc(w.name)}" aria-haspopup="menu">+</button>` : '';
+      html += `<div class="chat-group" data-fold="${esc(s.key)}" role="button" tabindex="0" aria-expanded="${open}">` +
+        `${ICON_CHEV}<span class="chat-gname">${esc(s.name)}</span>${branch}<span class="chat-gcount">${s.chats.length}</span>${add}</div>`;
+      if (open && w) {
+        html += descendants(w.id).map(d =>
+          `<button type="button" class="chat-wslink" data-wslink="${esc(d.id)}" title="Open the editor of ${esc(d.name)}">⑂ ${esc(d.name)}</button>`).join('');
+      }
     } else if (s.name) {
-      html += `<div class="chat-group"><span class="chat-gname">${s.name}</span></div>`;
+      html += `<div class="chat-group"><span class="chat-gname">${esc(s.name)}</span></div>`;
     }
     if (open) html += s.chats.map(rowHTML).join('');
   }
   listEl.innerHTML = html;
 }
 
+// openEditorOf opens workspace w's editor in its own window, the one the
+// orchestrator's sidebar opens it in too.
+function openEditorOf(w) {
+  if (w?.href) window.open(parentURL(w.href), 'punk0-w-' + w.id);
+}
+
 function onClick(e) {
+  const add = e.target.closest('[data-act="ws-new"]');
+  if (add) {
+    // A new chat in that workspace: the terminal's agent choices, here.
+    const at = add.getBoundingClientRect();
+    return showMenu(at.right, at.bottom + 4, agentChoices(add.dataset.ws).map(c => ({ label: c.label, run: c.run })));
+  }
+  const link = e.target.closest('[data-wslink]');
+  if (link) return openEditorOf(workspaces.find(w => w.id === link.dataset.wslink));
   const fold = e.target.closest('[data-fold]');
   if (fold) return toggleFold(fold.dataset.fold);
   const el = e.target.closest('[data-key]');
@@ -282,7 +336,7 @@ function onClick(e) {
 
 function onKey(e) {
   const fold = e.target.closest?.('[data-fold]');
-  if (fold && (e.key === 'Enter' || e.key === ' ')) {
+  if (fold && e.target === fold && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
     return toggleFold(fold.dataset.fold);
   }
@@ -300,33 +354,21 @@ function onContextMenu(e) {
   if (openMenuFor(e.target, e.clientX, e.clientY)) e.preventDefault();
 }
 
-// openMenuFor opens the menu of the chat or group header el is in, at x, y,
-// and says whether there was one.
+// openMenuFor opens the menu of the chat el is in, at x, y, and says
+// whether there was one.
 function openMenuFor(el, x, y) {
-  const header = el.closest('.chat-group');
-  if (header) {
-    const name = header.dataset.group;
-    if (!name) return false; // a day's or an agent's: nothing to rename
-    const at = `.chat-group[data-group="${CSS.escape(name)}"]`;
-    showMenu(x, y, [
-      { label: 'Rename group…', run: () => askName('Rename group', name, at, to => to !== name && setGroup(rows.filter(r => r.group === name), to)) },
-      { label: 'Delete group', note: 'its chats stay', run: () => setGroup(rows.filter(r => r.group === name), '') },
-    ]);
-    return true;
-  }
   const row = el.closest('[data-key]');
   const r = row && rows.find(x => chatKey(x) === row.dataset.key);
   if (!r) return false;
   const at = `[data-key="${CSS.escape(chatKey(r))}"] .chat-line`;
-  // Every group of this folder, the chat's own ticked: picking another moves
-  // the chat there.
+  // Every workspace at this folder, the chat's own ticked: picking another
+  // moves the chat there.
   showMenu(x, y, [
     { label: r.open ? 'Show' : 'Resume', run: () => resume(r) },
     { sep: true },
-    { head: 'Add to group' },
-    ...groupNames().map(n => ({ label: n, checked: r.group === n, run: () => r.group !== n && setGroup([r], n) })),
-    { label: 'New group…', run: () => askName('New group', '', at, n => setGroup([r], n)) },
-    ...(r.group ? [{ label: `Remove from “${r.group}”`, run: () => setGroup([r], '') }] : []),
+    { head: 'Move to workspace' },
+    ...hereWorkspaces().map(w => ({ label: w.name, checked: r.workspace === w.id, run: () => r.workspace !== w.id && moveChat(r, w.id) })),
+    ...(project ? [{ label: 'New workspace…', run: () => askName('New workspace', '', 'Workspace name', at, n => newWorkspaceFor(r, n)) }] : []),
     { sep: true },
     { label: 'Copy id', run: () => copyID(r) },
   ]);
@@ -363,10 +405,10 @@ function showMenu(x, y, items, owner = '') {
   menuEl.querySelector('button')?.focus();
 }
 
-// askName turns the menu into a name box under the row or header it names
-// (anchor, a selector: the list may have been drawn again meanwhile), as
-// wide as it: Enter takes the name, Esc drops it.
-function askName(heading, value, anchor, done) {
+// askName turns the menu into a name box under the row it names (anchor, a
+// selector: the list may have been drawn again meanwhile), as wide as it:
+// Enter takes the name, Esc drops it.
+function askName(heading, value, placeholder, anchor, done) {
   const label = document.createElement('div');
   label.className = 'chat-menu-head';
   label.textContent = heading;
@@ -375,7 +417,7 @@ function askName(heading, value, anchor, done) {
   input.type = 'text';
   input.maxLength = 60;
   input.value = value;
-  input.placeholder = 'Group name';
+  input.placeholder = placeholder;
   input.spellcheck = false;
   input.setAttribute('aria-label', heading);
   input.addEventListener('keydown', e => {
@@ -410,22 +452,34 @@ function closeMenu() {
   $('#chats-filter').setAttribute('aria-expanded', 'false');
 }
 
-// setGroup puts chats in group name, or out of theirs with ''.
-async function setGroup(chats, name) {
-  if (!chats.length) return;
-  let res;
+// post sends body to path as JSON; an unreachable punk0 answers like a
+// refusal.
+async function post(path, body) {
   try {
-    res = await getJSON('api/history/group', {
+    return await getJSON(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chats: chats.map(r => ({ agent: r.agent, id: r.id })), group: name }),
+      body: JSON.stringify(body),
     });
   } catch {
-    res = { ok: false, data: { error: 'Could not reach punk0' } };
+    return { ok: false, data: { error: 'Could not reach punk0' } };
   }
-  if (!res.ok) return showToast('!', res.data?.error || 'Could not change the group', 4000);
-  if (name) folded.delete('g:' + name);
+}
+
+// moveChat makes chat r belong to workspace wsId, and opens its section.
+async function moveChat(r, wsId) {
+  const res = await post('api/history/workspace', { chats: [{ agent: r.agent, id: r.id }], workspace: wsId });
+  if (!res.ok) return showToast('!', res.data?.error || 'Could not move the chat', 4000);
+  folded.delete('w:' + wsId);
   refreshChats();
+}
+
+// newWorkspaceFor makes a local workspace named name in this project (it
+// shares this folder) and moves chat r into it.
+async function newWorkspaceFor(r, name) {
+  const res = await post(`api/projects/${encodeURIComponent(project.id)}/workspaces`, { name, worktree: false });
+  if (!res.ok || !res.data?.id) return showToast('!', res.data?.error || 'Could not make the workspace', 4000);
+  moveChat(r, res.data.id);
 }
 
 // togglePreview opens one preview at a time; closing it drops what was read,
@@ -452,19 +506,13 @@ async function togglePreview(r) {
 }
 
 // resume opens the chat in a tab of this folder (or the tab already on it)
-// and shows it in the terminal.
+// and shows it in the terminal. When its workspace is at another folder,
+// the tab is that folder's editor's to show, so that editor opens instead.
 async function resume(r) {
-  let res;
-  try {
-    res = await getJSON('api/history/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent: r.agent, id: r.id }),
-    });
-  } catch {
-    res = { ok: false, data: { error: 'Could not reach punk0' } };
-  }
+  const res = await post('api/history/open', { agent: r.agent, id: r.id });
   if (!res.ok || !res.data?.tab) return showToast('!', res.data?.error || 'Could not resume this chat', 5000);
+  const w = workspaces.find(x => x.id === res.data.workspace);
+  if (w && !w.here && w.href) return openEditorOf(w);
   openTab(res.data.tab);
 }
 

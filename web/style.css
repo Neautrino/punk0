@@ -797,6 +797,23 @@ body.right-zoom #btn-right-zoom .ic-restore { display: block; }
 .chat-group[aria-expanded="true"] .chat-chev { transform: rotate(90deg); }
 .chat-gname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-gcount { flex: none; margin-left: auto; font: 400 10.5px var(--mono); letter-spacing: 0; }
+/* A worktree workspace's branch beside its name, and the header's + (a new
+   chat in that workspace), shown on hover or focus like the row actions. */
+.chat-gbranch { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 10.5px var(--mono); letter-spacing: 0; text-transform: none; color: var(--accent-fg, var(--accent)); }
+.chat-gadd {
+  flex: none; width: 18px; height: 18px; margin-right: -4px; padding: 0; border: 0; border-radius: var(--r);
+  background: none; color: var(--dim); font: 400 14px/1 var(--mono); cursor: pointer; opacity: 0;
+}
+.chat-group:hover .chat-gadd, .chat-group:focus-within .chat-gadd, .chat-gadd:focus-visible { opacity: 1; }
+.chat-gadd:hover { background: var(--bg3); color: var(--fg); }
+/* A worktree made under the section's workspace: a link to its editor. */
+.chat-wslink {
+  display: block; width: calc(100% - 12px); margin: 0 6px; padding: 2px 8px 2px 22px; border: 0; border-radius: var(--r);
+  background: none; text-align: left; font: 11.5px var(--mono); color: var(--dim); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-wslink:hover { background: var(--bg3); color: var(--fg); }
+.chat-wslink:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 /* A chat: one line, the whole of it a button that expands its preview; the
    page's buttons (.chat-acts) cover the agent and age on hover or focus,
    leaving the chevron. */

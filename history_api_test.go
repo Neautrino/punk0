@@ -41,11 +41,27 @@ func historyWorkbench(t *testing.T) (*workbench, string, string) {
 
 type historyList struct {
 	Sessions []struct {
-		Agent, ID, Dir, Title, Workspace, Group string
-		Messages                                int
-		Updated                                 int64
-		Open, Missing, Removed                  bool
+		Agent, ID, Dir, Title, Workspace string
+		Messages                         int
+		Updated                          int64
+		Open, Missing, Removed           bool
 	}
+	Workspaces []struct {
+		ID, Name, Kind, Parent, Href string
+		Here                         bool
+	}
+	Project struct{ ID, Name string }
+}
+
+// workspaceOf is the workspace a listing files chat id under, "" when it
+// lists no such chat.
+func (l historyList) workspaceOf(id string) string {
+	for _, s := range l.Sessions {
+		if s.ID == id {
+			return s.Workspace
+		}
+	}
+	return ""
 }
 
 func TestHistoryListScopesAndSearch(t *testing.T) {
@@ -179,60 +195,108 @@ func TestHistoryRemovesAChatAndSyncRestoresIt(t *testing.T) {
 	}
 }
 
-// A group is a name kept on its chats: putting chats in a name groups them,
-// moving them to another name renames it, the empty name takes them out, and
-// deleting a chat for good forgets its group too. Groups outlive a restart.
-func TestHistoryGroupsChats(t *testing.T) {
+// Two local workspaces share the project folder, and each keeps its own
+// chats: a tab files its chat under its workspace, which outlives the tab, so
+// listing and resuming go back there and not to the folder's first
+// workspace. Moving a chat files it elsewhere for good, a session the agent
+// reports later never overrides that, and removing a workspace or deleting
+// a chat forgets what was filed.
+func TestHistoryFilesChatsUnderTheirWorkspace(t *testing.T) {
 	wb, claude, repo := historyWorkbench(t)
-	const a, b = "77777777-0000-4000-8000-000000000007", "88888888-0000-4000-8000-000000000008"
-	writeChat(t, claude, "-repo", a, claudeUser(repo, a, "first"))
-	writeChat(t, claude, "-repo", b, claudeUser(repo, b, "second"))
-	group := func(body string) {
-		t.Helper()
-		if w := postJSON(t, wb, "/api/history/group", body); w.Code != http.StatusOK {
-			t.Fatalf("group %s: %d %s", body, w.Code, w.Body.String())
-		}
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
 	}
-	groups := func() map[string]string {
+	main := p.Workspaces[0]
+	hmm, _, err := wb.records.AddWorkspace(p.ID, WorkspaceOptions{Name: "hmm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := wb.records.AddTab(hmm.ID, tabClaude, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	orch := tab.Session
+	const loose = "77777777-0000-4000-8000-000000000007"
+	writeChat(t, claude, "-repo", orch, claudeUser(repo, orch, "auth orchestrator"))
+	writeChat(t, claude, "-repo", loose, claudeUser(repo, loose, "ran in a terminal"))
+	if err := wb.records.RemoveTab(tab.ID); err != nil {
+		t.Fatal(err)
+	}
+	folder := wbItemID("dir", repo)
+	list := func() historyList {
 		t.Helper()
-		var list historyList
-		getJSON(t, wb, "/api/history?scope=all", &list)
-		out := map[string]string{}
-		for _, s := range list.Sessions {
-			out[s.ID] = s.Group
-		}
-		return out
+		var l historyList
+		getJSON(t, wb, "/api/history?scope=workspace&ws="+folder, &l)
+		return l
 	}
 
-	group(`{"chats":[{"agent":"claude","id":"` + a + `"},{"agent":"claude","id":"` + b + `"}],"group":"  auth work "}`)
-	if g := groups(); g[a] != "auth work" || g[b] != "auth work" {
-		t.Fatalf("after grouping: %v", g)
+	l := list()
+	if l.workspaceOf(orch) != hmm.ID || l.workspaceOf(loose) != main.ID {
+		t.Fatalf("after its tab closed: orchestrator in %q, terminal chat in %q (main %s, hmm %s)", l.workspaceOf(orch), l.workspaceOf(loose), main.ID, hmm.ID)
 	}
-	group(`{"chats":[{"agent":"claude","id":"` + a + `"},{"agent":"claude","id":"` + b + `"}],"group":"login"}`)
-	group(`{"chats":[{"agent":"claude","id":"` + b + `"}],"group":""}`)
-	if g := groups(); g[a] != "login" || g[b] != "" {
-		t.Fatalf("after renaming and taking one out: %v", g)
+	if len(l.Workspaces) != 2 || !l.Workspaces[0].Here || l.Workspaces[1].ID != hmm.ID || l.Project.ID != p.ID {
+		t.Fatalf("the editor's workspaces: %+v, project %+v", l.Workspaces, l.Project)
 	}
 
+	var opened struct{ Tab, Workspace string }
+	decode(t, postJSON(t, wb, "/api/history/open", `{"agent":"claude","id":"`+orch+`"}`).Body, &opened)
+	if opened.Workspace != hmm.ID {
+		t.Fatalf("resumed in %q, want hmm %s", opened.Workspace, hmm.ID)
+	}
+	// The editor's terminal spans the folder's workspaces and names each.
+	var tabs struct {
+		Tabs []struct{ ID, Workspace, WorkspaceName string }
+	}
+	getJSON(t, wb, "/api/workspaces/"+folder+"/tabs", &tabs)
+	if len(tabs.Tabs) != 1 || tabs.Tabs[0].ID != opened.Tab || tabs.Tabs[0].Workspace != hmm.ID || tabs.Tabs[0].WorkspaceName != "hmm" {
+		t.Fatalf("the folder's tabs: %+v", tabs.Tabs)
+	}
+
+	if w := postJSON(t, wb, "/api/history/workspace", `{"chats":[{"agent":"claude","id":"`+loose+`"}],"workspace":"`+hmm.ID+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("move: %d %s", w.Code, w.Body.String())
+	}
+	// A session reported later from main's tab does not take it back.
+	mainTab, err := wb.records.AddTab(main.ID, tabClaude, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wb.records.NoteSession(mainTab.ID, loose); err != nil {
+		t.Fatal(err)
+	}
+	if l := list(); l.workspaceOf(loose) != hmm.ID {
+		t.Fatalf("moved chat listed in %q", l.workspaceOf(loose))
+	}
 	again, err := OpenRecords(wb.records.home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g := again.ChatGroups(); g[chatKey("claude", a)] != "login" || len(g) != 1 {
-		t.Fatalf("groups after a restart: %v", g)
+	if got := again.ChatWorkspaces()[chatKey("claude", loose)]; got != hmm.ID {
+		t.Fatalf("after a restart the moved chat is in %q", got)
 	}
 
-	if w := reqJSON(t, wb, "DELETE", "/api/history/claude/"+a, ""); w.Code != http.StatusOK {
+	for body, code := range map[string]int{
+		`{"chats":[],"workspace":"` + hmm.ID + `"}`:                              http.StatusBadRequest,
+		`{"chats":[{"agent":"claude"}],"workspace":"` + hmm.ID + `"}`:            http.StatusBadRequest,
+		`{"chats":[{"agent":"claude","id":"` + loose + `"}],"workspace":""}`:     http.StatusBadRequest,
+		`{"chats":[{"agent":"claude","id":"` + loose + `"}],"workspace":"nope"}`: http.StatusNotFound,
+	} {
+		if w := postJSON(t, wb, "/api/history/workspace", body); w.Code != code {
+			t.Fatalf("%s: %d, want %d", body, w.Code, code)
+		}
+	}
+
+	if w := reqJSON(t, wb, "DELETE", "/api/history/claude/"+loose, ""); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
 	}
-	if g := wb.records.ChatGroups(); len(g) != 0 {
-		t.Fatalf("a deleted chat kept its group: %v", g)
+	if _, ok := wb.records.ChatWorkspaces()[chatKey("claude", loose)]; ok {
+		t.Fatal("a deleted chat kept its workspace")
 	}
-
-	for _, bad := range []string{`{"chats":[],"group":"x"}`, `{"chats":[{"agent":"claude"}],"group":"x"}`, `{"chats":[{"agent":"claude","id":"` + b + `"}],"group":"` + strings.Repeat("x", 61) + `"}`} {
-		if w := postJSON(t, wb, "/api/history/group", bad); w.Code != http.StatusBadRequest {
-			t.Fatalf("%s: %d", bad, w.Code)
-		}
+	if _, err := wb.records.RemoveWorkspace(hmm.ID, RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if l := list(); l.workspaceOf(orch) != main.ID {
+		t.Fatalf("with hmm gone the orchestrator is listed in %q, want the folder's %s", l.workspaceOf(orch), main.ID)
 	}
 }
 

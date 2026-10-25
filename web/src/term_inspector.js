@@ -204,6 +204,9 @@ function showIdleNotice(text) {
 function renderTabChips() {
   if (!tabListEl) return;
   tabListEl.innerHTML = '';
+  // A folder's tabs may belong to several workspaces at it (main, hmm…):
+  // then each chip says whose it is.
+  const several = new Set(workspaceTabs.map(t => t.workspace)).size > 1;
 
   for (const t of workspaceTabs) {
     const btn = document.createElement('button');
@@ -213,7 +216,7 @@ function renderTabChips() {
     btn.appendChild(dot);
 
     const name = document.createElement('span');
-    name.textContent = getTabLabel(t);
+    name.textContent = (several && t.workspaceName ? t.workspaceName + ' · ' : '') + getTabLabel(t);
     btn.appendChild(name);
 
     const closeBtn = document.createElement('span');
@@ -231,8 +234,9 @@ function renderTabChips() {
   }
 }
 
-export async function addTab(kind) {
-  const wsId = getWorkspaceID();
+// addTab starts a kind tab in workspace wsId, else this editor's (a folder
+// backend id: the orchestrator picks its workspace).
+export async function addTab(kind, wsId = getWorkspaceID()) {
   if (!wsId) {
     showToast('!', 'No workspace ID available');
     return;
@@ -246,6 +250,7 @@ export async function addTab(kind) {
     });
     if (res.ok) {
       const added = await res.json();
+      showTerminal();
       await refreshWorkspaceTabs();
       attachTab(added.id);
     } else {
@@ -256,9 +261,6 @@ export async function addTab(kind) {
     showToast('!', `Failed to create ${kind} tab: ` + err.message);
   }
 }
-
-export const addShellTab = () => addTab('shell');
-export const addAgentTab = (kind = 'claude') => addTab(kind);
 
 export async function removeTab(tabId) {
   try {
@@ -386,6 +388,14 @@ const SUPPORTED_AGENTS = [
   { id: 'cursor-agent', label: 'Cursor Agent', icon: '◆' },
 ];
 
+// agentChoices is the + menu's items for a new tab in workspace wsId (else
+// this editor's): an agent each, then a shell. Chats' section headers offer
+// them too, for a chat in that section's workspace.
+export const agentChoices = wsId => [
+  ...SUPPORTED_AGENTS.map(a => ({ icon: `<span class="agent-icon${a.id === 'claude' ? ' claude' : ''}">${a.icon}</span>`, label: a.label, run: () => addTab(a.id, wsId || undefined) })),
+  { icon: '<span class="agent-icon">$</span>', label: 'Shell', run: () => addTab('shell', wsId || undefined) },
+];
+
 // The + menu: a tab for each agent, then a shell.
 function toggleAgentMenu(e) {
   e.stopPropagation();
@@ -393,22 +403,18 @@ function toggleAgentMenu(e) {
     agentMenuEl.hidden = true;
     return;
   }
-  const item = (icon, label, run) => {
+  agentMenuEl.replaceChildren(...agentChoices().map(c => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.setAttribute('role', 'menuitem');
-    btn.innerHTML = `${icon}<span>${label}</span>`;
+    btn.innerHTML = `${c.icon}<span>${c.label}</span>`;
     btn.onclick = ev => {
       ev.stopPropagation();
       agentMenuEl.hidden = true;
-      run();
+      c.run();
     };
     return btn;
-  };
-  agentMenuEl.replaceChildren(
-    ...SUPPORTED_AGENTS.map(a => item(`<span class="agent-icon${a.id === 'claude' ? ' claude' : ''}">${a.icon}</span>`, a.label, () => addAgentTab(a.id))),
-    item('<span class="agent-icon">$</span>', 'Shell', addShellTab),
-  );
+  }));
   agentMenuEl.hidden = false;
 }
 

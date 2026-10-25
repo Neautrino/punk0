@@ -38,6 +38,7 @@ type WorkspaceOptions struct {
 	Base     string `json:"base"`     // what a new branch starts from; "" is the default branch
 	Agent    string `json:"agent"`    // the first tab: a tabAgents key or "shell"; "" opens no tab
 	LSP      bool   `json:"lsp"`      // language servers on in the new folder
+	Parent   string `json:"parent"`   // a worktree's: the project's workspace it is listed under
 
 	fetched bool // Base was just fetched (a pull request's head)
 }
@@ -163,8 +164,14 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		if wt == nil {
 			return pl, fmt.Errorf("%s is not a worktree of this project", tildePath(dir))
 		}
+		// The name comes from the worktree, not from the user, so one a
+		// workspace has already gets a number rather than refusing: an agent's
+		// worktree on branch "login" beside a workspace "login" is common.
 		if pl.Name = wt.Branch; pl.Name == "" {
 			pl.Name = filepath.Base(wt.Path)
+		}
+		for n, stem := 2, pl.Name; names[pl.Name]; n++ {
+			pl.Name = stem + "-" + strconv.Itoa(n)
 		}
 		return planWorktree(pl, *wt, open, names)
 	}
@@ -287,6 +294,14 @@ func planWorktree(pl WorkspacePlan, wt worktreeInfo, open map[string]string, nam
 // warning says so. A worktree that exists is adopted where it is, with no
 // git; one a workspace runs in already returns that workspace, unchanged.
 func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspace, warning string, err error) {
+	if o.Parent != "" {
+		if !o.Worktree {
+			return nil, "", errors.New("only a worktree can be listed under another workspace")
+		}
+		if p, _ := r.workspaceProject(o.Parent); p != projectID {
+			return nil, "", fmt.Errorf("workspace %q is not one of this project's", o.Parent)
+		}
+	}
 	pl, err := r.plan(projectID, o)
 	if err != nil {
 		return nil, "", err
@@ -345,11 +360,17 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 		w = newWorkspace(pl.Name, kindWorktree, pl.Dir, pl.Branch)
 		// A folder under <state>/worktrees is punk0's even when adopted back.
 		w.Adopted = pl.Action == planAdopt && !strings.HasPrefix(pl.Dir, r.worktrees+string(filepath.Separator))
+		// Checked before git ran; a parent removed meanwhile leaves it on top.
+		if slices.ContainsFunc(p.Workspaces, func(x *Workspace) bool { return x.ID == o.Parent }) {
+			w.Parent = o.Parent
+		}
 	} else {
 		w = newWorkspace(pl.Name, kindLocal, pl.Dir, "")
 	}
 	if o.Agent != "" {
-		w.Tabs = append(w.Tabs, newTab(o.Agent, w.Dir, ""))
+		t := newTab(o.Agent, w.Dir, "")
+		w.Tabs = append(w.Tabs, t)
+		r.fileTabLocked(w, t)
 	}
 	if o.LSP {
 		r.lsp[w.Dir] = true

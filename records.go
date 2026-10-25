@@ -74,9 +74,11 @@ type Project struct {
 }
 
 // Workspace is one feature: the tabs running in Dir, and the files the editor
-// view shows, which come from the punk0 child serving that folder. Title,
-// Group, Pinned, Archived, Active and Created are a scratch chat's only
-// (scratch.go).
+// view shows, which come from the punk0 child serving that folder. A
+// workspace is also the group its chats belong to (Records.chatWorkspaces).
+// Parent is the workspace a worktree is listed under: the one whose agent made
+// it (attribution.go), or where the user moved it. Title, Group, Pinned,
+// Archived, Active and Created are a scratch chat's only (scratch.go).
 type Workspace struct {
 	ID       string       `json:"id"`
 	Name     string       `json:"name"`
@@ -90,6 +92,7 @@ type Workspace struct {
 	Active   int64        `json:"active,omitempty"`   // unix ms of the last prompt, else of creation
 	Created  int64        `json:"created,omitempty"`  // unix ms the chat was made
 	Adopted  bool         `json:"adopted,omitempty"`  // worktree kind: a folder punk0 did not make, used where it is
+	Parent   string       `json:"parent,omitempty"`   // worktree kind: the workspace it is listed under, "" at the top
 	Tabs     []*Satellite `json:"tabs"`
 }
 
@@ -192,12 +195,15 @@ type Records struct {
 	// it (newworkspace.go).
 	mu           sync.Mutex
 	projects     []*Project
-	removed      []RemovedProject  // newest first, at most maxRemoved
-	lsp          map[string]bool   // folder -> language servers wanted there
-	hookBase     string            // this punk0's loopback URL, for PUNK0_HOOK_URL
-	creating     map[string]bool   // folders and names of workspaces whose git is running
-	removedChats []string          // chats Chats mode leaves out, agent+":"+id
-	chatGroups   map[string]string // chat (agent+":"+id) -> the group it is in, by name
+	removed      []RemovedProject // newest first, at most maxRemoved
+	lsp          map[string]bool  // folder -> language servers wanted there
+	hookBase     string           // this punk0's loopback URL, for PUNK0_HOOK_URL
+	creating     map[string]bool  // folders and names of workspaces whose git is running
+	removedChats []string         // chats Chats mode leaves out, agent+":"+id
+	// chatWorkspaces files each chat (agent+":"+id) under the workspace it
+	// belongs to, past its tab's life: local workspaces share a folder, so the
+	// folder alone cannot tell them apart.
+	chatWorkspaces map[string]string
 
 	chats *chatHistory // the agents' own chat history (history.go), read-only after this
 }
@@ -220,8 +226,8 @@ type recordsFile struct {
 	LSP      map[string]bool  `json:"lsp,omitempty"`
 	// RemovedChats keeps the JSON key hiddenChats: records.json files already
 	// on disk hold it, and `removed` is the removed projects' key.
-	RemovedChats []string          `json:"hiddenChats,omitempty"`
-	ChatGroups   map[string]string `json:"chatGroups,omitempty"`
+	RemovedChats   []string          `json:"hiddenChats,omitempty"`
+	ChatWorkspaces map[string]string `json:"chatWorkspaces,omitempty"`
 }
 
 // OpenRecords loads <state>/records.json; a missing file is an empty list. A
@@ -251,9 +257,9 @@ func OpenRecords(home string) (*Records, error) {
 		}
 	}
 	r.projects, r.removed, r.removedChats = f.Projects, f.Removed, f.RemovedChats
-	r.chatGroups = f.ChatGroups
-	if r.chatGroups == nil {
-		r.chatGroups = map[string]string{}
+	r.chatWorkspaces = f.ChatWorkspaces
+	if r.chatWorkspaces == nil {
+		r.chatWorkspaces = map[string]string{}
 	}
 	for k, v := range f.LSP {
 		r.lsp[k] = v
@@ -261,6 +267,12 @@ func OpenRecords(home string) (*Records, error) {
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
 			r.adoptLocked(w)
+			// Chats opened before membership was kept belong where their tab is.
+			for _, t := range w.Tabs {
+				if k := chatKey(t.Kind, t.Session); t.Session != "" && r.chatWorkspaces[k] == "" {
+					r.chatWorkspaces[k] = w.ID
+				}
+			}
 		}
 	}
 	if !slices.ContainsFunc(r.projects, func(p *Project) bool { return p.Scratch }) {
@@ -300,7 +312,7 @@ func (r *Records) adoptLocked(w *Workspace) {
 }
 
 func (r *Records) saveLocked() error {
-	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats, ChatGroups: r.chatGroups})
+	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats, ChatWorkspaces: r.chatWorkspaces})
 }
 
 type projectView struct {
@@ -308,6 +320,9 @@ type projectView struct {
 	Git        bool            `json:"git"`
 	Branch     string          `json:"branch"`
 	Workspaces []workspaceView `json:"workspaces"`
+	// Found is the repository's linked worktrees no workspace runs in: made
+	// by an agent or a terminal, offered to be added.
+	Found []worktreeInfo `json:"found"`
 }
 
 type workspaceView struct {
@@ -328,6 +343,10 @@ type tabView struct {
 	Name    string `json:"name"`
 	Running bool   `json:"running"`
 	Status  string `json:"status"`
+	// The workspace the tab is in, for a list that spans a folder's
+	// workspaces (Records.TabsAt).
+	Workspace     string `json:"workspace,omitempty"`
+	WorkspaceName string `json:"workspaceName,omitempty"`
 
 	tab *Satellite
 }
@@ -359,13 +378,18 @@ func (r *Records) List() []projectView {
 			}
 		}
 	}
+	dirs := r.workspaceDirsLocked()
 	r.mu.Unlock()
 
 	// git runs outside the lock: listing must not wait behind a worktree add.
 	for i := range views {
 		pv := &views[i]
+		pv.Found = []worktreeInfo{}
 		if pv.Git = gitAvailable(pv.Dir); pv.Git {
 			pv.Branch = gitBranch(pv.Dir)
+			if !pv.Scratch {
+				pv.Found = foundWorktrees(pv.Dir, dirs)
+			}
 		}
 		for j := range pv.Workspaces {
 			wv := &pv.Workspaces[j]
@@ -561,6 +585,9 @@ func (r *Records) RemoveProject(id string, o RemoveOptions) (string, error) {
 	}
 	closeAll(tabs)
 	r.projects = slices.Delete(r.projects, i, i+1)
+	for _, w := range p.Workspaces {
+		r.refileLocked(w.ID, "")
+	}
 	r.forgetRemovedLocked(p.Dir)
 	// A trashed project can never be added back, so it is not offered.
 	if !o.Files {
@@ -676,8 +703,9 @@ type RemoveOptions struct {
 	Confirm string
 }
 
-// RemoveWorkspace stops the workspace's tabs and forgets it; workspaces
-// listed under it move to the top level. Without o.Files nothing on disk is
+// RemoveWorkspace stops the workspace's tabs and forgets it; the worktrees
+// listed under it and the chats filed under it move up to its parent (to the
+// top, and to no workspace, when it has none). Without o.Files nothing on disk is
 // touched: a worktree keeps its folder, its branch and its registration in
 // the repository, so adding the project again finds it. With o.Files the
 // worktree is removed with git, never with os.RemoveAll, and only once
@@ -747,6 +775,13 @@ func (r *Records) RemoveWorkspace(id string, o RemoveOptions) (note string, err 
 		}
 	}
 	p.Workspaces = slices.Delete(p.Workspaces, i, i+1)
+	// What was under it moves up a level: its worktrees, and its chats.
+	for _, c := range p.Workspaces {
+		if c.Parent == w.ID {
+			c.Parent = w.Parent
+		}
+	}
+	r.refileLocked(w.ID, w.Parent)
 	return "", r.saveLocked()
 }
 
@@ -837,6 +872,7 @@ func (r *Records) AddTab(workspaceID, kind, session string) (*Satellite, error) 
 	t := newTab(kind, w.Dir, session)
 	w.Tabs = append(w.Tabs, t)
 	r.adoptLocked(w)
+	r.fileTabLocked(w, t)
 	return t, r.saveLocked()
 }
 
@@ -946,30 +982,6 @@ func (r *Records) RestoreAllChats() (int, error) {
 	}
 	r.removedChats = nil
 	return n, r.saveLocked()
-}
-
-// GroupChats puts chats (agent+":"+id) in the group named name, or out of
-// theirs when name is "". A group is only its name, kept on its chats: it
-// lasts while a chat is in it, so renaming one moves its chats to the new
-// name and deleting it takes them all out.
-func (r *Records) GroupChats(keys []string, name string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, k := range keys {
-		if name == "" {
-			delete(r.chatGroups, k)
-		} else {
-			r.chatGroups[k] = name
-		}
-	}
-	return r.saveLocked()
-}
-
-// ChatGroups is each grouped chat's group, for one listing.
-func (r *Records) ChatGroups() map[string]string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return maps.Clone(r.chatGroups)
 }
 
 // CloseSessionTabs stops and forgets every tab resuming one chat, wherever it

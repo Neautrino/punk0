@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
@@ -445,65 +446,148 @@ func previewLines(path string, fn func(line []byte)) error {
 /* ---------- HTTP ---------- */
 
 // historyView is a chat as Chats mode lists it: what is on disk, plus
-// what punk0 knows about the folder it ran in.
+// what punk0 knows about the folder it ran in and the workspace it is in.
 type historyView struct {
 	chatSession
 	Removed   bool   `json:"removed,omitempty"` // taken out of the list by the user
 	Open      bool   `json:"open,omitempty"`    // a tab resumes this chat
 	Missing   bool   `json:"missing,omitempty"` // its folder is gone
 	Workspace string `json:"workspace,omitempty"`
-	Group     string `json:"group,omitempty"` // the Chats group it is in (Records.GroupChats)
+}
+
+// historyWorkspace is a workspace an editor's Chats mode cuts its list by:
+// here when it runs in the editor's folder, else the workspace a listed chat
+// is filed under, or a worktree listed under one of those; Href opens its
+// folder's editor.
+type historyWorkspace struct {
+	wsRef
+	Here bool   `json:"here,omitempty"`
+	Href string `json:"href"`
 }
 
 // handleHistory lists the agents' chats, most recently updated first.
 // scope=workspace|project|all is how wide the list is around ws (a
 // workspace id, or an editor's folder backend id: WorkspaceAt), q matches
-// the title, and removed=1 lists the chats the user removed as well.
+// the title, and removed=1 lists the chats the user removed as well. A chat is
+// in a scope when it ran in one of the scope's folders or is filed under one
+// of the workspaces there (Records.chatWorkspaces); its workspace is the one
+// it is filed under, else the first running in its folder. scope=workspace
+// also names the workspaces its list is cut by, and the project.
 func (wb *workbench) handleHistory(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
 		return
 	}
 	q := r.URL.Query()
-	var sessions []chatSession
-	switch scope := cmp.Or(q.Get("scope"), "all"); scope {
-	case "all":
-		sessions = wb.records.Chats().Sessions(r.Context())
-	case "workspace", "project":
-		ws := wb.records.WorkspaceAt(q.Get("ws"))
-		if ws == nil {
-			fail(w, http.StatusNotFound, "workspace not found")
-			return
-		}
-		dirs := []string{ws.Dir}
-		if scope == "project" {
-			dirs = wb.records.ProjectDirsOf(ws.ID)
-		}
-		sessions = wb.records.Chats().SessionsIn(dirs...)
-	default:
+	scope := cmp.Or(q.Get("scope"), "all")
+	if scope != "all" && scope != "workspace" && scope != "project" {
 		fail(w, http.StatusBadRequest, "unknown scope "+scope)
 		return
 	}
-	removed, byDir, tabs, groups := wb.records.RemovedChats(), wb.records.WorkspaceByDir(), wb.records.TabSessions(), wb.records.ChatGroups()
+	refs := wb.records.WorkspaceRefs()
+	known := make(map[string]wsRef, len(refs))
+	for _, x := range refs {
+		known[x.ID] = x
+	}
+	members := wb.records.ChatWorkspaces()
+	sessions := wb.records.Chats().Sessions(r.Context())
+	var ws *Workspace
+	here := map[string]bool{} // the scope's workspaces
+	if scope != "all" {
+		if ws = wb.records.WorkspaceAt(q.Get("ws")); ws == nil {
+			fail(w, http.StatusNotFound, "workspace not found")
+			return
+		}
+		pid := known[ws.ID].Project
+		folders := map[string]bool{}
+		for _, x := range refs {
+			if (scope == "project" && x.Project == pid) || (scope == "workspace" && sameDir(x.Dir, ws.Dir)) {
+				here[x.ID] = true
+				folders[resolvePath(filepath.Clean(x.Dir))] = true
+			}
+		}
+		if scope == "project" {
+			for _, d := range wb.records.ProjectDirsOf(ws.ID) {
+				folders[resolvePath(filepath.Clean(d))] = true
+			}
+		}
+		sessions = slices.DeleteFunc(sessions, func(c chatSession) bool {
+			return !folders[resolvePath(filepath.Clean(c.Dir))] && !here[members[chatKey(c.Agent, c.ID)]]
+		})
+	}
+	removed, byDir, tabs := wb.records.RemovedChats(), wb.records.WorkspaceByDir(), wb.records.TabSessions()
 	match, showRemoved := strings.ToLower(strings.TrimSpace(q.Get("q"))), q.Get("removed") == "1"
 	out := make([]historyView, 0, len(sessions))
 	for _, c := range sessions {
-		gone := removed[chatKey(c.Agent, c.ID)]
+		key := chatKey(c.Agent, c.ID)
+		gone := removed[key]
 		if gone && !showRemoved {
 			continue
 		}
 		if match != "" && !strings.Contains(strings.ToLower(c.Title), match) {
 			continue
 		}
+		in := members[key]
+		if _, ok := known[in]; !ok {
+			in = workspaceIn(byDir, c.Dir)
+		}
 		out = append(out, historyView{
 			chatSession: c,
 			Removed:     gone,
-			Open:        tabs[chatKey(c.Agent, c.ID)] != "",
+			Open:        tabs[key] != "",
 			Missing:     !isDir(c.Dir),
-			Workspace:   workspaceIn(byDir, c.Dir),
-			Group:       groups[chatKey(c.Agent, c.ID)],
+			Workspace:   in,
 		})
 	}
-	writeJSON(w, map[string]any{"sessions": out})
+	if scope != "workspace" {
+		writeJSON(w, map[string]any{"sessions": out})
+		return
+	}
+	writeJSON(w, map[string]any{
+		"sessions":   out,
+		"workspaces": wb.historyWorkspaces(refs, here, out),
+		"project":    map[string]string{"id": known[ws.ID].Project, "name": known[ws.ID].ProjectName},
+	})
+}
+
+// historyWorkspaces lists, in records order, the workspaces an editor's list
+// is cut by: the folder's own (here), every worktree listed under them at any
+// depth, and every workspace a listed chat is filed under.
+func (wb *workbench) historyWorkspaces(refs []wsRef, here map[string]bool, rows []historyView) []historyWorkspace {
+	want := maps.Clone(here)
+	for _, row := range rows {
+		if row.Workspace != "" {
+			want[row.Workspace] = true
+		}
+	}
+	for _, x := range refs {
+		if x.Parent != "" && descendsFrom(refs, x.Parent, here) {
+			want[x.ID] = true
+		}
+	}
+	out := []historyWorkspace{}
+	for _, x := range refs {
+		if want[x.ID] {
+			out = append(out, historyWorkspace{wsRef: x, Here: here[x.ID], Href: wb.childHref(wbItemID("dir", x.Dir))})
+		}
+	}
+	return out
+}
+
+// descendsFrom reports whether workspace id is one of here or listed, at any
+// depth, under one of them. The walk is bounded by len(refs), so a cycle the
+// records could not hold anyway cannot loop.
+func descendsFrom(refs []wsRef, id string, here map[string]bool) bool {
+	for range refs {
+		if here[id] {
+			return true
+		}
+		i := slices.IndexFunc(refs, func(x wsRef) bool { return x.ID == id })
+		if i < 0 || refs[i].Parent == "" {
+			return false
+		}
+		id = refs[i].Parent
+	}
+	return false
 }
 
 // handleHistoryRemove takes a chat out of Chats mode or lists it again.
@@ -546,10 +630,10 @@ func (wb *workbench) handleHistorySync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"restored": n})
 }
 
-// handleHistoryGroup puts chats in a group, by its name, or takes them out
-// of theirs (group ""). Renaming a group is putting all its chats in the new
-// name, deleting it taking them all out: the chats themselves stay.
-func (wb *workbench) handleHistoryGroup(w http.ResponseWriter, r *http.Request) {
+// handleHistoryMove files chats under a workspace: Move to workspace in an
+// editor's Chats mode. The chats themselves, and any tab on them, stay as
+// they are; resuming one later opens it in that workspace.
+func (wb *workbench) handleHistoryMove(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return
 	}
@@ -558,15 +642,10 @@ func (wb *workbench) handleHistoryGroup(w http.ResponseWriter, r *http.Request) 
 			Agent string `json:"agent"`
 			ID    string `json:"id"`
 		} `json:"chats"`
-		Group string `json:"group"`
+		Workspace string `json:"workspace"`
 	}
-	if readJSONBody(r, &body) != nil || len(body.Chats) == 0 {
-		fail(w, http.StatusBadRequest, "chats are required")
-		return
-	}
-	name := strings.TrimSpace(body.Group)
-	if len([]rune(name)) > 60 {
-		fail(w, http.StatusBadRequest, "a group name is at most 60 characters")
+	if readJSONBody(r, &body) != nil || len(body.Chats) == 0 || body.Workspace == "" {
+		fail(w, http.StatusBadRequest, "chats and workspace are required")
 		return
 	}
 	keys := make([]string, 0, len(body.Chats))
@@ -577,11 +656,11 @@ func (wb *workbench) handleHistoryGroup(w http.ResponseWriter, r *http.Request) 
 		}
 		keys = append(keys, chatKey(c.Agent, c.ID))
 	}
-	if err := wb.records.GroupChats(keys, name); err != nil {
-		fail(w, http.StatusInternalServerError, err.Error())
+	if err := wb.records.MoveChats(keys, body.Workspace); err != nil {
+		failRecord(w, err)
 		return
 	}
-	writeJSON(w, map[string]any{"group": name})
+	writeJSON(w, map[string]any{"workspace": body.Workspace})
 }
 
 // handleHistoryPreview reads the chat's last exchange and how it started, on
@@ -645,7 +724,12 @@ func (wb *workbench) handleHistoryOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dir := resolvePath(filepath.Clean(c.Dir))
-	ws := wb.records.Workspace(workspaceIn(wb.records.WorkspaceByDir(), dir))
+	// The workspace it is filed under, when that runs in its folder: local
+	// workspaces share one, and the first of them is only the fallback.
+	ws := wb.records.Workspace(wb.records.ChatWorkspaces()[chatKey(c.Agent, c.ID)])
+	if ws == nil || !sameDir(ws.Dir, dir) {
+		ws = wb.records.Workspace(workspaceIn(wb.records.WorkspaceByDir(), dir))
+	}
 	if ws == nil {
 		wb.offerFolder(w, dir)
 		return
@@ -736,12 +820,12 @@ func (wb *workbench) handleHistoryDelete(w http.ResponseWriter, r *http.Request)
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Nothing left to remember: not its removal, not its group.
+	// Nothing left to remember: not its removal, not its workspace.
 	if err := wb.records.RemoveChat(agent, id, false); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := wb.records.GroupChats([]string{chatKey(agent, id)}, ""); err != nil {
+	if err := wb.records.ForgetChat(agent, id); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}

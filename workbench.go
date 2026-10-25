@@ -354,6 +354,8 @@ type workbench struct {
 
 	cpu cpuMeter // per-process CPU deltas for /api/resources
 
+	attr worktreeAttribution // agents' worktrees seen in hooks, and gone ones (attribution.go)
+
 	mux *http.ServeMux
 }
 
@@ -376,6 +378,7 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, er
 	}
 	wb.routes()
 	go wb.reapIdle()
+	go wb.reapWorktrees()
 	return wb, nil
 }
 
@@ -448,6 +451,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("POST "+wb.route("/api/projects/{id}/prune"), wb.handleWorktreePrune)
 	wb.mux.HandleFunc("GET "+wb.route("/api/projects/{id}/changes-summary"), wb.handleChangesSummary)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
+	wb.mux.HandleFunc("PATCH "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceUpdate)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
 	wb.mux.HandleFunc("GET "+wb.route("/api/workspaces/{id}/tabs"), wb.handleWorkspaceTabs)
@@ -461,7 +465,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("GET "+wb.route("/api/history/{agent}/{id}/preview"), wb.handleHistoryPreview)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/open"), wb.handleHistoryOpen)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/remove"), wb.handleHistoryRemove)
-	wb.mux.HandleFunc("POST "+wb.route("/api/history/group"), wb.handleHistoryGroup)
+	wb.mux.HandleFunc("POST "+wb.route("/api/history/workspace"), wb.handleHistoryMove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/sync"), wb.handleHistorySync)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/history/{agent}/{id}"), wb.handleHistoryDelete)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
@@ -1561,16 +1565,21 @@ func (wb *workbench) handleChatGroupRemove(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, map[string]any{"ok": true})
 }
 
+// handleWorkspaceTabs lists a workspace's tabs, or, for an editor's folder
+// backend id, the tabs of every workspace in that folder (Records.TabsAt).
 func (wb *workbench) handleWorkspaceTabs(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
 		return
 	}
-	ws := wb.records.WorkspaceAt(r.PathValue("id"))
-	if ws == nil {
+	tabs, ok := wb.records.TabsAt(r.PathValue("id"))
+	if !ok {
 		fail(w, http.StatusNotFound, "workspace not found")
 		return
 	}
-	writeJSON(w, map[string]any{"tabs": wb.records.View(ws).Tabs})
+	if tabs == nil {
+		tabs = []tabView{}
+	}
+	writeJSON(w, map[string]any{"tabs": tabs})
 }
 
 func (wb *workbench) handleTabAdd(w http.ResponseWriter, r *http.Request) {
