@@ -41,7 +41,7 @@ help:
 
 web:
 	@echo "Bundling web assets..."
-	@node ./scripts/build-web.js
+	@bun ./scripts/build-web.js
 
 build-web: web
 
@@ -50,11 +50,14 @@ build: web
 	go build -trimpath -ldflags="$(LDFLAGS)" -o punk0 .
 	@echo "Built ./punk0 ($$(du -h punk0 | cut -f1))"
 
+dist:
+	./build.sh
+
 test: web
 	go test -v ./...
 
 web-check:
-	@node ./scripts/check-web.js
+	@bun ./scripts/check-web.js
 
 test-short:
 	go test -short ./...
@@ -94,7 +97,7 @@ publish:
 	@echo "Tag v$(CLEAN_VERSION) has been created."
 	@echo ""
 	@echo "To publish to GitHub and trigger release workflow, run:"
-	@echo "  git push origin master --tags"
+	@echo "  git push origin main --tags"
 
 clean:
 	rm -f punk0 web/app.js web/workbench.js

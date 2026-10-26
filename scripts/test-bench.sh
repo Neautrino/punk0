@@ -82,7 +82,7 @@ fi
 # Ensure web assets are bundled
 if [ ! -f "web/app.js" ] || [ ! -s "web/app.js" ]; then
   echo -e "${C_DIM}Bundling web assets before running verification...${C_RESET}"
-  node scripts/build-web.js >/dev/null 2>&1 || true
+  bun scripts/build-web.js >/dev/null 2>&1 || true
 fi
 
 TEMP_DIR="$(mktemp -d -t px0-test-bench-XXXXXX)"

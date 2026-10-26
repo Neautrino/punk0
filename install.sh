@@ -1,17 +1,18 @@
 #!/usr/bin/env sh
-# Universal installer script for px0 (https://px0.ai)
+# Universal installer script for punk0 (https://github.com/Neautrino/punk0)
 #
 # Usage:
-#   curl -fsSL https://px0.ai/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh
 #
 # Environment variables:
-#   VERSION      - target version to install (e.g. "0.1.0" or "latest", default: "latest")
-#   INSTALL_DIR  - target directory for binary (default: /usr/local/bin or ~/.local/bin)
-#   PX0_REPO     - GitHub repository (default: px0-ai/px0)
+#   VERSION           - target version to install (e.g. "0.1.0" or "latest", default: "latest")
+#   PUNK0_INSTALL_DIR - target directory for binary (default: /usr/local/bin or ~/.local/bin)
+#   INSTALL_DIR       - same, when PUNK0_INSTALL_DIR is unset
+#   PUNK0_REPO        - GitHub repository (default: Neautrino/punk0)
 
 set -eu
 
-REPO="${PX0_REPO:-px0-ai/px0}"
+REPO="${PUNK0_REPO:-Neautrino/punk0}"
 VERSION="${VERSION:-latest}"
 
 # Color codes
@@ -98,9 +99,9 @@ if [ "$VERSION" = "latest" ]; then
   if [ -n "$RELEASE_JSON" ]; then
     VERSION=$(printf '%s' "$RELEASE_JSON" | grep '"tag_name":' | head -n 1 | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/' | sed 's/^v//')
   fi
-  # Fallback to VERSION file in master if release API returned empty/rate-limited
+  # Fallback to VERSION file in main if release API returned empty/rate-limited
   if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
-    VERSION=$(fetch "https://raw.githubusercontent.com/${REPO}/master/VERSION" 2>/dev/null | tr -d ' \r\n' || true)
+    VERSION=$(fetch "https://raw.githubusercontent.com/${REPO}/main/VERSION" 2>/dev/null | tr -d ' \r\n' || true)
   fi
 fi
 
@@ -120,7 +121,7 @@ is_writable() {
   d="$1"
   [ -z "$d" ] && return 1
   mkdir -p "$d" 2>/dev/null || return 1
-  test_file="$d/.px0_test_$$"
+  test_file="$d/.punk0_test_$$"
   if ( : > "$test_file" ) 2>/dev/null; then
     rm -f "$test_file" 2>/dev/null
     return 0
@@ -129,8 +130,8 @@ is_writable() {
 }
 
 # Priority 1: Explicit user overrides
-if [ -n "${PX0_INSTALL_DIR:-}" ] && is_writable "$PX0_INSTALL_DIR"; then
-  TARGET_DIR="$PX0_INSTALL_DIR"
+if [ -n "${PUNK0_INSTALL_DIR:-}" ] && is_writable "$PUNK0_INSTALL_DIR"; then
+  TARGET_DIR="$PUNK0_INSTALL_DIR"
 elif [ -n "${INSTALL_DIR:-}" ] && is_writable "$INSTALL_DIR"; then
   TARGET_DIR="$INSTALL_DIR"
 fi
@@ -169,12 +170,12 @@ if [ -z "$TARGET_DIR" ]; then
     TARGET_DIR="/usr/local/bin"
   else
     # Emergency fallback (e.g. read-only HOME without sudo)
-    TARGET_DIR="${TMPDIR:-/tmp}/px0/bin"
+    TARGET_DIR="${TMPDIR:-/tmp}/punk0/bin"
     mkdir -p "$TARGET_DIR" 2>/dev/null || true
   fi
 fi
 
-TARGET_BIN="${TARGET_DIR}/px0${BINARY_EXT}"
+TARGET_BIN="${TARGET_DIR}/punk0${BINARY_EXT}"
 
 # 6. Check existing installation and version
 ACTION="Installed"
@@ -191,7 +192,7 @@ if [ -f "$TARGET_BIN" ] || [ -L "$TARGET_BIN" ]; then
   fi
 
   if [ -n "$CURRENT_VER" ]; then
-    log_step "Found existing px0 v${CURRENT_VER} at ${BOLD}${TARGET_BIN}${RESET}"
+    log_step "Found existing punk0 v${CURRENT_VER} at ${BOLD}${TARGET_BIN}${RESET}"
     ACTION="Updated"
   else
     log_step "Replacing existing binary at ${BOLD}${TARGET_BIN}${RESET}..."
@@ -199,17 +200,17 @@ if [ -f "$TARGET_BIN" ] || [ -L "$TARGET_BIN" ]; then
   fi
 fi
 
-BINARY_NAME="px0-${VERSION}-${OS}-${ARCH}${BINARY_EXT}"
+BINARY_NAME="punk0-${VERSION}-${OS}-${ARCH}${BINARY_EXT}"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${VERSION}/${BINARY_NAME}"
 
 # Fallback download url without 'v' prefix in tag if needed
 FALLBACK_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}"
 
-TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t 'px0install')"
+TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t 'punk0install')"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 log_step "Downloading ${BINARY_NAME}..."
-TMP_FILE="${TMP_DIR}/px0"
+TMP_FILE="${TMP_DIR}/punk0"
 
 if ! fetch_file "$DOWNLOAD_URL" "$TMP_FILE" 2>/dev/null; then
   if ! fetch_file "$FALLBACK_URL" "$TMP_FILE" 2>/dev/null; then
@@ -236,9 +237,9 @@ else
 fi
 
 if [ "$ACTION" = "Updated" ]; then
-  log_info "px0 successfully updated (v${CURRENT_VER} -> v${VERSION})!"
+  log_info "punk0 successfully updated (v${CURRENT_VER} -> v${VERSION})!"
 else
-  log_info "px0 v${VERSION} installed successfully!"
+  log_info "punk0 v${VERSION} installed successfully!"
 fi
 
 # Check if TARGET_DIR is in PATH
@@ -297,7 +298,7 @@ if [ "$PATH_ALREADY_CONFIGURED" = "0" ]; then
     if has_path_configured "$SHELL_RC" "$TARGET_DIR"; then
       log_info "PATH addition already present in ${SHELL_RC}."
     else
-      printf "\n# Added by px0 installer\nexport PATH=\"%s:\$PATH\"\n" "$TARGET_DIR" >> "$SHELL_RC"
+      printf "\n# Added by punk0 installer\nexport PATH=\"%s:\$PATH\"\n" "$TARGET_DIR" >> "$SHELL_RC"
       log_info "Added ${TARGET_DIR} to PATH in ${SHELL_RC}"
     fi
   else
@@ -306,7 +307,7 @@ if [ "$PATH_ALREADY_CONFIGURED" = "0" ]; then
   fi
 fi
 
-printf "\nRun %b to get started:\n\n" "${BOLD}px0${RESET}"
-printf "  ${AMBER}px0${RESET}                                      # launch workbench\n"
-printf "  ${AMBER}px0 .${RESET}                                    # load current directory\n"
-printf "  ${AMBER}px0 https://github.com/org/repo/pull/123${RESET} # review PR in an isolated worktree\n\n"
+printf "\nRun %b to get started:\n\n" "${BOLD}punk0${RESET}"
+printf "  ${AMBER}punk0${RESET}                                      # open the agents page\n"
+printf "  ${AMBER}punk0 .${RESET}                                    # add the current directory as a project\n"
+printf "  ${AMBER}punk0 https://github.com/org/repo/pull/123${RESET} # review PR in an isolated worktree\n\n"

@@ -1,7 +1,8 @@
 .git
 dist/
 bench-repos/
-px0
+punk0
+punk0.exe
 *.test
 *.prof
 *.out

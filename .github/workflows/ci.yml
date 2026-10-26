@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -20,18 +22,16 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-      # web/app.js is not committed — regenerate it so go:embed has a fresh
-      # bundle, and prove the source modules bundle cleanly.
+      # web/app.js and web/workbench.js are not committed — regenerate them so
+      # go:embed has fresh bundles, and prove the source modules bundle cleanly.
       - name: Bundle web assets
-        run: node ./scripts/build-web.js
+        run: bun ./scripts/build-web.js
 
-      - name: Build px0
-        run: go build -trimpath -o px0 .
+      - name: Build punk0
+        run: go build -trimpath -o punk0 .
 
       - name: Run tests
         run: go test -v ./...

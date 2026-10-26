@@ -1,9 +1,9 @@
 # Stage 1: Bundle frontend assets
-FROM node:20-alpine AS web-builder
+FROM oven/bun:1-alpine AS web-builder
 WORKDIR /build
 COPY scripts/ ./scripts/
 COPY web/ ./web/
-RUN node ./scripts/build-web.js
+RUN bun ./scripts/build-web.js
 
 # Stage 2: Build static Go binary
 FROM golang:1.25-alpine AS go-builder
@@ -11,8 +11,9 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Copy generated bundle into web/
+# Copy the generated bundles into web/
 COPY --from=web-builder /build/web/app.js ./web/app.js
+COPY --from=web-builder /build/web/workbench.js ./web/workbench.js
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /bin/punk0 .
 
 # Stage 3: Minimal runtime container

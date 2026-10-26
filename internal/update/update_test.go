@@ -47,14 +47,14 @@ func TestCompareSemver(t *testing.T) {
 func TestFetchLatestRelease(t *testing.T) {
 	fakeRelease := githubRelease{
 		TagName: "v0.2.0",
-		Name:    "px0 v0.2.0",
+		Name:    "punk0 v0.2.0",
 		Assets: []struct {
 			Name               string `json:"name"`
 			BrowserDownloadURL string `json:"browser_download_url"`
 		}{
 			{
 				Name:               "punk0-0.2.0-linux-amd64",
-				BrowserDownloadURL: "https://example.com/download/px0",
+				BrowserDownloadURL: "https://example.com/download/punk0",
 			},
 		},
 	}
@@ -110,7 +110,7 @@ func TestUpdateStatePersistence(t *testing.T) {
 }
 
 func TestDownloadVerifiedAsset(t *testing.T) {
-	assetName := "px0-0.2.0-linux-amd64"
+	assetName := "punk0-0.2.0-linux-amd64"
 	binary := []byte("test binary")
 	digest := fmt.Sprintf("%x", sha256.Sum256(binary))
 
@@ -137,7 +137,7 @@ func TestDownloadVerifiedAsset(t *testing.T) {
 }
 
 func TestDownloadVerifiedAssetRejectsMismatch(t *testing.T) {
-	assetName := "px0-0.2.0-linux-amd64"
+	assetName := "punk0-0.2.0-linux-amd64"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/checksums.txt" {
 			_, _ = fmt.Fprintf(w, "%064x  %s\n", 0, assetName)
@@ -154,7 +154,7 @@ func TestDownloadVerifiedAssetRejectsMismatch(t *testing.T) {
 }
 
 func TestChecksumForRejectsMissingAndMalformedEntries(t *testing.T) {
-	assetName := "px0-0.2.0-linux-amd64"
+	assetName := "punk0-0.2.0-linux-amd64"
 	for name, checksums := range map[string]string{
 		"missing":   fmt.Sprintf("%064x  other-asset\n", 0),
 		"malformed": "not-a-sha256  " + assetName + "\n",
@@ -175,9 +175,9 @@ func TestRunSelfUpdateMock(t *testing.T) {
 		ext = ".exe"
 	}
 
-	newBinPath := filepath.Join(tmpDir, "new-px0"+ext)
+	newBinPath := filepath.Join(tmpDir, "new-punk0"+ext)
 	// Write a shell script / batch script or copy existing current test binary
-	script := "#!/bin/sh\necho 'px0 0.2.0 (" + runtime.GOOS + "/" + runtime.GOARCH + ")'\n"
+	script := "#!/bin/sh\necho 'punk0 0.2.0 (" + runtime.GOOS + "/" + runtime.GOARCH + ")'\n"
 	if err := os.WriteFile(newBinPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to write fake binary: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestRunSelfUpdateMock(t *testing.T) {
 		case "/repos/test/punk0/releases/latest":
 			rel := githubRelease{
 				TagName: "v0.2.0",
-				Name:    "px0 v0.2.0",
+				Name:    "punk0 v0.2.0",
 				Assets: []struct {
 					Name               string `json:"name"`
 					BrowserDownloadURL string `json:"browser_download_url"`
@@ -239,12 +239,12 @@ func TestInstallUpdate(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	execPath := filepath.Join(tmpDir, "punk0")
-	if err := os.WriteFile(execPath, []byte("#!/bin/sh\necho 'px0 0.1.0'\n"), 0o755); err != nil {
+	if err := os.WriteFile(execPath, []byte("#!/bin/sh\necho 'punk0 0.1.0'\n"), 0o755); err != nil {
 		t.Fatalf("failed to seed current binary: %v", err)
 	}
 
 	assetName := fmt.Sprintf("punk0-0.2.0-%s-%s", runtime.GOOS, runtime.GOARCH)
-	newBinary := []byte("#!/bin/sh\necho 'px0 0.2.0'\n")
+	newBinary := []byte("#!/bin/sh\necho 'punk0 0.2.0'\n")
 	digest := fmt.Sprintf("%x", sha256.Sum256(newBinary))
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

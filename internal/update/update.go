@@ -228,12 +228,12 @@ func downloadVerifiedAsset(client *http.Client, assetURL, checksumURL, assetName
 }
 
 // AutoUpdate runs in a background goroutine after the server has already
-// started listening, so px0 never makes a network call before serving. It
+// started listening, so punk0 never makes a network call before serving. It
 // reuses the cached daily-check state so it only hits the network once
 // every updateCheckPeriod; on the days it does check, a newer release is
 // installed in place and a notice is printed on the CLI instructing the user
-// to restart px0. Any failure (network, permissions, verification) is non-fatal:
-// px0 continues running on the current binary.
+// to restart punk0. Any failure (network, permissions, verification) is non-fatal:
+// punk0 continues running on the current binary.
 func AutoUpdate(currentVersion string) {
 	if ui.Quiet {
 		return
@@ -304,7 +304,7 @@ func AutoUpdate(currentVersion string) {
 	ui.Status("ok", fmt.Sprintf("punk0 has been updated to v%s", latestVer), "restart punk0 to see the latest changes", 0, os.Stdout)
 }
 
-// RunSelfUpdate implements px0 --update.
+// RunSelfUpdate implements punk0 -update.
 func RunSelfUpdate(currentVer string) error {
 	repo := getRepoName()
 	ui.Status("step", fmt.Sprintf("checking for updates from %s...", repo), "", 0, os.Stdout)
