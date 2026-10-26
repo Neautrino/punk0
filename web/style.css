@@ -448,7 +448,6 @@ a.cc-who:hover { color: var(--accent-fg); }
 .git-head-btn:hover { color: var(--fg); background: var(--bg4); }
 .git-head-btn[hidden] { display: none; }
 .git-counts { font: 11px var(--mono); }
-.git-forge-token, .git-forge-token:hover { color: var(--mark-active); }
 .git-panel-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; }
 
 /* Commit area: always-visible commit message textarea + warnings + action buttons. */
@@ -1004,10 +1003,6 @@ body.right-zoom #btn-right-zoom .ic-restore { display: block; }
   padding: 1px 4px;
   border-radius: 3px;
   border: 1px solid var(--line);
-}
-.pill-sparkle {
-  color: var(--accent);
-  font-size: 13px;
 }
 /* Quick Edit Floating Box and Inline Diff */
 .quick-edit-container {

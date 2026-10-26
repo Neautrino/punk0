@@ -228,10 +228,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
   height: 30px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 12px;
   background: var(--bg2); border-bottom: 1px solid var(--line); user-select: none;
 }
-.o-title {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--dim);
-}
 .o-head-acts, .o-acts { margin-left: auto; flex: none; display: flex; align-items: center; gap: 2px; }
 .o-head .mini, .o-acts .mini {
   margin-left: 0; width: 20px; height: 20px; padding: 0;
