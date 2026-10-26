@@ -15,7 +15,7 @@ endif
 # Clean leading 'v' from version string if present
 CLEAN_VERSION := $(patsubst v%,%,$(TARGET_VERSION))
 
-POSTHOG_KEY ?= $(PX0_POSTHOG_KEY)
+POSTHOG_KEY ?= $(PUNK0_POSTHOG_KEY)
 LDFLAGS := -s -w
 ifneq ($(strip $(POSTHOG_KEY)),)
   LDFLAGS += -X main.posthogKey=$(strip $(POSTHOG_KEY))

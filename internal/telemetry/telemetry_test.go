@@ -23,12 +23,12 @@ func TestIsOptedOut(t *testing.T) {
 	os.Unsetenv("DO_NOT_TRACK")
 
 	for _, val := range []string{"0", "false", "off", "no"} {
-		os.Setenv("PX0_TELEMETRY", val)
+		os.Setenv("PUNK0_TELEMETRY", val)
 		if !isOptedOut(false) {
-			t.Fatalf("expected isOptedOut to respect PX0_TELEMETRY=%s", val)
+			t.Fatalf("expected isOptedOut to respect PUNK0_TELEMETRY=%s", val)
 		}
 	}
-	os.Unsetenv("PX0_TELEMETRY")
+	os.Unsetenv("PUNK0_TELEMETRY")
 
 	if isOptedOut(false) {
 		t.Fatal("expected isOptedOut to be false when no opt-out is set")
@@ -91,10 +91,10 @@ func TestTelemetrySessionLifecycle(t *testing.T) {
 	}))
 	defer server.Close()
 
-	os.Setenv("PX0_POSTHOG_KEY", "phc_test_key_xyz")
-	os.Setenv("PX0_POSTHOG_HOST", server.URL)
-	defer os.Unsetenv("PX0_POSTHOG_KEY")
-	defer os.Unsetenv("PX0_POSTHOG_HOST")
+	os.Setenv("PUNK0_POSTHOG_KEY", "phc_test_key_xyz")
+	os.Setenv("PUNK0_POSTHOG_HOST", server.URL)
+	defer os.Unsetenv("PUNK0_POSTHOG_KEY")
+	defer os.Unsetenv("PUNK0_POSTHOG_HOST")
 
 	tel := New("", "0.1.0", false)
 	if !tel.enabled {
@@ -174,7 +174,7 @@ func TestTelemetrySessionLifecycle(t *testing.T) {
 }
 
 func TestTelemetryDisabledWithoutKey(t *testing.T) {
-	os.Unsetenv("PX0_POSTHOG_KEY")
+	os.Unsetenv("PUNK0_POSTHOG_KEY")
 	tel := New("", "0.1.0", false)
 	if tel.enabled {
 		t.Fatal("expected telemetry disabled without key")
@@ -191,7 +191,7 @@ func TestGetOrGenerateDistinctID(t *testing.T) {
 	os.Setenv("HOME", tempHome)
 	defer os.Setenv("HOME", origHome)
 
-	// First call generates new ID and saves to tempHome/.px0/anonymous_id
+	// First call generates new ID and saves to tempHome/.punk0/anonymous_id
 	id1 := getOrGenerateDistinctID()
 	if len(id1) < 16 {
 		t.Fatalf("expected >= 16 byte id, got %q", id1)
@@ -204,11 +204,11 @@ func TestGetOrGenerateDistinctID(t *testing.T) {
 	}
 
 	// Corrupt file (too short) -> regenerates
-	idPath := tempHome + "/.px0/anonymous_id"
+	idPath := tempHome + "/.punk0/anonymous_id"
 	_ = os.WriteFile(idPath, []byte("short"), 0644)
 	id3 := getOrGenerateDistinctID()
-	if id3 == "short" || len(id3) < 16 {
-		t.Errorf("expected regenerated id, got %q", id3)
+	if id3 == "short" || len(id3) < 16 || id3 == id1 {
+		t.Errorf("expected a regenerated id, got %q (first was %q)", id3, id1)
 	}
 
 	// UUID generator
@@ -224,10 +224,10 @@ func TestTelemetryServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	os.Setenv("PX0_POSTHOG_KEY", "phc_test_err_key")
-	os.Setenv("PX0_POSTHOG_HOST", server.URL)
-	defer os.Unsetenv("PX0_POSTHOG_KEY")
-	defer os.Unsetenv("PX0_POSTHOG_HOST")
+	os.Setenv("PUNK0_POSTHOG_KEY", "phc_test_err_key")
+	os.Setenv("PUNK0_POSTHOG_HOST", server.URL)
+	defer os.Unsetenv("PUNK0_POSTHOG_KEY")
+	defer os.Unsetenv("PUNK0_POSTHOG_HOST")
 
 	tel := New("", "0.1.0", false)
 	tel.Track("test_event", nil)

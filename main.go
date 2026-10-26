@@ -202,7 +202,9 @@ func main() {
 	tInit := time.Now()
 	ix := NewIndex(root)
 	lsp := newLSPManager(root, !*noLSP)
-	tel := telemetry.New(posthogKey, version, *noTelemetry)
+	// telemetry.enabled: false in the settings file opts out like -no-telemetry.
+	cfgTel := settings.Read().TelemetryEnabled
+	tel := telemetry.New(posthogKey, version, *noTelemetry || (cfgTel != nil && !*cfgTel))
 	defer tel.Close("normal")
 
 	configuredBasePath := "/"

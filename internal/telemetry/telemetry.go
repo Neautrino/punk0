@@ -44,9 +44,9 @@ type Service struct {
 }
 
 // isOptedOut checks common opt-out indicators:
-// - CLI flag --no-telemetry
+// - CLI flag -no-telemetry (main.go also sets it for telemetry.enabled: false)
 // - Environment variable DO_NOT_TRACK=1
-// - Environment variable PX0_TELEMETRY=0 / false / off / no
+// - Environment variable PUNK0_TELEMETRY=0 / false / off / no
 func isOptedOut(flagNoTelemetry bool) bool {
 	if flagNoTelemetry {
 		return true
@@ -54,7 +54,7 @@ func isOptedOut(flagNoTelemetry bool) bool {
 	if os.Getenv("DO_NOT_TRACK") == "1" {
 		return true
 	}
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("PX0_TELEMETRY")))
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("PUNK0_TELEMETRY")))
 	if v == "0" || v == "false" || v == "off" || v == "no" {
 		return true
 	}
@@ -98,7 +98,7 @@ func getOrGenerateDistinctID() string {
 
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("px0-%d", time.Now().UnixNano())
+		return fmt.Sprintf("punk0-%d", time.Now().UnixNano())
 	}
 	id := hex.EncodeToString(b)
 
@@ -127,11 +127,11 @@ func generateUUID() string {
 // New creates and starts a background telemetry worker.
 func New(defaultKey, version string, flagNoTelemetry bool) *Service {
 	key := strings.TrimSpace(defaultKey)
-	if envKey := strings.TrimSpace(os.Getenv("PX0_POSTHOG_KEY")); envKey != "" {
+	if envKey := strings.TrimSpace(os.Getenv("PUNK0_POSTHOG_KEY")); envKey != "" {
 		key = envKey
 	}
 
-	host := strings.TrimRight(strings.TrimSpace(os.Getenv("PX0_POSTHOG_HOST")), "/")
+	host := strings.TrimRight(strings.TrimSpace(os.Getenv("PUNK0_POSTHOG_HOST")), "/")
 	if host == "" {
 		host = defaultPostHogHost
 	}
@@ -175,7 +175,7 @@ func (t *Service) Track(event string, props map[string]any) {
 	// Enrich with standard PostHog environment and session properties
 	props["distinct_id"] = t.distinctID
 	props["$session_id"] = t.sessionID
-	props["$lib"] = "px0"
+	props["$lib"] = "punk0"
 	props["$lib_version"] = t.version
 	props["$os"] = runtime.GOOS
 	props["$arch"] = runtime.GOARCH
@@ -212,7 +212,7 @@ func (t *Service) Close(reason string) {
 		props := map[string]any{
 			"distinct_id":      t.distinctID,
 			"$session_id":      t.sessionID,
-			"$lib":             "px0",
+			"$lib":             "punk0",
 			"$lib_version":     t.version,
 			"$os":              runtime.GOOS,
 			"$arch":            runtime.GOARCH,
@@ -253,7 +253,7 @@ func (t *Service) worker() {
 }
 
 func (t *Service) send(evt telemetryEvent) {
-	debug := os.Getenv("PX0_TELEMETRY_DEBUG") == "1"
+	debug := os.Getenv("PUNK0_TELEMETRY_DEBUG") == "1"
 
 	payload := map[string]any{
 		"api_key":    t.apiKey,
@@ -278,7 +278,7 @@ func (t *Service) send(evt telemetryEvent) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "px0/"+t.version)
+	req.Header.Set("User-Agent", "punk0/"+t.version)
 
 	resp, err := t.client.Do(req)
 	if err != nil {
