@@ -7,10 +7,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -40,16 +39,31 @@ const viewerQueue = 256
 // claudeCommand starts Claude Code in a claude tab's new shell, with the
 // hook settings punk0 writes (hook.go) so the tab can show what the agent is
 // doing. bin is the program with any user arguments.
-func claudeCommand(bin string) string {
-	return bin + " --settings " + shellQuote(filepath.Join(workbenchStateDir(), "claude-hooks.json"))
+func claudeCommand(bin string, sx shellSyntax) string {
+	return bin + " --settings " + sx.quote(claudeHooksPath())
+}
+
+// tty is a shell on a terminal: a PTY on Unix (term_unix.go), a pseudo
+// console on Windows (term_windows.go).
+type tty interface {
+	io.ReadWriter
+	Resize(cols, rows uint16) error
+	Pid() int
+	// Wait returns once the shell has exited and been reaped.
+	Wait()
+	// Hangup ends the shell and what it started, and closes the terminal so
+	// a pending Read returns, even if a stray job still holds it open. It
+	// may be called again, and after the shell has exited.
+	Hangup()
+	// Foreground reports whether the shell itself is what the terminal is
+	// talking to: no job runs in front of it.
+	Foreground() bool
 }
 
 // Shell is a tab's shell in a PTY. It outlives websockets: viewers attach
 // and detach while the shell and any agent in it keep running.
 type Shell struct {
-	cmd  *exec.Cmd
-	ptmx *os.File
-	stop context.CancelFunc
+	tty  tty
 	done chan struct{} // closed once the shell is reaped and output drained
 
 	// lastIO is when the terminal last carried anything, in unix
@@ -72,59 +86,109 @@ type viewerSize struct {
 	cols, rows uint16
 }
 
-// tabProcess is the program, arguments and environment startShell runs:
-// terminal.shell, else $SHELL, else /bin/sh. terminal.env comes after the
-// inherited environment so it wins there, and before env so punk0's own
-// variables (hook URL, tab id) still win over the user's. A terminal.env that
-// does not parse is ignored rather than failing the tab; saving one is refused.
-func tabProcess(command string, env []string) (shell string, args []string, cmdEnv []string) {
-	shell = settings.SettingOr[string]("terminal.shell")
-	if shell == "" {
-		shell = os.Getenv("SHELL")
+// shellSyntax is how a tab's shell is told to run a command and then stay
+// open at its prompt.
+type shellSyntax int
+
+const (
+	posixShell shellSyntax = iota // sh, bash, zsh, fish; Git Bash on Windows
+	powerShell                    // pwsh, and Windows PowerShell
+	cmdShell                      // cmd.exe
+)
+
+// syntaxOf tells a shell's syntax by its program name, a Windows path or not.
+func syntaxOf(shell string) shellSyntax {
+	switch strings.TrimSuffix(strings.ToLower(shell[strings.LastIndexAny(shell, `/\`)+1:]), ".exe") {
+	case "pwsh", "powershell":
+		return powerShell
+	case "cmd":
+		return cmdShell
 	}
-	if shell == "" {
-		shell = "/bin/sh"
+	return posixShell
+}
+
+// quote makes s one word of a command line in this syntax.
+func (sx shellSyntax) quote(s string) string {
+	switch sx {
+	case powerShell:
+		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	case cmdShell:
+		return `"` + s + `"` // what cmd.exe quotes in can hold no "
 	}
+	return shellQuote(s)
+}
+
+// orElse runs a, and b only when a fails.
+func (sx shellSyntax) orElse(a, b string) string {
+	if sx == powerShell {
+		// Windows PowerShell 5.1 has no ||.
+		return a + "; if ($LASTEXITCODE) { " + b + " }"
+	}
+	return a + " || " + b
+}
+
+// launch is the shell's arguments to run command and then stay open, as if
+// the command had been typed at its prompt. A POSIX shell runs it
+// interactively, so the rc files set PATH, and then replaces itself with a
+// plain one. cmd.exe reads its command line itself: with /S the quotes around
+// command are all it strips, so its arguments go verbatim (term_windows.go).
+func (sx shellSyntax) launch(command string) []string {
+	switch sx {
+	case powerShell:
+		return []string{"-NoLogo", "-NoExit", "-Command", command}
+	case cmdShell:
+		return []string{"/S", "/K", `"` + command + `"`}
+	}
+	return []string{"-i", "-c", command + `; exec "$SHELL"`}
+}
+
+// terminalShell is the program a new tab runs: terminal.shell, else the
+// system's default (defaultShell).
+func terminalShell() string {
+	if shell := settings.SettingOr[string]("terminal.shell"); shell != "" {
+		return shell
+	}
+	return defaultShell()
+}
+
+// tabProcess is the arguments and environment startShell runs shell with.
+// terminal.env comes after the inherited environment so it wins there, and
+// before env so punk0's own variables (hook URL, tab id) still win over the
+// user's. A terminal.env that does not parse is ignored rather than failing
+// the tab; saving one is refused. A POSIX shell gets SHELL, which its launch
+// execs; elsewhere SHELL keeps what tools that read it expect.
+func tabProcess(shell, command string, env []string) (args []string, cmdEnv []string) {
+	sx := syntaxOf(shell)
 	if command != "" {
-		args = []string{"-i", "-c", command + `; exec "$SHELL"`}
+		args = sx.launch(command)
 	}
-	cmdEnv = append(os.Environ(), "SHELL="+shell, "TERM=xterm-256color", "COLORTERM=truecolor")
+	cmdEnv = os.Environ()
+	if sx == posixShell {
+		cmdEnv = append(cmdEnv, "SHELL="+shell)
+	}
+	cmdEnv = append(cmdEnv, "TERM=xterm-256color", "COLORTERM=truecolor")
 	if user, err := settings.ParseEnvLines(settings.SettingOr[string]("terminal.env")); err == nil {
 		cmdEnv = append(cmdEnv, user...)
 	}
-	return shell, args, append(cmdEnv, env...)
+	return args, append(cmdEnv, env...)
 }
 
-// startShell runs the user's interactive shell in dir, with env added to its
-// environment. A non-empty command runs first, inside an interactive shell so
-// the rc files set PATH, and the shell then replaces itself with a plain one:
-// quitting the command leaves a prompt, as if it had been typed there.
-func startShell(dir, command string, env []string) (*Shell, error) {
-	// exec reports a missing working directory as a bare chdir failure after
-	// the fork; checking first says which folder is gone.
+// startShell runs shell interactively in dir, with env added to its
+// environment. A non-empty command, written in the shell's syntax, runs
+// first; quitting it leaves the shell's prompt.
+func startShell(dir, shell, command string, env []string) (*Shell, error) {
+	// Starting reports a missing working directory as a bare chdir failure;
+	// checking first says which folder is gone.
 	if _, err := os.Stat(dir); err != nil {
 		return nil, err
 	}
-	ctx, stop := context.WithCancel(context.Background())
-	shell, args, cmdEnv := tabProcess(command, env)
-	cmd := exec.CommandContext(ctx, shell, args...)
-	cmd.Dir = dir
-	cmd.Env = cmdEnv
-	hangupOnCancel(cmd)
-	cmd.WaitDelay = 2 * time.Second // then Wait SIGKILLs a shell that ignored the hangup
-	ptmx, err := startPTY(cmd)
+	args, cmdEnv := tabProcess(shell, command, env)
+	t, err := startTTY(append([]string{shell}, args...), dir, cmdEnv)
 	if err != nil {
-		stop()
 		return nil, err
 	}
-	// Cancelling ctx hangs up the shell and closes the PTY, which ends pump's
-	// Read even if a stray background job still holds the PTY open.
-	context.AfterFunc(ctx, func() { ptmx.Close() })
-
 	s := &Shell{
-		cmd:     cmd,
-		ptmx:    ptmx,
-		stop:    stop,
+		tty:     t,
 		done:    make(chan struct{}),
 		out:     newRing(scrollback),
 		viewers: map[chan []byte]struct{}{},
@@ -139,16 +203,16 @@ func startShell(dir, command string, env []string) (*Shell, error) {
 func (s *Shell) pump() {
 	reaped := make(chan struct{})
 	go func() {
-		s.cmd.Wait()
+		s.tty.Wait()
 		// A background job can keep the PTY open after the shell exits;
-		// closing it ends the Read below.
-		s.stop()
+		// hanging up ends the Read below.
+		s.tty.Hangup()
 		close(reaped)
 	}()
 
 	buf := make([]byte, 32<<10)
 	for {
-		n, err := s.ptmx.Read(buf)
+		n, err := s.tty.Read(buf)
 		if n > 0 {
 			s.touch()
 			p := append([]byte(nil), buf[:n]...) // viewers hold p past the next Read
@@ -174,7 +238,7 @@ func (s *Shell) pump() {
 		s.dropLocked(v)
 	}
 	s.mu.Unlock()
-	s.stop()
+	s.tty.Hangup()
 	<-reaped
 	close(s.done)
 }
@@ -186,9 +250,9 @@ func (s *Shell) Exited() bool {
 	return s.exited
 }
 
-// Close hangs up the shell's process group and waits until it is reaped.
+// Close hangs up the shell and waits until it is reaped.
 func (s *Shell) Close() {
-	s.stop()
+	s.tty.Hangup()
 	<-s.done
 }
 
@@ -200,18 +264,12 @@ func (s *Shell) IdleFor() time.Duration {
 }
 
 // Pid is the shell's process id; whatever runs in the tab is below it.
-func (s *Shell) Pid() int { return s.cmd.Process.Pid }
+func (s *Shell) Pid() int { return s.tty.Pid() }
 
 // Foreground reports whether the shell itself is what the terminal is talking
 // to: no job is running in front of it, so hanging it up loses no work. Only
 // Unix knows; elsewhere an idle shell is never stopped.
-func (s *Shell) Foreground() bool {
-	if s.cmd.Process == nil {
-		return false
-	}
-	pgrp, err := foregroundPgrp(s.ptmx)
-	return err == nil && pgrp == s.cmd.Process.Pid
-}
+func (s *Shell) Foreground() bool { return s.tty.Foreground() }
 
 // Attach streams the shell to one websocket until either side ends. Taking
 // the scrollback and registering as a viewer under one lock means no output
@@ -275,7 +333,7 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte) 
 		}
 		if typ == websocket.MessageBinary {
 			s.touch()
-			if _, err := s.ptmx.Write(data); err != nil {
+			if _, err := s.tty.Write(data); err != nil {
 				return
 			}
 			continue
@@ -286,7 +344,7 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte) 
 			if _, live := s.viewers[v]; live { // a detached viewer's size must not come back
 				s.sizes = append(slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v }),
 					viewerSize{v, msg.Cols, msg.Rows})
-				setPTYSize(s.ptmx, msg.Cols, msg.Rows)
+				s.tty.Resize(msg.Cols, msg.Rows)
 			}
 			s.mu.Unlock()
 		}
@@ -305,7 +363,7 @@ func (s *Shell) forgetSizeLocked(v chan []byte) {
 	s.sizes = slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v })
 	if wasCurrent && len(s.sizes) > 0 && !s.exited {
 		z := s.sizes[len(s.sizes)-1]
-		setPTYSize(s.ptmx, z.cols, z.rows)
+		s.tty.Resize(z.cols, z.rows)
 	}
 }
 
@@ -331,11 +389,11 @@ func (s *Shell) Send(text string) error {
 		}
 		return r
 	}, strings.ReplaceAll(text, "\r\n", "\n"))
-	if _, err := s.ptmx.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
+	if _, err := s.tty.Write([]byte("\x1b[200~" + text + "\x1b[201~")); err != nil {
 		return err
 	}
 	time.Sleep(pasteSettle)
-	_, err := s.ptmx.Write([]byte{'\r'})
+	_, err := s.tty.Write([]byte{'\r'})
 	return err
 }
 

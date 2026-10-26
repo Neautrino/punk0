@@ -3,21 +3,74 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/creack/pty"
 )
 
-// hangupOnCancel makes cancellation SIGHUP the shell's process group, like a
-// terminal window closing; interactive shells pass the hangup on to their jobs.
-// pty.Start makes the shell a session leader, so its pgid equals its pid.
-func hangupOnCancel(cmd *exec.Cmd) {
+// defaultShell is $SHELL, else /bin/sh.
+func defaultShell() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+	return "/bin/sh"
+}
+
+// unixTTY is a shell on a PTY. Hanging up SIGHUPs the shell's process group,
+// like a terminal window closing; interactive shells pass the hangup on to
+// their jobs. pty.Start makes the shell a session leader, so its pgid equals
+// its pid.
+type unixTTY struct {
+	cmd    *exec.Cmd
+	f      *os.File
+	hangup context.CancelFunc
+}
+
+func startTTY(argv []string, dir string, env []string) (tty, error) {
+	ctx, hangup := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = dir
+	cmd.Env = env
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGHUP)
 	}
+	cmd.WaitDelay = 2 * time.Second // then Wait SIGKILLs a shell that ignored the hangup
+	f, err := startPTY(cmd)
+	if err != nil {
+		hangup()
+		return nil, err
+	}
+	// Hanging up closes the PTY too, which ends a Read even if a stray
+	// background job still holds the PTY open.
+	context.AfterFunc(ctx, func() { f.Close() })
+	return &unixTTY{cmd: cmd, f: f, hangup: hangup}, nil
+}
+
+func (t *unixTTY) Read(p []byte) (int, error)  { return t.f.Read(p) }
+func (t *unixTTY) Write(p []byte) (int, error) { return t.f.Write(p) }
+func (t *unixTTY) Pid() int                    { return t.cmd.Process.Pid }
+func (t *unixTTY) Wait()                       { t.cmd.Wait() }
+func (t *unixTTY) Hangup()                     { t.hangup() }
+
+// Resize is pty.Setsize without File.Fd (see startPTY).
+func (t *unixTTY) Resize(cols, rows uint16) error {
+	ws := pty.Winsize{Cols: cols, Rows: rows}
+	return ptyIoctl(t.f, syscall.TIOCSWINSZ, unsafe.Pointer(&ws))
+}
+
+// Foreground compares the process group the terminal sends keystrokes to
+// with the shell's own: they differ while a job runs in front of it.
+func (t *unixTTY) Foreground() bool {
+	var pgrp int32
+	if err := ptyIoctl(t.f, syscall.TIOCGPGRP, unsafe.Pointer(&pgrp)); err != nil {
+		return false
+	}
+	return int(pgrp) == t.cmd.Process.Pid
 }
 
 // startPTY starts cmd on a new PTY and returns a pollable master. creack/pty
@@ -40,22 +93,6 @@ func startPTY(cmd *exec.Cmd) (*os.File, error) {
 		return nil, err
 	}
 	return os.NewFile(uintptr(fd), f.Name()), nil
-}
-
-// setPTYSize is pty.Setsize without File.Fd (see startPTY).
-func setPTYSize(f *os.File, cols, rows uint16) error {
-	ws := pty.Winsize{Cols: cols, Rows: rows}
-	return ptyIoctl(f, syscall.TIOCSWINSZ, unsafe.Pointer(&ws))
-}
-
-// foregroundPgrp returns the process group the terminal sends keystrokes to:
-// the shell itself when it sits at its prompt, a job's group while one runs.
-func foregroundPgrp(f *os.File) (int, error) {
-	var pgrp int32
-	if err := ptyIoctl(f, syscall.TIOCGPGRP, unsafe.Pointer(&pgrp)); err != nil {
-		return 0, err
-	}
-	return int(pgrp), nil
 }
 
 func ptyIoctl(f *os.File, req uintptr, arg unsafe.Pointer) error {

@@ -37,18 +37,18 @@ var tabAgents = map[string]tabAgent{
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 }
 
-// agentCommand is the line a tab's shell runs first; "" for a plain shell.
-// first is a tab's first start this run, which opens a new session; later
-// starts resume. Claude resumes its own session id, and exits 1 when there is
-// nothing to resume (the tab never got a message), so || then starts that
-// session. Another agent given a session resumes exactly it on every start,
-// falling back to a new chat when the id is gone; without one it resumes its
-// latest session when it can, else starts a new one. A new tab without a
-// session never resumes: in a folder of the user's, the latest session may
-// belong to something else. agents.<kind>.args goes right after the program
-// name, verbatim: it is shell text the user wrote. session must be shell-safe
-// (validSession).
-func agentCommand(kind, session string, first bool) string {
+// agentCommand is the line a tab's shell runs first, in the shell's syntax;
+// "" for a plain shell. first is a tab's first start this run, which opens a
+// new session; later starts resume. Claude resumes its own session id, and
+// exits 1 when there is nothing to resume (the tab never got a message), so
+// the fallback then starts that session. Another agent given a session
+// resumes exactly it on every start, falling back to a new chat when the id
+// is gone; without one it resumes its latest session when it can, else starts
+// a new one. A new tab without a session never resumes: in a folder of the
+// user's, the latest session may belong to something else.
+// agents.<kind>.args goes right after the program name, verbatim: it is shell
+// text the user wrote. session must be shell-safe (validSession).
+func agentCommand(kind, session string, first bool, sx shellSyntax) string {
 	a, ok := tabAgents[kind]
 	if !ok {
 		return ""
@@ -58,19 +58,19 @@ func agentCommand(kind, session string, first bool) string {
 		bin += " " + args
 	}
 	if kind == tabClaude {
-		start := claudeCommand(bin) + " --session-id " + session
+		start := claudeCommand(bin, sx) + " --session-id " + session
 		if first {
 			return start
 		}
-		return claudeCommand(bin) + " --resume " + session + " || " + start
+		return sx.orElse(claudeCommand(bin, sx)+" --resume "+session, start)
 	}
 	if session != "" && a.resumeID != nil {
-		return bin + " " + strings.Join(a.resumeID, " ") + " " + session + " || " + bin
+		return sx.orElse(bin+" "+strings.Join(a.resumeID, " ")+" "+session, bin)
 	}
 	if first || a.resume == nil {
 		return bin
 	}
-	return bin + " " + strings.Join(a.resume, " ") + " || " + bin
+	return sx.orElse(bin+" "+strings.Join(a.resume, " "), bin)
 }
 
 // agentView is one choice in the New chat dialog.

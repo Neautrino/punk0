@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -768,7 +769,7 @@ func TestChatTitle(t *testing.T) {
 
 func TestAgentCommand(t *testing.T) {
 	useSettings(t, map[string]any{})
-	claude := claudeCommand("claude")
+	claude := claudeCommand("claude", posixShell)
 	cases := []struct {
 		kind, session string
 		first         bool
@@ -791,9 +792,31 @@ func TestAgentCommand(t *testing.T) {
 		{"agy", "S", false, "agy"},
 	}
 	for _, c := range cases {
-		if got := agentCommand(c.kind, c.session, c.first); got != c.want {
+		if got := agentCommand(c.kind, c.session, c.first, posixShell); got != c.want {
 			t.Errorf("agentCommand(%s, %q, %v)\n got %s\nwant %s", c.kind, c.session, c.first, got, c.want)
 		}
+	}
+
+	// Windows shells: PowerShell 5.1 has no ||, and each shell quotes the
+	// hooks path its own way.
+	hooks := claudeHooksPath()
+	for _, c := range []struct {
+		sx            shellSyntax
+		kind, session string
+		first         bool
+		want          string
+	}{
+		{powerShell, "codex", "S", false, "codex resume S; if ($LASTEXITCODE) { codex }"},
+		{powerShell, tabClaude, "S", false, "claude --settings '" + hooks + "' --resume S; if ($LASTEXITCODE) { claude --settings '" + hooks + "' --session-id S }"},
+		{cmdShell, "codex", "S", false, "codex resume S || codex"},
+		{cmdShell, tabClaude, "S", true, `claude --settings "` + hooks + `" --session-id S`},
+	} {
+		if got := agentCommand(c.kind, c.session, c.first, c.sx); got != c.want {
+			t.Errorf("agentCommand(%s, %q, %v) in syntax %d\n got %s\nwant %s", c.kind, c.session, c.first, c.sx, got, c.want)
+		}
+	}
+	if got, want := powerShell.quote(`C:\Users\O'Brien\x.json`), `'C:\Users\O''Brien\x.json'`; got != want {
+		t.Errorf("PowerShell quote = %s, want %s", got, want)
 	}
 }
 
@@ -812,26 +835,26 @@ func TestAddTabWithSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := codex.command(), "codex resume 019a-abc_1 || codex"; got != want {
+	if got, want := codex.command(posixShell), "codex resume 019a-abc_1 || codex"; got != want {
 		t.Fatalf("first start of a tab opened on a chat\n got %s\nwant %s", got, want)
 	}
 	claude, err := rec.AddTab(ws.ID, tabClaude, "5f0c-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := claude.command(); !strings.Contains(got, " --resume 5f0c-1 || ") {
+	if got := claude.command(posixShell); !strings.Contains(got, " --resume 5f0c-1 || ") {
 		t.Fatalf("claude tab opened on a chat starts a new session: %s", got)
 	}
 	fresh, err := rec.AddTab(ws.ID, "codex", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fresh.command(); got != "codex" {
+	if got := fresh.command(posixShell); got != "codex" {
 		t.Fatalf("a new codex tab must not pick up an older session: %s", got)
 	}
 
 	tabs := listed(openRecords(t, home), p.ID).Workspaces[0].Tabs
-	if len(tabs) != 3 || tabs[0].tab.Session != "019a-abc_1" || tabs[0].tab.command() != "codex resume 019a-abc_1 || codex" {
+	if len(tabs) != 3 || tabs[0].tab.Session != "019a-abc_1" || tabs[0].tab.command(posixShell) != "codex resume 019a-abc_1 || codex" {
 		t.Fatalf("reloaded tab lost its session: %+v", tabs)
 	}
 
@@ -874,7 +897,7 @@ func useSettings(t *testing.T, m map[string]any) {
 
 func TestAgentCommandArgs(t *testing.T) {
 	useSettings(t, map[string]any{"agents.claude.args": "--model opus", "agents.codex.args": " -m o3 "})
-	claude := claudeCommand("claude --model opus")
+	claude := claudeCommand("claude --model opus", posixShell)
 	if !strings.HasPrefix(claude, "claude --model opus --settings ") {
 		t.Fatalf("claude command %q", claude)
 	}
@@ -890,7 +913,7 @@ func TestAgentCommandArgs(t *testing.T) {
 		{"opencode", "", false, "opencode --continue || opencode"}, // no args set
 		{"codex", "S", false, "codex -m o3 resume S || codex -m o3"},
 	} {
-		if got := agentCommand(c.kind, c.session, c.first); got != c.want {
+		if got := agentCommand(c.kind, c.session, c.first, posixShell); got != c.want {
 			t.Errorf("agentCommand(%s, %q, %v)\n got %s\nwant %s", c.kind, c.session, c.first, got, c.want)
 		}
 	}
@@ -899,15 +922,19 @@ func TestAgentCommandArgs(t *testing.T) {
 func TestTabProcessShellAndEnv(t *testing.T) {
 	t.Setenv("SHELL", "/bin/fromenv")
 	useSettings(t, map[string]any{})
-	if sh, args, _ := tabProcess("", nil); sh != "/bin/fromenv" || args != nil {
-		t.Fatalf("default shell %q %v, want $SHELL and no args", sh, args)
+	if sh := terminalShell(); sh != "/bin/fromenv" {
+		t.Fatalf("default shell %q, want $SHELL", sh)
+	}
+	if args, _ := tabProcess("/bin/fromenv", "", nil); args != nil {
+		t.Fatalf("a plain shell got args %v", args)
 	}
 	home, _ := os.UserHomeDir()
 	useSettings(t, map[string]any{
 		"terminal.shell": "/bin/zsh",
 		"terminal.env":   "# work account\nCLAUDE_CONFIG_DIR=~/.claude-work\nPUNK0_HOOK_URL=mine\n",
 	})
-	sh, args, env := tabProcess("claude", []string{"PUNK0_HOOK_URL=punk0"})
+	sh := terminalShell()
+	args, env := tabProcess(sh, "claude", []string{"PUNK0_HOOK_URL=punk0"})
 	if sh != "/bin/zsh" || len(args) != 3 || args[2] != `claude; exec "$SHELL"` {
 		t.Fatalf("shell %q args %v", sh, args)
 	}
@@ -923,8 +950,15 @@ func TestTabProcessShellAndEnv(t *testing.T) {
 		t.Fatalf("PUNK0_HOOK_URL=%q: the user's terminal.env beat punk0's own", last["PUNK0_HOOK_URL"])
 	}
 	useSettings(t, map[string]any{"terminal.env": "not a pair"})
-	if _, _, env := tabProcess("", nil); len(env) != len(os.Environ())+3 {
+	if _, env := tabProcess("/bin/zsh", "", nil); len(env) != len(os.Environ())+3 {
 		t.Fatal("a terminal.env that does not parse still changed the environment")
+	}
+
+	// PowerShell stays open after the command with -NoExit; SHELL is left
+	// as it was, since nothing execs it.
+	args, env = tabProcess(`C:\Program Files\PowerShell\7\pwsh.exe`, "claude", nil)
+	if strings.Join(args, " ") != "-NoLogo -NoExit -Command claude" || slices.Contains(env, `SHELL=C:\Program Files\PowerShell\7\pwsh.exe`) {
+		t.Fatalf("pwsh args %v, SHELL set: %v", args, slices.Contains(env, `SHELL=C:\Program Files\PowerShell\7\pwsh.exe`))
 	}
 }
 

@@ -93,7 +93,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.cursorBlink` | Terminal | `true` | `true`, `false` | Blink the terminal cursor |
 | `terminal.copyOnSelect` | Terminal | `false` | `true`, `false` | Copy selected text automatically |
 | `terminal.confirmCloseRunning` | Terminal | `true` | `true`, `false` | Ask before closing a tab that is still running |
-| `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh` |
+| `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh`; on Windows `pwsh`, else `powershell`, else `cmd` |
 | `terminal.env` ⚿ | Terminal | `""` | `KEY=VALUE` per line | Added to every tab's environment; `~/` expands to the home folder, `#` lines are comments |
 | `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent only when idle |
 | `workspace.branchPrefix` | Workspaces | `""` | branch prefix | Prefix for branches New workspace creates (the folder stays unprefixed) |

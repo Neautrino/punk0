@@ -322,7 +322,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "terminal.shell",
 		Title:       "Shell",
-		Description: "The program new tabs run. Empty uses $SHELL, else /bin/sh. Applies to tabs started afterwards.",
+		Description: "The program new tabs run. Empty uses $SHELL, else /bin/sh; on Windows PowerShell 7, else Windows PowerShell, else cmd. Applies to tabs started afterwards.",
 		Category:    "Terminal",
 		Type:        "string",
 		Default:     "",

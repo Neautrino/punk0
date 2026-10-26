@@ -35,3 +35,34 @@ jobs:
 
       - name: Run tests
         run: go test -v ./...
+
+  # Tab terminals on Windows run on ConPTY (term_windows.go); the rest of the
+  # test suite drives POSIX shells, so only the Windows terminal tests run here.
+  windows-terminals:
+    name: Windows terminals
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Bundle web assets
+        run: bun ./scripts/build-web.js
+
+      - name: Build punk0
+        run: go build -trimpath -o punk0.exe .
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run Windows terminal tests
+        run: go test -v -run 'TestConPTY' .

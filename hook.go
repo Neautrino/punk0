@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -40,16 +41,25 @@ func claudeHooksPath() string { return filepath.Join(workbenchStateDir(), "claud
 // this punk0, so a hook keeps reporting to the version that started it.
 func writeClaudeHooks(exe string) error {
 	type hookCmd struct {
-		Type    string `json:"type"`
-		Command string `json:"command"`
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args,omitempty"`
 	}
 	type hookMatcher struct {
 		Hooks []hookCmd `json:"hooks"`
 	}
-	cmd := shellQuote(exe) + " hook"
+	h := hookCmd{Type: "command", Command: shellQuote(exe) + " hook"}
+	if runtime.GOOS == "windows" {
+		// Claude runs a hook's command line through Git Bash there, or
+		// PowerShell without it, and they quote differently. With args
+		// (exec form, Claude Code 2.1.139+) it starts punk0 with no shell.
+		// Unix keeps the command line: an older Claude would ignore args
+		// and start a whole punk0.
+		h = hookCmd{Type: "command", Command: exe, Args: []string{"hook"}}
+	}
 	hooks := make(map[string][]hookMatcher, len(claudeHookEvents))
 	for _, ev := range claudeHookEvents {
-		hooks[ev] = []hookMatcher{{Hooks: []hookCmd{{Type: "command", Command: cmd}}}}
+		hooks[ev] = []hookMatcher{{Hooks: []hookCmd{h}}}
 	}
 	return writeFileAtomic(claudeHooksPath(), map[string]any{"hooks": hooks})
 }

@@ -1007,7 +1007,7 @@ func TestTabAddWithSession(t *testing.T) {
 	var tab struct{ ID string }
 	decode(t, w.Body, &tab)
 	ws := wb.records.WorkspaceAt(wsID)
-	if got := wb.records.View(ws).Tabs[0].tab.command(); got != "opencode --session ses_42 || opencode" {
+	if got := wb.records.View(ws).Tabs[0].tab.command(posixShell); got != "opencode --session ses_42 || opencode" {
 		t.Fatalf("tab %s starts with %q", tab.ID, got)
 	}
 	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"opencode","session":"$(id)"}`); w.Code != http.StatusBadRequest {

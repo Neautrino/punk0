@@ -123,7 +123,8 @@ func (s *Satellite) Shell() (*Shell, error) {
 		if s.hook != "" {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
-		sh, err := startShell(s.dir, s.command(), env)
+		shell := terminalShell()
+		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell)), env)
 		if err != nil {
 			return nil, err
 		}
@@ -132,9 +133,10 @@ func (s *Satellite) Shell() (*Shell, error) {
 	return s.sh, nil
 }
 
-// command is the line the tab's next start runs. Callers hold s.mu or own s.
-func (s *Satellite) command() string {
-	return agentCommand(s.Kind, s.Session, s.newChat)
+// command is the line the tab's next start runs, in a shell of syntax sx.
+// Callers hold s.mu or own s.
+func (s *Satellite) command(sx shellSyntax) string {
+	return agentCommand(s.Kind, s.Session, s.newChat, sx)
 }
 
 func (s *Satellite) running() bool {
