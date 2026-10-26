@@ -397,8 +397,9 @@ func main() {
 }
 
 // runWorkbench serves the orchestrator until interrupted, then stops every
-// terminal and workspace it started. initial is the folder `punk0 <dir>`
-// named: it is registered as a project and opened in the editor view.
+// terminal and workspace it started. initial is the folder or file
+// `punk0 <target>` named: it is registered as a project and the agents page
+// opens on it; a file also opens in the folder's editor.
 func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate bool, childArgs []string, initial string) {
 	// One orchestrator per machine: a second punk0 hands its folder to the
 	// one already running instead of serving a rival page.
@@ -444,7 +445,8 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	defer removeWorkbenchLock()
 	wb.serveFrom(self)
 
-	// `punk0 <dir>` opens that folder's editor view next to the page.
+	// `punk0 <dir>` opens the agents page on that folder's workspace; the
+	// editor only opens for a file, since only it can show one.
 	editor := ""
 	if initial != "" {
 		root, file, line, err := resolveTarget(initial)
@@ -455,13 +457,16 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		if err != nil {
 			fatal(err)
 		}
-		editor = editorURL(u, wb.childHref(wbItemID("dir", ws.Dir)), file, line)
+		if file != "" {
+			editor = editorURL(u, wb.childHref(wbItemID("dir", ws.Dir)), file, line)
+		}
+		u = agentsURL(u, ws.ID)
 	}
 
 	ui.Heading("punk0 "+version, nil, os.Stdout)
 	ui.KV("agents", ui.Accent(u, os.Stdout), 11, os.Stdout)
 	if editor != "" {
-		ui.KV("workspace", ui.Accent(editor, os.Stdout), 11, os.Stdout)
+		ui.KV("editor", ui.Accent(editor, os.Stdout), 11, os.Stdout)
 	}
 	if host == "0.0.0.0" {
 		for _, networkURL := range networkURLs(addr, "", 0) {
@@ -473,9 +478,10 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	}
 	ui.Hint("ctrl-c to stop", os.Stdout)
 	if open {
-		// general.openBrowser skips only the agents page: the editor
-		// `punk0 <dir>` asked for still opens, as a hand-off's does.
-		if settings.SettingOr[bool]("general.openBrowser") {
+		// general.openBrowser skips only a bare start's agents page: the
+		// folder or file `punk0 <target>` asked for still opens, as a
+		// hand-off's does.
+		if initial != "" || settings.SettingOr[bool]("general.openBrowser") {
 			go openBrowser(u)
 		}
 		if editor != "" {
@@ -516,69 +522,109 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	}
 }
 
-// handOff gives a folder to the punk0 that is already running and opens its
-// editor view there, so `punk0 <dir>` in a second terminal lands in the one
-// orchestrator instead of starting another.
+// handOff gives a folder to the punk0 that is already running, so
+// `punk0 <dir>` in a second terminal lands in the one orchestrator instead of
+// starting another: an agents page already open switches to the folder, and
+// only with none open does a browser tab open on it. A file also opens in
+// the folder's editor.
 func handOff(base, initial string, port int, open bool) {
 	if flagSet("host") || flagSet("port") {
 		if u, err := url.Parse(base); err == nil && u.Port() != strconv.Itoa(port) {
 			ui.Status("warn", "punk0 already runs on "+base, "-host and -port only apply to the first one", 0, os.Stdout)
 		}
 	}
-	target := base
-	if initial != "" {
-		root, file, line, err := resolveTarget(initial)
-		if err != nil {
-			fatal(err)
+	if initial == "" {
+		ui.Status("ok", "punk0 already running", base, 0, os.Stdout)
+		if open {
+			openBrowser(base)
 		}
-		href, err := postProject(base, root)
-		if err != nil {
-			fatal(fmt.Errorf("punk0 on %s: %w", base, err))
-		}
-		target = editorURL(base, href, file, line)
+		return
 	}
-	ui.Status("ok", "punk0 already running", target, 0, os.Stdout)
-	if open {
-		openBrowser(target)
+	root, file, line, err := resolveTarget(initial)
+	if err != nil {
+		fatal(err)
+	}
+	var added struct {
+		Workspace string `json:"workspace"`
+		Href      string `json:"href"`
+	}
+	if err := postWorkbench(base, "api/projects", map[string]string{"dir": root}, &added); err != nil {
+		fatal(fmt.Errorf("punk0 on %s: %w", base, err))
+	}
+	// A punk0 from before api/wb/show answers 404: as if no page were open.
+	var shown struct {
+		Pages int `json:"pages"`
+	}
+	_ = postWorkbench(base, "api/wb/show", map[string]string{"workspace": added.Workspace}, &shown)
+	agents := agentsURL(base, added.Workspace)
+	if shown.Pages > 0 {
+		ui.Status("ok", "punk0 already running", "switched the open agents page to "+root, 0, os.Stdout)
+	} else {
+		ui.Status("ok", "punk0 already running", agents, 0, os.Stdout)
+		if open {
+			openBrowser(agents)
+		}
+	}
+	if file != "" {
+		editor := editorURL(base, added.Href, file, line)
+		ui.KV("editor", ui.Accent(editor, os.Stdout), 11, os.Stdout)
+		if open {
+			openBrowser(editor)
+		}
 	}
 }
 
-// postProject registers dir with the running punk0, which answers with the
-// workspace that opens it; registering a folder it already holds is the same
-// request and gives the same answer.
-func postProject(base, dir string) (string, error) {
+// agentsURL is the agents page at base opened on workspace id; the page
+// selects it as if clicked (web/src/orch/store.js).
+func agentsURL(base, id string) string {
+	u, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	if u.Path == "" {
+		u.Path = "/"
+	}
+	q := u.Query()
+	q.Set("ws", id)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// postWorkbench posts body as JSON to path under the running punk0 at base and
+// decodes its answer into out. Registering a folder it already holds is the
+// same request and gives the same answer.
+func postWorkbench(base, path string, body, out any) error {
 	origin, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return err
 	}
-	body, err := json.Marshal(map[string]string{"dir": dir})
+	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", err
+		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(base, "/")+"/api/projects", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(base, "/")+"/"+path, bytes.NewReader(payload))
 	if err != nil {
-		return "", err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", origin.Scheme+"://"+origin.Host)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer resp.Body.Close()
-	var out struct {
-		Href  string `json:"href"`
-		Error string `json:"error"`
-	}
-	_ = json.NewDecoder(resp.Body).Decode(&out)
-	if resp.StatusCode != http.StatusOK || out.Href == "" {
-		if out.Error == "" {
-			out.Error = resp.Status
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
 		}
-		return "", errors.New(out.Error)
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		if e.Error == "" {
+			e.Error = resp.Status
+		}
+		return errors.New(e.Error)
 	}
-	return out.Href, nil
+	return json.NewDecoder(resp.Body).Decode(out)
 }
 
 // editorURL is a workspace's editor view under the orchestrator, opened on

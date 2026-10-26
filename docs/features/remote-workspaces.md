@@ -26,8 +26,8 @@ punk0 simplifies remote code inspection into a single shell command. Because the
   - **Agent Security Restrictions**: Agent editing commands are permitted only over direct IP addresses or `localhost`. Access over external hostnames or tunnel proxies automatically disables agent modifications to protect remote machines.
 - **Direct Terminal Ergonomics**: Launch punk0 targeting specific files or line numbers directly from the command line:
   - `punk0` (opens the [agents page](workbench.md))
-  - `punk0 ~/projects/kernel` (adds the repository as a project and opens its editor, in the running punk0 if there is one)
-  - `punk0 main.go:42` (opens its editor directly at line 42)
+  - `punk0 ~/projects/kernel` (adds the repository as a project and opens the agents page on it, in the running punk0 if there is one)
+  - `punk0 main.go:42` (also opens its editor at line 42)
 - **Built-in Self-Updater (`punk0 -update`)**: Checks GitHub releases and seamlessly upgrades the single binary in place.
 
 ---

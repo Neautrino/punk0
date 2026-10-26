@@ -76,7 +76,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 
 | Setting Key | Category | Default | Allowed Values / Range | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `general.openBrowser` | General | `true` | `true`, `false` | Open the agents page when punk0 starts; `-no-open` overrides |
+| `general.openBrowser` | General | `true` | `true`, `false` | Open the agents page when a bare `punk0` starts; `punk0 <dir>` still opens it, `-no-open` overrides |
 | `update.auto` | General | `true` | `true`, `false` | Check for and install releases in the background; `-no-update` overrides |
 | `tips.enabled` | General | `true` | `true`, `false` | Show tips in the interface |
 | `workbench.colorTheme` | Appearance | `"catppuccin-mocha"` | 14 built-in theme IDs | Color theme of both pages |

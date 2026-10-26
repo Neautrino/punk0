@@ -19,11 +19,25 @@ const saveJSON = (key, value) => {
   } catch {}
 };
 
+// initialWs is the workspace to select on load. A page `punk0 <dir>` opened
+// carries ?ws=<id>: that one, saved as if clicked, with the parameter dropped
+// so a reload keeps whatever is selected by then. Else the last selected.
+function initialWs() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('ws');
+  if (!id) return localStorage.getItem('punk0.ws') || '';
+  params.delete('ws');
+  const q = params.toString();
+  history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+  saveJSON('punk0.ws', id);
+  return id;
+}
+
 export const state = {
   projects: [],
   reviews: [], // pull request items from /api/wb/state
   wb: { cwd: '', home: '', sep: '/', version: '' },
-  ws: localStorage.getItem('punk0.ws') || '', // selected workspace id
+  ws: initialWs(), // selected workspace id
   // workspace id -> { term, file, front }: its last used terminal tab and
   // file tab, and which of the two was used last.
   tabs: loadJSON('punk0.tabs', {}),

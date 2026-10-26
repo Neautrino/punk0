@@ -11,7 +11,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "general.openBrowser",
     title: "Open Browser on Start",
-    description: "Open the agents page in the browser when punk0 starts. The -no-open flag turns it off regardless. Opening a folder (punk0 <dir>) still opens its editor.",
+    description: "Open the agents page in the browser when punk0 starts. The -no-open flag turns it off regardless. Opening a folder (punk0 <dir>) still opens the agents page on it.",
     category: "General",
     type: "boolean",
     default: true

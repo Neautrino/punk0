@@ -355,6 +355,8 @@ type workbench struct {
 
 	attr worktreeAttribution // agents' worktrees seen in hooks, and gone ones (attribution.go)
 
+	pages *pageHub // agents pages open in browsers (wbpages.go)
+
 	mux *http.ServeMux
 }
 
@@ -372,6 +374,7 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, er
 		exe:       exe,
 		childArgs: childArgs,
 		children:  map[string]*wbChild{},
+		pages:     newPageHub(),
 		mux:       http.NewServeMux(),
 	}
 	wb.routes()
@@ -428,6 +431,8 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc(wb.route("/static/themes.css"), (&Server{}).handleThemes)
 	wb.mux.HandleFunc(wb.route("/api/wb/ping"), wb.handlePing)
 	wb.mux.HandleFunc(wb.route("/api/wb/state"), wb.handleState)
+	wb.mux.HandleFunc("GET "+wb.route("/api/wb/events"), wb.handlePageEvents)
+	wb.mux.HandleFunc("POST "+wb.route("/api/wb/show"), wb.handlePageShow)
 	wb.mux.HandleFunc(wb.route("/api/wb/complete"), wb.handleComplete)
 	wb.mux.HandleFunc(wb.route("/api/resources"), wb.handleResources)
 	wb.mux.HandleFunc(wb.route("/api/wb/open"), wb.handleOpen)
@@ -765,10 +770,12 @@ func (wb *workbench) stop(id string) {
 	}
 }
 
-// Close stops everything punk0 owns: the terminals first, so agents are hung
+// Close stops everything punk0 owns: the agents pages' event streams, so they
+// do not hold the server's Shutdown up, then the terminals, so agents are hung
 // up while the folders they run in are still served, then every child, in
 // parallel.
 func (wb *workbench) Close() {
+	wb.pages.Close()
 	wb.mu.Lock()
 	wb.closing = true
 	ids := make([]string, 0, len(wb.children))

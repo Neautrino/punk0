@@ -129,7 +129,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "general.openBrowser",
 		Title:       "Open Browser on Start",
-		Description: "Open the agents page in the browser when punk0 starts. The -no-open flag turns it off regardless. Opening a folder (punk0 <dir>) still opens its editor.",
+		Description: "Open the agents page in the browser when punk0 starts. The -no-open flag turns it off regardless. Opening a folder (punk0 <dir>) still opens the agents page on it.",
 		Category:    "General",
 		Type:        "boolean",
 		Default:     true,

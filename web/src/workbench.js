@@ -9,7 +9,7 @@
 // tabs in the middle (terminals from the parent, files from the folder's
 // editor backend, side by side or as tabs: split.js), its files on the right.
 import { $, esc } from './state.js';
-import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel } from './orch/store.js';
+import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel, selectWorkspace } from './orch/store.js';
 import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
 import { initNewChat } from './orch/newchat.js';
@@ -121,3 +121,11 @@ const tick = () => {
 setInterval(tick, 3000);
 document.addEventListener('visibilitychange', tick);
 tick();
+
+// A second `punk0 <dir>` shows its folder here instead of in a new browser
+// tab (api/wb/show). The folder was just registered, so the list is fetched
+// before the selection moves to it. EventSource reconnects on its own.
+new EventSource('api/wb/events').addEventListener('select', async e => {
+  await reload();
+  selectWorkspace(e.data);
+});

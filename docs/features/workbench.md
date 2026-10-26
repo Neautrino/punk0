@@ -8,11 +8,12 @@ Running `punk0` with no arguments opens the **agents page** at `/`: your project
 
 | Command | Effect |
 | :--- | :--- |
-| `punk0` | Starts punk0 and opens the agents page. |
-| `punk0 <dir>`, `punk0 <file>[:line]` | Adds the folder (a repository's top level) as a project and opens its editor view at `/w/<id>/`. If punk0 is not running yet, it starts and opens both the agents page and the editor. |
+| `punk0` | Starts punk0 and opens the agents page on the workspace you selected last. |
+| `punk0 <dir>` | Adds the folder (a repository's top level) as a project and opens the agents page with it selected. The editor opens only when you ask for it (**Open in editor**). |
+| `punk0 <file>[:line]` | The same, and also opens the folder's editor view at `/w/<id>/` on that file and line. |
 | `punk0 <pr-url>` | Reviews a pull request on its own, outside the agents page (see [Pull Request Review](github-pr-review.md)). |
 
-Only one punk0 runs per machine. A second `punk0` or `punk0 <dir>` hands its folder to the running one, opens the page there and exits; `-host` and `-port` only apply to the first.
+Only one punk0 runs per machine. A second `punk0 <dir>` hands its folder to the running one and exits: an agents page already open in a browser switches to the folder, and only when none is open does a new browser tab open on it. A bare second `punk0` opens the page. `-host` and `-port` only apply to the first.
 
 ## Layout
 
