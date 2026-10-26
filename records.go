@@ -320,9 +320,6 @@ type projectView struct {
 	Git        bool            `json:"git"`
 	Branch     string          `json:"branch"`
 	Workspaces []workspaceView `json:"workspaces"`
-	// Found is the repository's linked worktrees no workspace runs in: made
-	// by an agent or a terminal, offered to be added.
-	Found []worktreeInfo `json:"found"`
 }
 
 type workspaceView struct {
@@ -378,18 +375,13 @@ func (r *Records) List() []projectView {
 			}
 		}
 	}
-	dirs := r.workspaceDirsLocked()
 	r.mu.Unlock()
 
 	// git runs outside the lock: listing must not wait behind a worktree add.
 	for i := range views {
 		pv := &views[i]
-		pv.Found = []worktreeInfo{}
 		if pv.Git = gitAvailable(pv.Dir); pv.Git {
 			pv.Branch = gitBranch(pv.Dir)
-			if !pv.Scratch {
-				pv.Found = foundWorktrees(pv.Dir, dirs)
-			}
 		}
 		for j := range pv.Workspaces {
 			wv := &pv.Workspaces[j]

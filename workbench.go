@@ -1297,7 +1297,7 @@ func writeNote(w http.ResponseWriter, note string) {
 }
 
 // handleWorkspaceAdd makes a workspace from the New workspace panel
-// (newworkspace.go). A pull request typed there is worked on: its head is
+// (newworkspace.go). A pull request given as From is worked on: its head is
 // fetched and checked out in a worktree of its own — unless its head branch
 // is checked out already, when the panel offered Open or Adopt and nothing
 // is fetched.
@@ -1313,7 +1313,7 @@ func (wb *workbench) handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) 
 	id := r.PathValue("id")
 	if dir := wb.records.ProjectDir(id); dir != "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
-		pp, ok, err := findProjectPull(ctx, dir, o.Name)
+		pp, ok, err := findProjectPull(ctx, dir, o.From)
 		cancel()
 		if err != nil {
 			fail(w, http.StatusBadRequest, err.Error())
@@ -1354,13 +1354,14 @@ func (wb *workbench) handleWorkspacePlan(w http.ResponseWriter, r *http.Request)
 	q := r.URL.Query()
 	o := WorkspaceOptions{
 		Name:     q.Get("name"),
+		From:     q.Get("from"),
+		Branch:   q.Get("branch"),
 		Worktree: q.Get("worktree") == "1",
-		Base:     q.Get("base"),
 	}
 	id := r.PathValue("id")
 	if dir := wb.records.ProjectDir(id); dir != "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		pp, ok, err := findProjectPull(ctx, dir, o.Name)
+		pp, ok, err := findProjectPull(ctx, dir, o.From)
 		cancel()
 		if err != nil {
 			writeJSON(w, WorkspacePlan{Worktree: true, Action: planPR, Error: err.Error()})
@@ -1384,9 +1385,11 @@ func (wb *workbench) handleWorkspacePlan(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, pl)
 }
 
-// handleRefs lists a project's branches for the panel's start point, with
-// the one a new branch starts from by default, and its worktrees other than
-// the project folder, each with the workspace running in it.
+// handleRefs lists a project's branches for the panel's Branch field: the
+// project folder's branch (current, "" when detached) and commit (head), the
+// branches, and the worktrees other than the project folder, each with the
+// workspace running in it, then the main checkout when that is not the
+// project folder, so the panel can leave its branch out.
 func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
 	if !trustedGet(w, r) {
 		return
@@ -1397,10 +1400,18 @@ func (wb *workbench) handleRefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !gitAvailable(dir) {
-		writeJSON(w, map[string]any{"default": "", "refs": []string{}, "worktrees": []worktreeInfo{}})
+		writeJSON(w, map[string]any{"current": "", "head": "", "empty": false, "refs": []string{}, "worktrees": []worktreeInfo{}})
 		return
 	}
-	writeJSON(w, map[string]any{"default": defaultBase(dir), "refs": gitRefs(dir), "empty": !hasCommit(dir), "worktrees": wb.records.Worktrees(dir)})
+	current := gitBranch(dir)
+	if current == "HEAD" {
+		current = ""
+	}
+	wts := wb.records.Worktrees(dir)
+	if all, err := listWorktrees(dir); err == nil && len(all) > 0 && all[0].Main && !sameDir(all[0].Path, dir) {
+		wts = append(wts, all[0])
+	}
+	writeJSON(w, map[string]any{"current": current, "head": gitHeadCommit(dir), "refs": gitRefs(dir), "empty": !hasCommit(dir), "worktrees": wts})
 }
 
 // handleWorktreePrune is the panel's Prune: git forgets the project's
@@ -1414,6 +1425,34 @@ func (wb *workbench) handleWorktreePrune(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleWorkspaceUpdate renames a workspace ({"name": "…"}): Rename in the
+// sidebar's ⋯ menu. It answers the workspace as it is now.
+func (wb *workbench) handleWorkspaceUpdate(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	var body struct {
+		Name *string `json:"name"`
+	}
+	if readJSONBody(r, &body) != nil || body.Name == nil {
+		fail(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	id := r.PathValue("id")
+	if err := wb.records.RenameWorkspace(id, *body.Name); err != nil {
+		failRecord(w, err)
+		return
+	}
+	ws := wb.records.Workspace(id)
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	view := wb.records.View(ws)
+	wb.fillWorkspace(&view)
+	writeJSON(w, view)
 }
 
 // handleWorkspaceRemove takes the Delete workspace dialog's answers:

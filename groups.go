@@ -10,7 +10,6 @@ package main
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"slices"
 )
@@ -121,9 +120,14 @@ func (r *Records) HideChats(keys []string, id string) error {
 	return r.saveLocked()
 }
 
-// SetParent lists a worktree workspace under another workspace of its
-// project, or at the top with parent "".
-func (r *Records) SetParent(id, parent string) error {
+// RenameWorkspace gives workspace id a new label, unique among its
+// project's workspaces. Only the label changes: its folder, branch and tabs
+// stay as they are.
+func (r *Records) RenameWorkspace(id, name string) error {
+	name, err := label(name, 80)
+	if err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p, i := r.workspaceLocked(id)
@@ -131,26 +135,18 @@ func (r *Records) SetParent(id, parent string) error {
 		return fmt.Errorf("workspace %q: %w", id, errNotFound)
 	}
 	w := p.Workspaces[i]
-	if parent != "" {
-		if w.Kind != kindWorktree {
-			return errors.New("only a worktree can be listed under another workspace")
-		}
-		// Walking up from the new parent must never reach w itself.
-		for at := parent; at != ""; {
-			if at == id {
-				return errors.New("a workspace cannot be listed under itself or under a worktree listed under it")
-			}
-			j := slices.IndexFunc(p.Workspaces, func(x *Workspace) bool { return x.ID == at })
-			if j < 0 {
-				return fmt.Errorf("workspace %q is not one of this project's", at)
-			}
-			at = p.Workspaces[j].Parent
-		}
+	if w.Kind == kindFolder {
+		// A chat's Name is its folder's, which agents key its history on: a
+		// chat is renamed through its Title (UpdateChat).
+		return fmt.Errorf("chat %q is renamed through its title", id)
 	}
-	if w.Parent == parent {
+	if w.Name == name {
 		return nil
 	}
-	w.Parent = parent
+	if slices.ContainsFunc(p.Workspaces, func(x *Workspace) bool { return x.ID != id && x.Name == name }) {
+		return fmt.Errorf("a workspace named %q already exists", name)
+	}
+	w.Name = name
 	return r.saveLocked()
 }
 
@@ -235,22 +231,4 @@ func (r *Records) TabsAt(id string) ([]tabView, bool) {
 		out[i].Workspace, out[i].WorkspaceName = where[i].ID, names[i]
 	}
 	return out, true
-}
-
-// foundWorktrees lists the linked worktrees of the repository at repo that no
-// workspace runs in (dirs: workspaceDirsLocked) and whose folder is there.
-// Git failing is no worktrees: the list is polled, and says nothing new.
-func foundWorktrees(repo string, dirs map[string]string) []worktreeInfo {
-	out := []worktreeInfo{}
-	wts, err := listWorktrees(repo)
-	if err != nil {
-		return out
-	}
-	for _, wt := range wts {
-		if wt.Main || wt.Prunable || sameDir(wt.Path, repo) || workspaceIn(dirs, wt.Path) != "" {
-			continue
-		}
-		out = append(out, wt)
-	}
-	return out
 }

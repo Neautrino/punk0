@@ -54,10 +54,11 @@ func commit(t *testing.T, dir, file string) string {
 	return runGit(t, dir, "rev-parse", "HEAD")
 }
 
-// A new worktree starts from the remote's default branch, freshly fetched,
-// not from whatever the main checkout has checked out; its branch and its
-// folder are named separately.
-func TestNewWorktreeStartsFromFetchedDefaultBranch(t *testing.T) {
+// A new worktree from a remote branch starts from it freshly fetched, not
+// from whatever the main checkout has checked out; its branch and its folder
+// are named separately. One from nothing starts from the project folder's
+// HEAD.
+func TestNewWorktreeStartsFromFetchedRemoteBranch(t *testing.T) {
 	repo, origin := repoWithOrigin(t)
 	runGit(t, repo, "checkout", "-q", "-b", "wip")
 	wip := commit(t, repo, "wip.txt")
@@ -75,11 +76,11 @@ func TestNewWorktreeStartsFromFetchedDefaultBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "Fix login", Worktree: true, Branch: "feature/login"})
-	if pl.Error != "" || pl.Action != planNew || pl.Base != "origin/main" || pl.Fetch != "origin" {
+	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "Fix login", From: "origin/main", Worktree: true, Branch: "feature/login"})
+	if pl.Error != "" || pl.Action != planNew || pl.Base != "origin/main" || pl.Fetch != "origin" || pl.StartIgnored {
 		t.Fatalf("plan = %+v, want a new branch from origin/main, fetched from origin", pl)
 	}
-	w, warning, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "Fix login", Worktree: true, Branch: "feature/login"})
+	w, warning, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "Fix login", From: "origin/main", Worktree: true, Branch: "feature/login"})
 	if err != nil || warning != "" {
 		t.Fatalf("AddWorkspace: %v, warning %q", err, warning)
 	}
@@ -113,6 +114,9 @@ func TestNewWorktreeStartsFromFetchedDefaultBranch(t *testing.T) {
 	if w3.Branch != "tidy-readme" {
 		t.Fatalf("branch from name %q = %q", w3.Name, w3.Branch)
 	}
+	if head := runGit(t, w3.Dir, "rev-parse", "HEAD"); head != wip {
+		t.Fatalf("worktree from nothing at %s, want the project folder's HEAD %s", head, wip)
+	}
 }
 
 func TestPlanBranches(t *testing.T) {
@@ -133,20 +137,23 @@ func TestPlanBranches(t *testing.T) {
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
 	for _, tc := range []struct {
-		name, action, branch, base string
+		o                    WorkspaceOptions
+		name, action, branch string
+		base                 string
 	}{
-		{"local-one", planExisting, "local-one", ""},
-		{"origin/remote-only", planTrack, "remote-only", "origin/remote-only"},
-		{"remote-only", planTrack, "remote-only", "origin/remote-only"},
-		{"busy", planAdopt, "busy", ""}, // checked out in a worktree punk0 did not make
+		{WorkspaceOptions{From: "local-one"}, "local-one", planExisting, "local-one", ""},
+		{WorkspaceOptions{From: "origin/remote-only"}, "remote-only", planTrack, "remote-only", "origin/remote-only"},
+		{WorkspaceOptions{Branch: "remote-only"}, "remote-only", planTrack, "remote-only", "origin/remote-only"},
+		{WorkspaceOptions{From: "busy"}, "busy", planAdopt, "busy", ""}, // checked out in a worktree punk0 did not make
 	} {
-		pl := rec.Plan(p.ID, WorkspaceOptions{Name: tc.name, Worktree: true})
-		if pl.Error != "" || pl.Action != tc.action || pl.Branch != tc.branch || pl.Base != tc.base {
-			t.Errorf("%s: plan %+v, want %s %s from %q", tc.name, pl, tc.action, tc.branch, tc.base)
+		tc.o.Worktree = true
+		pl := rec.Plan(p.ID, tc.o)
+		if pl.Error != "" || pl.Name != tc.name || pl.Action != tc.action || pl.Branch != tc.branch || pl.Base != tc.base {
+			t.Errorf("%+v: plan %+v, want %q: %s %s from %q", tc.o, pl, tc.name, tc.action, tc.branch, tc.base)
 		}
 	}
 
-	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "origin/remote-only", Worktree: true})
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{From: "origin/remote-only", Worktree: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +230,8 @@ func TestPRWebURLParsesBack(t *testing.T) {
 }
 
 // workspace.branchPrefix names only branches punk0 derives from the name;
-// the folder keeps the bare name, and an existing prefixed branch is reused.
+// the folder keeps the bare name, an existing prefixed branch is reused, and
+// a typed branch is used as it is.
 func TestPlanBranchPrefix(t *testing.T) {
 	useSettings(t, map[string]any{"workspace.branchPrefix": "me/"})
 	repo := cleanRepo(t)
@@ -238,7 +246,7 @@ func TestPlanBranchPrefix(t *testing.T) {
 	}{
 		{WorkspaceOptions{Name: "Fix login"}, planNew, "me/fix-login", "fix-login"},
 		{WorkspaceOptions{Name: "Fix", Branch: "pr-branch"}, planNew, "pr-branch", "pr-branch"},
-		{WorkspaceOptions{Name: "local-one"}, planExisting, "local-one", "local-one"},
+		{WorkspaceOptions{From: "local-one"}, planExisting, "local-one", "local-one"},
 		{WorkspaceOptions{Name: "again"}, planExisting, "me/again", "again"},
 	} {
 		tc.o.Worktree = true
@@ -254,7 +262,7 @@ func TestPlanFetchBaseOff(t *testing.T) {
 	repo, _ := repoWithOrigin(t)
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
-	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "x", Worktree: true})
+	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "x", From: "origin/main", Branch: "x", Worktree: true})
 	if pl.Error != "" || pl.Base != "origin/main" || pl.Fetch != "" {
 		t.Fatalf("plan %+v, want origin/main with no fetch", pl)
 	}
@@ -304,7 +312,7 @@ func TestRefsListWorktreesAndPrune(t *testing.T) {
 	if got = refs(proj.Project); got[outside].Workspace != local {
 		t.Fatalf("outside's workspace %q, want the other project's %s", got[outside].Workspace, local)
 	}
-	if pl := wb.records.Plan(proj.Project, WorkspaceOptions{Name: "outside", Worktree: true}); pl.Action != planOpen || pl.Workspace != local {
+	if pl := wb.records.Plan(proj.Project, WorkspaceOptions{From: "outside", Worktree: true}); pl.Action != planOpen || pl.Workspace != local {
 		t.Fatalf("plan for outside %+v, want the other project's workspace opened", pl)
 	}
 	if _, ok := refs(other.Project)[outside]; ok {
@@ -318,11 +326,11 @@ func TestRefsListWorktreesAndPrune(t *testing.T) {
 		Workspace string
 		Prune     bool
 	}
-	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?name=outside&worktree=1", "").Body, &pl)
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?from=outside&worktree=1", "").Body, &pl)
 	if pl.Action != planOpen || pl.Workspace != local {
 		t.Fatalf("plan over HTTP %+v, want %s opened", pl, local)
 	}
-	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?name=gone&worktree=1", "").Body, &pl)
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?from=gone&worktree=1", "").Body, &pl)
 	if !pl.Prune {
 		t.Fatalf("plan for gone over HTTP %+v, want prune", pl)
 	}
@@ -354,14 +362,14 @@ func TestPlanExistingWorktrees(t *testing.T) {
 	rec := openRecords(t, t.TempDir())
 	p, _ := rec.AddProject(repo)
 
-	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "outside", Worktree: true})
+	pl := rec.Plan(p.ID, WorkspaceOptions{From: "outside", Worktree: true})
 	if pl.Error != "" || pl.Action != planAdopt || pl.Dir != outside || pl.Branch != "outside" {
 		t.Fatalf("plan %+v, want outside adopted in %s", pl, outside)
 	}
-	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "gone", Worktree: true}); !pl.Prune || !strings.Contains(pl.Error, "prune it") {
+	if pl = rec.Plan(p.ID, WorkspaceOptions{From: "gone", Worktree: true}); !pl.Prune || !strings.Contains(pl.Error, "prune it") {
 		t.Fatalf("plan for a branch of a deleted worktree %+v, want a refusal offering Prune", pl)
 	}
-	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "main", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != p.Workspaces[0].ID {
+	if pl = rec.Plan(p.ID, WorkspaceOptions{Branch: "main", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != p.Workspaces[0].ID {
 		t.Fatalf("plan for the project folder's branch %+v, want its local workspace opened", pl)
 	}
 
@@ -374,11 +382,11 @@ func TestPlanExistingWorktrees(t *testing.T) {
 	if err := os.RemoveAll(feat.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "feat", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != feat.ID {
+	if pl = rec.Plan(p.ID, WorkspaceOptions{From: "feat", Worktree: true}); pl.Error != "" || pl.Action != planOpen || pl.Workspace != feat.ID {
 		t.Fatalf("plan for a missing worktree workspace's branch %+v, want workspace %s opened", pl, feat.ID)
 	}
 
-	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "outside", Worktree: true, Agent: tabShell})
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{From: "outside", Worktree: true, Agent: tabShell})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +396,7 @@ func TestPlanExistingWorktrees(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outside, "README.md")); err != nil {
 		t.Fatalf("adopting touched the folder: %v", err)
 	}
-	again, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "outside", Worktree: true, Agent: tabShell})
+	again, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{From: "outside", Worktree: true, Agent: tabShell})
 	if err != nil || again.ID != w.ID || len(again.Tabs) != 1 {
 		t.Fatalf("adding outside again = %+v, %v; want workspace %s opened as it was", again, err, w.ID)
 	}
@@ -399,7 +407,7 @@ func TestPlanExistingWorktrees(t *testing.T) {
 	if err := rec.PruneWorktrees(p.ID); err != nil {
 		t.Fatal(err)
 	}
-	if pl = rec.Plan(p.ID, WorkspaceOptions{Name: "gone", Worktree: true}); pl.Error != "" || pl.Action != planExisting {
+	if pl = rec.Plan(p.ID, WorkspaceOptions{From: "gone", Worktree: true}); pl.Error != "" || pl.Action != planExisting || pl.StartIgnored {
 		t.Fatalf("plan after Prune %+v, want gone checked out anew", pl)
 	}
 
@@ -412,5 +420,306 @@ func TestPlanExistingWorktrees(t *testing.T) {
 	}
 	if !strings.Contains(runGit(t, repo, "worktree", "list"), outside) {
 		t.Fatal("deleting the adopted workspace unregistered its worktree")
+	}
+}
+
+// The New workspace panel's Behaviour table, every row but pull requests,
+// and each error it names, planned; then the actions that change git made.
+func TestPlanBehaviour(t *testing.T) {
+	useSettings(t, map[string]any{"workspace.branchPrefix": "me/"})
+	repo, origin := repoWithOrigin(t)
+	other := filepath.Join(t.TempDir(), "other")
+	if out, err := exec.Command("git", "clone", "-q", origin, other).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v\n%s", err, out)
+	}
+	runGit(t, other, "checkout", "-q", "-b", "remote-only")
+	commit(t, other, "r.txt")
+	runGit(t, other, "push", "-q", "origin", "remote-only", "remote-only:me/pushed")
+	runGit(t, repo, "branch", "free")
+	runGit(t, repo, "push", "-q", "origin", "free")
+	runGit(t, repo, "fetch", "-q", "origin")
+	runGit(t, repo, "branch", "me/taken")
+	runGit(t, repo, "tag", "v1")
+	sha := runGit(t, repo, "rev-parse", "HEAD")[:12]
+	base := tempDir(t)
+	busy, gone := filepath.Join(base, "busy"), filepath.Join(base, "gone")
+	runGit(t, repo, "branch", "busy")
+	runGit(t, repo, "worktree", "add", "-q", busy, "busy")
+	runGit(t, repo, "branch", "gone")
+	runGit(t, repo, "worktree", "add", "-q", gone, "gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+	made, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "made", Worktree: true})
+	if err != nil || made.Branch != "me/made" {
+		t.Fatalf("made %+v, %v; want it on me/made", made, err)
+	}
+	// A workspace named free makes the default name for branch free free-2.
+	if _, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "free"}); err != nil {
+		t.Fatal(err)
+	}
+
+	type want struct {
+		name, action, branch, base string
+		folder                     string // the last element of Dir, or all of it when absolute
+		workspace                  string // open: the workspace opened; "" is any
+		ignored                    bool
+		err                        string // a part of the error
+	}
+	off := func(o WorkspaceOptions) WorkspaceOptions { return o }
+	on := func(o WorkspaceOptions) WorkspaceOptions { o.Worktree = true; return o }
+	for _, tc := range []struct {
+		what string
+		o    WorkspaceOptions
+		want want
+	}{
+		// Branch current or empty, box off: the project folder.
+		{"project folder", off(WorkspaceOptions{Name: "Here"}), want{name: "Here", action: planLocal, branch: "main", folder: repo}},
+		{"project folder from current", off(WorkspaceOptions{Name: "Here", From: "main"}), want{name: "Here", action: planLocal, branch: "main", folder: repo}},
+		// Current, empty, tag or commit, box on, no branch typed: named after Name.
+		{"from HEAD", on(WorkspaceOptions{Name: "Fix login"}), want{name: "Fix login", action: planNew, branch: "me/fix-login", base: "HEAD", folder: "fix-login"}},
+		{"from current", on(WorkspaceOptions{Name: "Fix login", From: "main"}), want{name: "Fix login", action: planNew, branch: "me/fix-login", base: "main", folder: "fix-login"}},
+		{"from a tag", on(WorkspaceOptions{Name: "Fix login", From: "v1"}), want{name: "Fix login", action: planNew, branch: "me/fix-login", base: "v1", folder: "fix-login"}},
+		{"from a commit", on(WorkspaceOptions{Name: "Fix login", From: sha}), want{name: "Fix login", action: planNew, branch: "me/fix-login", base: sha, folder: "fix-login"}},
+		{"named branch exists", on(WorkspaceOptions{Name: "Taken"}), want{name: "Taken", action: planExisting, branch: "me/taken", folder: "taken", ignored: true}},
+		{"named branch on origin", on(WorkspaceOptions{Name: "Pushed", From: "v1"}), want{name: "Pushed", action: planTrack, branch: "me/pushed", base: "origin/me/pushed", folder: "pushed", ignored: true}},
+		// A branch typed.
+		{"typed, new", on(WorkspaceOptions{Name: "Auth", From: "free", Branch: "alice/auth-timeout"}), want{name: "Auth", action: planNew, branch: "alice/auth-timeout", base: "free", folder: "alice-auth-timeout"}},
+		{"typed, exists", on(WorkspaceOptions{From: "main", Branch: "free"}), want{name: "free-2", action: planExisting, branch: "free", folder: "free", ignored: true}},
+		{"typed, from its remote", on(WorkspaceOptions{From: "origin/remote-only", Branch: "remote-only"}), want{name: "remote-only", action: planTrack, branch: "remote-only", base: "origin/remote-only", folder: "remote-only"}},
+		{"typed, on origin", on(WorkspaceOptions{From: "main", Branch: "remote-only"}), want{name: "remote-only", action: planTrack, branch: "remote-only", base: "origin/remote-only", folder: "remote-only", ignored: true}},
+		{"typed, in a worktree", on(WorkspaceOptions{Branch: "busy"}), want{name: "busy", action: planAdopt, branch: "busy", folder: busy}},
+		{"typed, in a workspace", on(WorkspaceOptions{Branch: "me/made"}), want{action: planOpen, branch: "me/made", folder: made.Dir, workspace: made.ID}},
+		{"typed, in the project folder", on(WorkspaceOptions{Branch: "main"}), want{action: planOpen, branch: "main", folder: repo}},
+		// A free branch, nothing typed.
+		{"free local branch", on(WorkspaceOptions{From: "free"}), want{name: "free-2", action: planExisting, branch: "free", folder: "free"}},
+		{"free remote branch", on(WorkspaceOptions{From: "origin/remote-only"}), want{name: "remote-only", action: planTrack, branch: "remote-only", base: "origin/remote-only", folder: "remote-only"}},
+		{"remote branch with a local one", on(WorkspaceOptions{From: "origin/free"}), want{name: "free-2", action: planExisting, branch: "free", folder: "free"}},
+		// A worktree row.
+		{"worktree, adopt", on(WorkspaceOptions{From: busy}), want{name: "busy", action: planAdopt, branch: "busy", folder: busy}},
+		{"worktree, adopt named", on(WorkspaceOptions{Name: "Busy work", From: busy}), want{name: "Busy work", action: planAdopt, branch: "busy", folder: busy}},
+		{"worktree, open", on(WorkspaceOptions{From: made.Dir}), want{action: planOpen, branch: "me/made", folder: made.Dir, workspace: made.ID}},
+		{"worktree, deleted", on(WorkspaceOptions{From: gone}), want{err: "prune it"}},
+		{"branch of a deleted worktree", on(WorkspaceOptions{From: "gone"}), want{err: "prune it"}},
+		// Errors.
+		{"box off, no name", off(WorkspaceOptions{}), want{err: "Type a name"}},
+		{"box off, another branch", off(WorkspaceOptions{Name: "x", From: "free"}), want{err: `"free" is not checked out in the project folder`}},
+		{"box on, no name", on(WorkspaceOptions{}), want{err: "Type a name or a branch name"}},
+		{"box on, tag, no name", on(WorkspaceOptions{From: "v1"}), want{err: "Type a name or a branch name"}},
+		{"invalid branch", on(WorkspaceOptions{Name: "x", Branch: "bad..ref"}), want{err: "not a valid branch name"}},
+		{"unknown start point", on(WorkspaceOptions{Name: "x", From: "nowhere"}), want{err: `unknown branch or commit "nowhere"`}},
+		{"option-like start point", on(WorkspaceOptions{Name: "x", From: "-x"}), want{err: "invalid start point"}},
+		{"taken name", on(WorkspaceOptions{Name: "free", From: "v1"}), want{err: `a workspace named "free" already exists`}},
+		{"folder of no worktree", on(WorkspaceOptions{From: base}), want{err: "is not a worktree of this project"}},
+	} {
+		pl := rec.Plan(p.ID, tc.o)
+		w := tc.want
+		if w.err != "" {
+			if !strings.Contains(pl.Error, w.err) {
+				t.Errorf("%s: error %q, want %q", tc.what, pl.Error, w.err)
+			}
+			if w.err == "prune it" && !pl.Prune {
+				t.Errorf("%s: %+v does not offer Prune", tc.what, pl)
+			}
+			continue
+		}
+		folderOK := filepath.Base(pl.Dir) == w.folder
+		if filepath.IsAbs(w.folder) {
+			folderOK = sameDir(pl.Dir, w.folder)
+		}
+		if pl.Error != "" || (w.name != "" && pl.Name != w.name) || pl.Action != w.action || pl.Branch != w.branch || pl.Base != w.base ||
+			!folderOK || pl.StartIgnored != w.ignored || (w.action == planOpen && pl.Workspace == "") || (w.workspace != "" && pl.Workspace != w.workspace) {
+			t.Errorf("%s: plan %+v, want %+v", tc.what, pl, w)
+		}
+	}
+	plain, _ := rec.AddProject(t.TempDir())
+	if pl := rec.Plan(plain.ID, WorkspaceOptions{Name: "x", Worktree: true}); pl.Error != "worktrees need a git repository" {
+		t.Errorf("worktree outside git: %q", pl.Error)
+	}
+	fresh := t.TempDir()
+	runGit(t, fresh, "init", "-q")
+	empty, _ := rec.AddProject(fresh)
+	if pl := rec.Plan(empty.ID, WorkspaceOptions{Name: "x", Worktree: true}); pl.Error != "no commits yet: make a first commit to create worktrees" {
+		t.Errorf("worktree with no commits: %q", pl.Error)
+	}
+
+	// The actions that run git.
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "Auth", From: "free", Branch: "alice/auth-timeout", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Name != "Auth" || w.Branch != "alice/auth-timeout" || runGit(t, w.Dir, "rev-parse", "HEAD") != runGit(t, repo, "rev-parse", "free") {
+		t.Fatalf("new %+v, want Auth on alice/auth-timeout at free", w)
+	}
+	if exec.Command("git", "-C", w.Dir, "rev-parse", "--abbrev-ref", "@{u}").Run() == nil {
+		t.Fatal("a new branch tracks its start point")
+	}
+	w, _, err = rec.AddWorkspace(p.ID, WorkspaceOptions{From: "main", Branch: "free", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.Name != "free-2" || runGit(t, w.Dir, "rev-parse", "--abbrev-ref", "HEAD") != "free" {
+		t.Fatalf("existing %+v, want free-2 with free checked out", w)
+	}
+	w, _, err = rec.AddWorkspace(p.ID, WorkspaceOptions{From: "main", Branch: "remote-only", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := runGit(t, w.Dir, "rev-parse", "--abbrev-ref", "@{u}"); w.Name != "remote-only" || u != "origin/remote-only" {
+		t.Fatalf("track %+v tracks %q, want remote-only tracking origin/remote-only", w, u)
+	}
+
+	// A detached project folder: empty is its HEAD, and no branch is current.
+	runGit(t, repo, "checkout", "-q", "--detach")
+	if pl := rec.Plan(p.ID, WorkspaceOptions{Name: "Detached"}); pl.Error != "" || pl.Action != planLocal {
+		t.Errorf("detached project folder: %+v", pl)
+	}
+	if pl := rec.Plan(p.ID, WorkspaceOptions{Name: "Detached", From: "main"}); !strings.Contains(pl.Error, "not checked out in the project folder") {
+		t.Errorf("detached project folder from main: %+v", pl)
+	}
+	if pl := rec.Plan(p.ID, WorkspaceOptions{Name: "Off detached", Worktree: true}); pl.Error != "" || pl.Action != planNew || pl.Branch != "me/off-detached" || pl.Base != "HEAD" {
+		t.Errorf("worktree from a detached HEAD: %+v", pl)
+	}
+}
+
+// Working on a pull request, without a forge: options as the handlers make
+// them, then Base as workOn sets it after its fetch.
+func TestPlanPullRequest(t *testing.T) {
+	useSettings(t, map[string]any{})
+	repo, _ := repoWithOrigin(t)
+	runGit(t, repo, "update-ref", "refs/remotes/origin/feature", "HEAD")
+	rec := openRecords(t, t.TempDir())
+	p, _ := rec.AddProject(repo)
+	pp := &projectPull{target: PRTarget{Number: 7}, meta: PRMeta{Title: "Add the feature", HeadRef: "feature"}}
+
+	o := pp.options(WorkspaceOptions{From: "#7", Agent: tabShell})
+	if o.From != "" || !o.Worktree || o.Name != "#7 Add the feature" || o.Branch != "feature" || o.Agent != tabShell {
+		t.Fatalf("options %+v, want a worktree #7 Add the feature on feature, from nothing", o)
+	}
+	// Planned before anything is fetched: the handler shows it as pr.
+	if pl := rec.Plan(p.ID, o); pl.Error != "" || pl.Branch != "feature" {
+		t.Fatalf("plan before the fetch %+v", pl)
+	}
+	o.Base, o.fetched = "origin/feature", true
+	if pl := rec.Plan(p.ID, o); pl.Error != "" || pl.Action != planTrack || pl.Branch != "feature" || pl.Base != "origin/feature" || pl.Fetch != "" || pl.Name != "#7 Add the feature" {
+		t.Errorf("head branch: plan %+v, want feature tracking origin/feature, not fetched again", pl)
+	}
+
+	typed := pp.options(WorkspaceOptions{From: "#7", Branch: "mine"})
+	typed.Base, typed.fetched = "origin/feature", true
+	if pl := rec.Plan(p.ID, typed); pl.Error != "" || pl.Action != planNew || pl.Branch != "mine" || pl.Base != "origin/feature" {
+		t.Errorf("typed branch: plan %+v, want mine from origin/feature", pl)
+	}
+	named := pp.options(WorkspaceOptions{From: "#7", Name: "Review it"})
+	named.Base, named.fetched = "origin/feature", true
+	if pl := rec.Plan(p.ID, named); pl.Error != "" || pl.Name != "Review it" || pl.Branch != "feature" {
+		t.Errorf("typed name: plan %+v, want Review it on feature", pl)
+	}
+
+	fork := &projectPull{target: PRTarget{Number: 8}, meta: PRMeta{Title: "From a fork", HeadRef: "main", HeadIsFork: true}}
+	fo := fork.options(WorkspaceOptions{From: "#8"})
+	runGit(t, repo, "update-ref", "refs/punk0/pr/8", "HEAD")
+	fo.Base, fo.fetched = "refs/punk0/pr/8", true
+	if pl := rec.Plan(p.ID, fo); pl.Error != "" || pl.Action != planNew || pl.Branch != "pr-8" || pl.Base != "refs/punk0/pr/8" {
+		t.Errorf("fork: plan %+v, want pr-8 from refs/punk0/pr/8", pl)
+	}
+
+	// Worked on again: the branch kept from last time is checked out as it is.
+	runGit(t, repo, "branch", "--no-track", "feature", "origin/feature")
+	if pl := rec.Plan(p.ID, o); pl.Error != "" || pl.Action != planExisting || pl.Branch != "feature" {
+		t.Errorf("kept head branch: plan %+v, want feature checked out as it is", pl)
+	}
+}
+
+// The panel sends from and branch on the wire: a renamed JSON tag or query
+// parameter would plan and make something else.
+func TestWorkspaceFromAndBranchOverHTTP(t *testing.T) {
+	useSettings(t, map[string]any{})
+	repo := cleanRepo(t)
+	runGit(t, repo, "branch", "free")
+	commit(t, repo, "later.txt")
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	var proj struct{ Project string }
+	decode(t, postJSON(t, wb, "/api/projects", `{"dir":"`+repo+`"}`).Body, &proj)
+
+	var pl struct{ Name, Action, Branch, Base string }
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+proj.Project+"/plan?name=Fix&from=free&branch=alice/fix&worktree=1", "").Body, &pl)
+	if pl.Name != "Fix" || pl.Action != planNew || pl.Branch != "alice/fix" || pl.Base != "free" {
+		t.Fatalf("plan over HTTP %+v, want Fix: a new alice/fix from free", pl)
+	}
+	w := postJSON(t, wb, "/api/projects/"+proj.Project+"/workspaces", `{"name":"Fix","from":"free","branch":"alice/fix","worktree":true}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	var made struct{ Name, Branch, Dir string }
+	decode(t, w.Body, &made)
+	if made.Name != "Fix" || made.Branch != "alice/fix" || runGit(t, made.Dir, "rev-parse", "HEAD") != runGit(t, repo, "rev-parse", "free") {
+		t.Fatalf("made %+v, want Fix on alice/fix at free", made)
+	}
+}
+
+// refs says what the project folder has checked out, and lists the main
+// checkout when the project folder is a linked worktree.
+func TestRefsCurrentHeadAndMainCheckout(t *testing.T) {
+	useSettings(t, map[string]any{})
+	repo := cleanRepo(t)
+	full := runGit(t, repo, "rev-parse", "HEAD")
+	runGit(t, repo, "branch", "outside")
+	outside := filepath.Join(tempDir(t), "outside")
+	runGit(t, repo, "worktree", "add", "-q", outside, "outside")
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	project := func(dir string) string {
+		var proj struct{ Project string }
+		decode(t, postJSON(t, wb, "/api/projects", `{"dir":"`+dir+`"}`).Body, &proj)
+		return proj.Project
+	}
+	type refsReply struct {
+		Current, Head string
+		Empty         bool
+		Refs          []string
+		Worktrees     []worktreeInfo
+	}
+	refs := func(id string) refsReply {
+		var res refsReply
+		decode(t, reqJSON(t, wb, "GET", "/api/projects/"+id+"/refs", "").Body, &res)
+		return res
+	}
+	mainOf := func(res refsReply) *worktreeInfo {
+		for i := range res.Worktrees {
+			if res.Worktrees[i].Main {
+				return &res.Worktrees[i]
+			}
+		}
+		return nil
+	}
+
+	top := project(repo)
+	res := refs(top)
+	if res.Current != "main" || len(res.Head) < 4 || !strings.HasPrefix(full, res.Head) || res.Empty || mainOf(res) != nil {
+		t.Fatalf("refs of the main checkout %+v, want current main, head %s, no main entry", res, full)
+	}
+	res = refs(project(outside))
+	if m := mainOf(res); res.Current != "outside" || m == nil || m.Path != repo || m.Branch != "main" {
+		t.Fatalf("refs of a linked worktree %+v, want current outside and the main checkout %s on main", res, repo)
+	}
+	for _, wt := range res.Worktrees {
+		if sameDir(wt.Path, outside) {
+			t.Fatalf("refs of %s lists its own folder: %+v", outside, res.Worktrees)
+		}
+	}
+
+	runGit(t, repo, "checkout", "-q", "--detach")
+	if res = refs(top); res.Current != "" || !strings.HasPrefix(full, res.Head) || res.Head == "" {
+		t.Fatalf("refs of a detached project folder %+v, want no current branch and head %s", res, full)
+	}
+
+	var plain map[string]any
+	decode(t, reqJSON(t, wb, "GET", "/api/projects/"+project(t.TempDir())+"/refs", "").Body, &plain)
+	if plain["current"] != "" || plain["head"] != "" || plain["empty"] != false {
+		t.Fatalf("refs of a folder outside git %+v, want current and head empty", plain)
 	}
 }

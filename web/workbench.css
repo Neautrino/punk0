@@ -363,18 +363,21 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-backend.starting { background: var(--mark-active); border-color: var(--mark-active); }
 .o-backend.running { background: var(--gi); border-color: var(--gi); }
 .o-backend.failed { background: var(--err); border-color: var(--err); }
-/* The name keeps some width when the row's actions show; the chip gives way
-   first, and the status badge steps aside for the actions. */
+/* The name keeps some width when the row's actions show, and the status
+   badge steps aside for the actions. */
 .o-ws-name { flex: 1 1 auto; min-width: 48px; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
 .o-ws-row:hover .o-badge, .o-ws-row:focus-within .o-badge { display: none; }
 .o-ws-row.active .o-ws-name, .o-ws-row:hover .o-ws-name { color: var(--fg); }
 .o-ws-row.missing .o-ws-name { color: var(--faint); text-decoration: line-through; }
+/* A workspace of a git project: its name over the branch it is on and where
+   (sidebar.js whereLine), each cut short on its own line. */
+.o-ws-row.o-two { height: 40px; }
+.o-ws-text { flex: 1 1 auto; min-width: 48px; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+.o-ws-text .o-ws-name { flex: none; min-width: 0; line-height: 16px; }
+.o-ws-sub { overflow: hidden; text-overflow: ellipsis; font: 10.5px/14px var(--mono); color: var(--faint); }
+.o-ws-gone { color: var(--err); }
 /* A child workspace (an agent-made worktree) steps in under its parent. */
 .o-ws-row[style*="--depth"] { padding-left: calc(16px + var(--depth) * 14px); }
-/* A git worktree of the project punk0 does not list yet: dim until added. */
-.o-ws-row.o-found { opacity: .6; }
-.o-ws-row.o-found:hover, .o-ws-row.o-found:focus-visible { opacity: 1; }
-.o-ws-row.o-found:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 /* A chat's last use: steps aside for the actions like the badge. */
 .o-when { flex: none; font: 10.5px var(--mono); color: var(--faint); }
 .o-ws-row:hover .o-when, .o-ws-row:focus-within .o-when { display: none; }
@@ -389,9 +392,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
   flex: 0 1 auto; min-width: 0; max-width: 96px; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
   font: 10px/14px var(--mono); color: var(--dim); border: 1px solid var(--line); border-radius: var(--r);
 }
-.o-chip.o-wt { color: var(--accent-fg); }
-.o-chip.o-missing { color: var(--err); }
-.o-chip.o-adopted { flex: none; color: var(--dim); }
 /* Running tabs, or the most urgent agent status among them. */
 .o-badge {
   flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0 5px;
@@ -620,19 +620,19 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-ap-bar { height: 4px; border-radius: 2px; background: var(--bg2); overflow: hidden; }
 .o-ap-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s ease-out; }
 
-/* New workspace (newworkspace.js): the New chat flyout, wider, with a
-   segmented Where switch and a plan line saying what Create will do. */
+/* New workspace (newworkspace.js): the New chat flyout, wider: Name, the
+   Branch to work on (tagged inside the field), the new-worktree checkbox
+   with its indented new branch name, and a plan line saying what Create
+   will do. */
 .o-flyout.o-nw { width: 360px; }
-.o-seg { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
-.o-seg button { flex: 1; height: 22px; border-radius: var(--r); font-size: 12px; color: var(--dim); }
-.o-seg button:hover:not(:disabled) { color: var(--fg); }
-.o-seg button[aria-checked="true"] { color: var(--fg); background: var(--bg4); }
-.o-seg button:disabled { opacity: .45; cursor: default; }
-.o-seg button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.o-nw-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
-.o-nw-base { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); }
-.o-nw-base .o-input { width: 150px; height: 22px; font-size: 11px; }
 #o-nw-name { font: 12.5px var(--ui); color: var(--fg); }
+#o-nw-from { padding-right: 96px; }
+.o-nw-from-tag { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); pointer-events: none; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.o-nw-tag { flex: none; font-size: 10px; padding: 0 5px; border: 1px solid var(--line); border-radius: var(--r); color: var(--dim); background: var(--bg2); }
+.o-nw-tag.gone { color: var(--err); border-color: var(--err); }
+.o-nw-hint { color: var(--faint); font-size: 11px; }
+#o-nw-wt-row:has(input:disabled) { cursor: default; }
+.o-nw-sub { margin: -2px 0 0 6px; padding-left: 12px; border-left: 1px solid var(--line); }
 .o-nw-plan {
   margin: -2px 0 0; padding: 6px 8px; min-height: 3.2em; font-size: 11.5px; line-height: 1.5; color: var(--dim);
   background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); overflow-wrap: anywhere;
@@ -640,22 +640,16 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-nw-plan code { font: 11px var(--mono); color: var(--fg); }
 .o-nw-plan b { color: var(--fg); font-weight: 600; }
 .o-nw-plan.err { color: var(--err); }
+.o-nw-plan .warn { color: var(--accent-fg); }
 .o-nw-plan.pending { opacity: .6; }
 .o-nw-dir { font: 11px var(--mono); color: var(--faint); }
 .o-nw-prune { margin-left: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: var(--r); font-size: 11px; color: var(--fg); background: var(--bg); }
-/* The project's worktrees, then its branches, matching the name. */
-.o-nw-suggest {
-  display: flex; flex-direction: column; max-height: 180px; overflow-y: auto; margin-top: 3px;
-  border: 1px solid var(--line); border-radius: var(--r); background: var(--bg);
-}
-.o-nw-sec { padding: 4px 8px 2px; font-size: 10.5px; color: var(--faint); }
-.o-nw-wt { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; }
-.o-nw-wt-branch { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); color: var(--accent-fg); }
-.o-nw-wt.gone .o-nw-wt-branch { color: var(--err); }
-.o-nw-wt-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); color: var(--faint); }
-.o-nw-wt .wb-btn { padding: 1px 8px; font-size: 11px; }
-.o-nw-branch { padding: 3px 8px; text-align: left; font: 11px var(--mono); color: var(--dim); }
-.o-nw-branch:hover, .o-nw-branch:focus-visible { background: var(--bg2); color: var(--fg); outline: none; }
+/* The Branch dropdown: the current branch, the project's worktrees, then its
+   other branches, as wide as the field. */
+#o-nw-suggest { width: 100%; max-width: none; }
+.wb-suggest li.o-nw-sec { padding: 6px 10px 2px; font: 10.5px var(--ui); color: var(--faint); cursor: default; background: none; }
+.o-nw .wb-suggest .wb-sg-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-suggest .o-nw-cur { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--gi); }
 .o-acts .mini.o-pin.on { color: var(--accent-fg); }
 
 /* Delete workspace / Remove project (removedialog.js): one checkbox per

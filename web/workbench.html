@@ -193,8 +193,10 @@
           <button id="o-chat-start" type="submit" class="wb-btn wb-primary">Start chat</button>
         </div>
       </form>
-      <!-- New workspace: a flyout beside the sidebar. The plan line says what
-           creating it will do before anything is made (web/src/orch/newworkspace.js). -->
+      <!-- New workspace: a flyout beside the sidebar. Name, then the branch to
+           work on; a checkbox makes a new worktree, optionally on a new branch.
+           The plan line says what creating it will do before anything is made
+           (web/src/orch/newworkspace.js). -->
       <form id="o-nw-form" class="o-flyout o-nw" role="dialog" aria-labelledby="o-nw-heading" autocomplete="off" hidden>
         <header class="o-flyout-head">
           <h2 id="o-nw-heading">New workspace</h2>
@@ -205,30 +207,29 @@
         <label class="o-chat-field">Project
           <select id="o-nw-project" class="o-select"></select>
         </label>
-        <div class="o-chat-field">
-          <span id="o-nw-where-label">Where</span>
-          <div class="o-seg" role="radiogroup" aria-labelledby="o-nw-where-label">
-            <button type="button" role="radio" data-where="worktree" title="Its own folder and branch, beside the project folder">New worktree</button>
-            <button type="button" role="radio" data-where="local" title="The project folder itself, on the branch it is on">Project folder</button>
+        <label class="o-chat-field">Name
+          <input id="o-nw-name" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="300">
+        </label>
+        <div id="o-nw-from-row" class="o-chat-field">
+          <label for="o-nw-from">Branch</label>
+          <div class="o-field">
+            <input id="o-nw-from" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="300"
+                   placeholder="Branch, tag, commit, #123 or pull request URL"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="o-nw-suggest">
+            <span id="o-nw-from-tag" class="o-nw-tag o-nw-from-tag" hidden></span>
+            <ul id="o-nw-suggest" class="wb-suggest" role="listbox" aria-label="Branches and worktrees" hidden></ul>
           </div>
         </div>
-        <div class="o-chat-field">
-          <div class="o-nw-label-row">
-            <label for="o-nw-name">Name or start from</label>
-            <span id="o-nw-base-row" class="o-nw-base">
-              <label for="o-nw-base">from</label>
-              <input id="o-nw-base" class="o-input" type="text" list="o-nw-refs" spellcheck="false" autocapitalize="off" title="What a new branch starts from: a branch, tag or commit">
-              <datalist id="o-nw-refs"></datalist>
-            </span>
-          </div>
-          <input id="o-nw-name" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="300">
-          <div id="o-nw-suggest" class="o-nw-suggest" hidden></div>
+        <label id="o-nw-wt-row" class="o-check"><input id="o-nw-wt" type="checkbox"> Create a new worktree <span id="o-nw-wt-hint" class="o-nw-hint"></span></label>
+        <div id="o-nw-newbranch-row" class="o-chat-field o-nw-sub" hidden>
+          <label for="o-nw-newbranch">New branch name</label>
+          <input id="o-nw-newbranch" class="o-input" type="text" spellcheck="false" autocapitalize="off" maxlength="250">
         </div>
         <p id="o-nw-plan" class="o-nw-plan" role="status" aria-live="polite"></p>
-        <label class="o-chat-field">Agent
+        <label id="o-nw-lsp-row" class="o-check" title="Code intelligence in this folder: 300 MB to 1.5 GB of memory per folder"><input id="o-nw-lsp" type="checkbox"> Language servers in this folder</label>
+        <label id="o-nw-agent-row" class="o-chat-field">Agent
           <select id="o-nw-agent" class="o-select"></select>
         </label>
-        <label id="o-nw-lsp-row" class="o-check" title="Code intelligence in this folder: 300 MB to 1.5 GB of memory per folder"><input id="o-nw-lsp" type="checkbox"> Language servers in this folder</label>
         <p id="o-nw-msg" class="wb-msg" role="status" hidden></p>
         <div class="o-form-acts">
           <button id="o-nw-cancel" type="button" class="wb-btn">Cancel</button>

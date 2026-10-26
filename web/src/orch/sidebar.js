@@ -52,8 +52,7 @@ const search = { scratch: '', projects: '' }; // lowercased search text per view
 
 let listEl, searchEl, searchClearEl, chatMenuEl;
 // What the one actions menu (#o-chat-menu) is open for: { mode: 'chat', id }
-// a scratch chat, { mode: 'move', id } a worktree workspace to move under
-// another, { mode: 'found', project, path } a found worktree to add.
+// a scratch chat, { mode: 'ws', id } a project's workspace.
 let menuFor = null;
 // The group name being edited in place: { kind: 'new' | 'rename', id, moveChat, error, busy }.
 let editing = null;
@@ -99,9 +98,6 @@ export function initSidebar() {
     } else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-act=toggle-archived]')) {
       e.preventDefault();
       toggleArchived();
-    } else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-found]')) {
-      e.preventDefault();
-      e.target.click();
     }
   });
   chatMenuEl.addEventListener('click', onChatMenu);
@@ -109,7 +105,7 @@ export function initSidebar() {
     if (e.key === 'Escape') closeChatMenu();
   });
   document.addEventListener('mousedown', e => {
-    if (!chatMenuEl.hidden && !chatMenuEl.contains(e.target) && !e.target.closest('[data-act$="-menu"], .o-found')) closeChatMenu();
+    if (!chatMenuEl.hidden && !chatMenuEl.contains(e.target) && !e.target.closest('[data-act$="-menu"]')) closeChatMenu();
     // Clicking away from a name being edited keeps it, as Enter does.
     if (editing && !e.target.closest('[data-edit]')) commitEdit();
   });
@@ -282,7 +278,7 @@ function renderProject(p, ws, filtered) {
           <button type="button" class="mini o-del" data-act="del-project" title="Remove project from punk0" aria-label="Remove project">${ICON_X}</button>
         </span>
       </div>
-      ${open ? renderTree(p, ws) + renderFound(p) : ''}
+      ${open ? renderTree(p, ws) : ''}
     </div>`;
 }
 
@@ -294,24 +290,6 @@ function renderTree(p, ws) {
   const branch = (w, depth) => renderWorkspace(w, null, depth) +
     ws.filter(c => c.parent === w.id).map(c => branch(c, depth + 1)).join('');
   return ws.filter(w => !w.parent || !ids.has(w.parent)).map(w => branch(w, 0)).join('');
-}
-
-// renderFound lists the project's linked worktrees no workspace uses (git
-// worktree list): clicking one offers to add it, at the top level or under
-// a workspace.
-function renderFound(p) {
-  return (p.found || []).filter(f => textMatch(p.name, f.branch, f.path)).map(f => {
-    const branch = f.detached ? 'detached' : f.branch;
-    return `
-    <div class="o-ws-row o-found" data-found="${esc(f.path)}" title="${esc(tildify(f.path))}" role="button" tabindex="0" aria-haspopup="menu">
-      <span class="o-ws-name">${esc(f.path.split('/').filter(Boolean).pop() || f.path)}</span>
-      <span class="o-chip o-wt" title="Worktree on ${f.detached ? 'a detached HEAD' : 'branch ' + esc(f.branch)}">⑂ ${esc(branch)}</span>
-      <span class="o-chip o-adopted" title="A git worktree of this project that punk0 does not list yet">found</span>
-      <span class="o-acts">
-        <button type="button" class="mini" data-act="found-menu" title="Add to the project" aria-label="Add worktree" aria-haspopup="menu">${ICON_MORE}</button>
-      </span>
-    </div>`;
-  }).join('');
 }
 
 /* Scratch */
@@ -498,24 +476,43 @@ const BACKEND_TITLE = {
   failed: 'Editor failed to start',
 };
 
+// whereLine is a workspace row's second line: the branch it is on and where
+// -- ⌂ the project folder, whose branch every workspace there shares and
+// follows as it changes, or ⑂ a worktree of its own -- and whether it was
+// adopted or its folder is gone. A chat's folder has neither.
+function whereLine(w) {
+  const branch = w.branch === 'HEAD' ? 'detached' : w.branch;
+  let text;
+  let title;
+  if (w.kind === 'local') {
+    text = `⌂ ${branch ? `${branch} · ` : ''}project folder`;
+    title = `Runs in the project folder${branch ? `, on ${branch} as it is now` : ''}`;
+  } else if (w.kind === 'worktree') {
+    text = `⑂ ${branch || 'detached'}`;
+    title = `${w.adopted ? 'Adopted worktree' : 'Own worktree'} on ${branch ? 'branch ' + branch : 'a detached HEAD'}`;
+    if (w.adopted) {
+      text += ' · adopted';
+      title += ': made outside punk0 and used where it is, so deleting the workspace leaves its folder';
+    }
+  } else return '';
+  const missing = w.missing ? ' · <span class="o-ws-gone" title="Folder deleted outside punk0">missing</span>' : '';
+  return `<span class="o-ws-sub" title="${esc(title)}">${esc(text)}${missing}</span>`;
+}
+
 // renderWorkspace is a project's workspace row; outside its project's
 // group (p given), it is named with the project. depth indents a child
 // under its parent. Its editor opens from the tab bar, its language servers
 // from the status bar (lsp.js).
 function renderWorkspace(w, p, depth = 0) {
-  let chip = '';
-  if (w.missing) chip = '<span class="o-chip o-missing" title="Folder deleted outside punk0">missing</span>';
-  else if (w.kind === 'worktree') chip = `<span class="o-chip o-wt" title="${w.adopted ? 'Adopted worktree' : 'Own worktree'} on branch ${esc(w.branch)}">⑂ ${esc(w.branch)}</span>`;
-  if (w.adopted) chip += '<span class="o-chip o-adopted" title="Made outside punk0 and used where it is: deleting the workspace leaves its folder">adopted</span>';
   const name = p && p.name !== w.name ? `${p.name} / ${w.name}` : w.name;
+  const sub = whereLine(w);
   return `
-    <div class="o-ws-row${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}${p ? ' o-flat' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}"${depth ? ` style="--depth:${depth}"` : ''}>
+    <div class="o-ws-row${sub ? ' o-two' : ''}${w.id === state.ws ? ' active' : ''}${w.missing ? ' missing' : ''}${p ? ' o-flat' : ''}" data-ws="${esc(w.id)}" title="${esc(tildify(w.dir))}"${depth ? ` style="--depth:${depth}"` : ''}>
       <span class="o-backend ${esc(w.backend || 'stopped')}" title="${esc(BACKEND_TITLE[w.backend] || w.backend)}"></span>
-      <span class="o-ws-name">${esc(name)}</span>
-      ${chip}${badgeOf(w)}
+      <span class="o-ws-text"><span class="o-ws-name">${esc(name)}</span>${sub}</span>
+      ${badgeOf(w)}
       <span class="o-acts">
-        ${w.kind === 'worktree' ? `<button type="button" class="mini" data-act="ws-menu" title="Move under another workspace" aria-label="Workspace actions" aria-haspopup="menu">${ICON_MORE}</button>` : ''}
-        <button type="button" class="mini o-del" data-act="del-ws" title="Delete workspace" aria-label="Delete workspace">${ICON_X}</button>
+        <button type="button" class="mini" data-act="ws-menu" title="Rename or delete" aria-label="Workspace actions" aria-haspopup="menu">${ICON_MORE}</button>
       </span>
     </div>`;
 }
@@ -557,12 +554,6 @@ async function onListClick(e) {
   const groupId = e.target.closest('[data-group]')?.dataset.group || '';
   const w = rowWorkspace(e.target, '[data-ws]');
   const prId = e.target.closest('[data-pr]')?.dataset.pr;
-  const foundPath = e.target.closest('[data-found]')?.dataset.found;
-
-  if (foundPath) {
-    if (menuFor?.mode === 'found' && menuFor.path === foundPath && !chatMenuEl.hidden) return closeChatMenu();
-    return openFoundMenu(project, foundPath, menuAt(e.target.closest('[data-act]') || e.target.closest('[data-found]')));
-  }
   if (prId) return reviewAction(state.reviews.find(r => r.id === prId), act);
   if (act === 'add-project') return openAddProject(e.target.closest('[data-act]'));
   if (act === 'add-ws') return newWorkspace(project, e.target.closest('[data-act]'));
@@ -575,7 +566,7 @@ async function onListClick(e) {
   if (act === 'toggle-archived') return toggleArchived();
   if (w && act === 'del-ws') return removeWorkspace(w, e.target.closest('[data-act]'));
   if (w && act === 'chat-menu') return chatMenuEl.hidden || menuFor?.id !== w.id ? openChatMenu(w, menuAt(e.target.closest('button'))) : closeChatMenu();
-  if (w && act === 'ws-menu') return chatMenuEl.hidden || menuFor?.id !== w.id ? openMoveMenu(w, menuAt(e.target.closest('button'))) : closeChatMenu();
+  if (w && act === 'ws-menu') return chatMenuEl.hidden || menuFor?.id !== w.id ? openWorkspaceMenu(w, menuAt(e.target.closest('button'))) : closeChatMenu();
   if (w && act === 'restore') return updateChat(w, { archived: false });
   if (w && act === 'pin') return updateChat(w, { pinned: !w.pinned });
   // A double-click renames. It is the second click's detail, not a dblclick
@@ -595,19 +586,13 @@ async function onListClick(e) {
   }
 }
 
-// A right click on a worktree workspace or a found worktree opens its menu
-// at the pointer.
+// A right click on a project's workspace opens its menu at the pointer.
 function onListContextMenu(e) {
   const at = { x: e.clientX, y: e.clientY };
-  const found = e.target.closest('[data-found]');
-  if (found) {
-    e.preventDefault();
-    return openFoundMenu(state.projects.find(p => p.id === found.closest('[data-project]')?.dataset.project), found.dataset.found, at);
-  }
   const w = rowWorkspace(e.target, '[data-ws]');
-  if (w?.kind !== 'worktree') return;
+  if (w?.kind !== 'worktree' && w?.kind !== 'local') return;
   e.preventDefault();
-  openMoveMenu(w, at);
+  openWorkspaceMenu(w, at);
 }
 
 // rowWorkspace is the workspace of the row el is in, or null outside one.
@@ -738,34 +723,21 @@ function openChatMenu(w, at) {
     <button type="button" role="menuitem" data-menu="archive">Archive</button>`, at);
 }
 
-// projectOf is the project workspace w belongs to.
-const projectOf = w => state.projects.find(p => p.workspaces.some(x => x.id === w.id));
-
-// openMoveMenu offers every workspace of w's project to nest w under, but w
-// itself and its descendants (that would be a cycle), plus the top level
-// when it has a parent; its parent is ticked.
-function openMoveMenu(w, at) {
-  const all = projectOf(w)?.workspaces || [];
-  const below = new Set([w.id]);
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const x of all) if (x.parent && below.has(x.parent) && !below.has(x.id)) below.add(x.id), grew = true;
-  }
-  const item = (id, name) => `<button type="button" role="menuitemradio" aria-checked="${(w.parent || '') === id}" data-menu="parent" data-parent="${esc(id)}">${esc(name)}</button>`;
-  showChatMenu({ mode: 'move', id: w.id }, `
-    <div class="o-menu-label">Move under</div>
-    ${all.filter(x => !below.has(x.id)).map(x => item(x.id, x.name)).join('')}
-    ${w.parent ? `<div class="o-menu-sep" role="separator"></div>${item('', 'Top level')}` : ''}`, at);
+// The workspace actions menu: rename, delete.
+function openWorkspaceMenu(w, at) {
+  showChatMenu({ mode: 'ws', id: w.id }, `
+    <button type="button" role="menuitem" data-menu="ws-rename">Rename…</button>
+    <div class="o-menu-sep" role="separator"></div>
+    <button type="button" role="menuitem" data-menu="ws-delete">Delete…</button>`, at);
 }
 
-// openFoundMenu offers to add found worktree path to project p, at the top
-// level or under one of its workspaces.
-function openFoundMenu(p, path, at) {
-  if (!p) return;
-  showChatMenu({ mode: 'found', project: p.id, path }, `
-    <button type="button" role="menuitem" data-menu="add" data-parent="">Add to project</button>
-    ${p.workspaces.length ? '<div class="o-menu-sep" role="separator"></div><div class="o-menu-label">Add under</div>' : ''}
-    ${p.workspaces.map(x => `<button type="button" role="menuitem" data-menu="add" data-parent="${esc(x.id)}">${esc(x.name)}</button>`).join('')}`, at);
+// renameWorkspace asks for a new label; the folder and branch stay.
+async function renameWorkspace(w) {
+  const name = prompt('Workspace name', w.name)?.trim();
+  if (!name || name === w.name) return;
+  const res = await call('PATCH', `api/workspaces/${encodeURIComponent(w.id)}`, { name });
+  if (!res.ok) failed(res);
+  reload();
 }
 
 function closeChatMenu() {
@@ -780,20 +752,13 @@ async function onChatMenu(e) {
   if (!b || !what) return;
   closeChatMenu();
   const act = b.dataset.menu;
-  if (what.mode === 'found') {
-    const body = { name: what.path, worktree: true };
-    if (b.dataset.parent) body.parent = b.dataset.parent;
-    const res = await call('POST', `api/projects/${encodeURIComponent(what.project)}/workspaces`, body);
-    if (!res.ok) failed(res);
-    return reload();
-  }
   const w = workspace(what.id);
   if (!w) return;
-  if (what.mode === 'move') {
-    if (b.dataset.parent === (w.parent || '')) return;
-    const res = await call('PATCH', `api/workspaces/${encodeURIComponent(w.id)}`, { parent: b.dataset.parent });
-    if (!res.ok) failed(res);
-    return reload();
+  if (what.mode === 'ws') {
+    if (act === 'ws-rename') return renameWorkspace(w);
+    // The ⋯ that opened the menu hides with the row's hover: the dialog
+    // points at the row.
+    return removeWorkspace(w, listEl.querySelector(`[data-ws="${CSS.escape(w.id)}"]`));
   }
   if (act === 'rename') return renameChat(w);
   if (act === 'archive') return updateChat(w, { archived: true });

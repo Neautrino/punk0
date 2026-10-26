@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"log"
 	"maps"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -140,7 +139,7 @@ func (wb *workbench) attributeDir(tabID, dir string) {
 	if wt == nil || wt.Main || wt.Prunable {
 		return
 	}
-	ws, _, err := wb.records.AddWorkspace(projectID, WorkspaceOptions{Name: wt.Path, Worktree: true, Parent: place.workspaceID})
+	ws, _, err := wb.records.AddWorkspace(projectID, WorkspaceOptions{From: wt.Path, Worktree: true, Parent: place.workspaceID})
 	if err != nil {
 		log.Printf("worktree %s of tab %s: %v", tildePath(wt.Path), tabID, err)
 		return
@@ -261,32 +260,4 @@ func (wb *workbench) reapWorktree(x wsRef) {
 		log.Printf("hiding the chats of gone worktree %s: %v", tildePath(x.Dir), err)
 	}
 	log.Printf("worktree %s is gone: workspace %q forgotten, %d chats hidden", tildePath(x.Dir), x.Name, len(keys))
-}
-
-// handleWorkspaceUpdate lists a worktree workspace under another workspace of
-// its project, or at the top ({"parent": ""}): Move under in the sidebar.
-func (wb *workbench) handleWorkspaceUpdate(w http.ResponseWriter, r *http.Request) {
-	if !localOrigin(w, r) {
-		return
-	}
-	var body struct {
-		Parent *string `json:"parent"`
-	}
-	if readJSONBody(r, &body) != nil || body.Parent == nil {
-		fail(w, http.StatusBadRequest, "parent is required")
-		return
-	}
-	id := r.PathValue("id")
-	if err := wb.records.SetParent(id, *body.Parent); err != nil {
-		failRecord(w, err)
-		return
-	}
-	ws := wb.records.Workspace(id)
-	if ws == nil {
-		fail(w, http.StatusNotFound, "workspace not found")
-		return
-	}
-	view := wb.records.View(ws)
-	wb.fillWorkspace(&view)
-	writeJSON(w, view)
 }

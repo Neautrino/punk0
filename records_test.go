@@ -589,12 +589,12 @@ func TestAddWorkspaceRejects(t *testing.T) {
 	for _, o := range []WorkspaceOptions{
 		{Name: "", Worktree: true},                       // no name
 		{Name: "main"},                                   // duplicate of the first workspace
-		{Name: "ok", Worktree: true, Base: "-x"},         // option-like base
+		{Name: "ok", Worktree: true, From: "-x"},         // option-like start point
 		{Name: "ok", Worktree: true, Branch: "bad..ref"}, // invalid branch
 		{Name: "ok", Worktree: true, Branch: "-x"},       // option-like branch
-		{Name: "gone", Worktree: true},                   // branch held by a deleted worktree
-		{Name: t.TempDir(), Worktree: true},              // a folder that is no worktree
-		{Name: "ok", Worktree: true, Base: "nowhere"},    // unknown base
+		{From: "gone", Worktree: true},                   // branch held by a deleted worktree
+		{From: t.TempDir(), Worktree: true},              // a folder that is no worktree
+		{Name: "ok", Worktree: true, From: "nowhere"},    // unknown start point
 		{Name: "ok", Worktree: true, Agent: "nonesuch"},  // unknown agent
 	} {
 		if _, _, err := rec.AddWorkspace(p.ID, o); err == nil {

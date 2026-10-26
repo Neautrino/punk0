@@ -34,14 +34,14 @@ func TestAgentWorktreesNestAndGoWithTheirFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The worktrees no workspace runs in, which the New workspace panel offers
+	// to adopt.
 	found := func() []string {
 		t.Helper()
 		var out []string
-		for _, pv := range wb.records.List() {
-			if pv.ID == p.ID {
-				for _, f := range pv.Found {
-					out = append(out, f.Path)
-				}
+		for _, wt := range wb.records.Worktrees(repo) {
+			if wt.Workspace == "" {
+				out = append(out, wt.Path)
 			}
 		}
 		return out
@@ -101,9 +101,8 @@ func TestAgentWorktreesNestAndGoWithTheirFolder(t *testing.T) {
 	}
 }
 
-// A worktree moves under any workspace of its project but never under itself
-// or a worktree below it, and only worktrees move; removing one moves what
-// was under it up a level.
+// A worktree is listed under a workspace of its project when it is made,
+// only worktrees are, and removing one moves what was under it up a level.
 func TestWorkspaceParents(t *testing.T) {
 	wb, _, repo := historyWorkbench(t)
 	p, err := wb.records.AddProject(repo)
@@ -119,28 +118,54 @@ func TestWorkspaceParents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patch := func(id, parent string) int {
-		t.Helper()
-		return reqJSON(t, wb, "PATCH", "/api/workspaces/"+id, `{"parent":"`+parent+`"}`).Code
-	}
-	for _, c := range []struct{ id, parent string }{{a.ID, b.ID}, {a.ID, a.ID}, {main.ID, a.ID}, {b.ID, "nope"}} {
-		if code := patch(c.id, c.parent); code != 400 {
-			t.Fatalf("%s under %s: %d, want 400", c.id, c.parent, code)
-		}
-	}
 	if _, _, err := wb.records.AddWorkspace(p.ID, WorkspaceOptions{Name: "c", Parent: main.ID}); err == nil {
 		t.Fatal("a local workspace was listed under another")
-	}
-	if code := patch(b.ID, ""); code != 200 || wb.records.Workspace(b.ID).Parent != "" {
-		t.Fatalf("to the top: %d", code)
-	}
-	if code := patch(b.ID, a.ID); code != 200 {
-		t.Fatalf("back under a: %d", code)
 	}
 	if _, err := wb.records.RemoveWorkspace(a.ID, RemoveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := wb.records.Workspace(b.ID).Parent; got != main.ID {
 		t.Fatalf("with a removed, b is under %q, want main %s", got, main.ID)
+	}
+}
+
+// Renaming a workspace changes only its label, which stays unique in the
+// project and must be a valid name; its folder and branch stay.
+func TestRenameWorkspace(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _, err := wb.records.AddWorkspace(p.ID, WorkspaceOptions{Name: "a", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rename := func(id, body string) int {
+		t.Helper()
+		return reqJSON(t, wb, "PATCH", "/api/workspaces/"+id, body).Code
+	}
+	if code := rename(a.ID, `{"name":"  Fix login  "}`); code != 200 {
+		t.Fatalf("rename: %d", code)
+	}
+	got := wb.records.Workspace(a.ID)
+	if got.Name != "Fix login" || got.Dir != a.Dir || got.Branch != a.Branch {
+		t.Fatalf("renamed %+v, want name %q with folder %s and branch %s kept", got, "Fix login", a.Dir, a.Branch)
+	}
+	for _, body := range []string{`{"name":"` + p.Workspaces[0].Name + `"}`, `{"name":"  "}`, `{}`} {
+		if code := rename(a.ID, body); code != 400 {
+			t.Fatalf("rename %s: %d, want 400", body, code)
+		}
+	}
+	if code := rename("nope", `{"name":"x"}`); code != 404 {
+		t.Fatalf("rename unknown: %d, want 404", code)
+	}
+	// A chat's Name is its folder's: it is renamed through its title instead.
+	chat, err := wb.records.NewChat(ChatOptions{Agent: tabShell})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := rename(chat.ID, `{"name":"x"}`); code != 400 || wb.records.Workspace(chat.ID).Name != chat.Name {
+		t.Fatalf("rename chat: %d, name %q; want 400 and %q kept", code, wb.records.Workspace(chat.ID).Name, chat.Name)
 	}
 }

@@ -4,7 +4,7 @@ package main
 // A worktree workspace gets its own folder under <state>/worktrees/<project>
 // and its own branch; a local one runs in the project folder. What the panel
 // holds is planned first, exactly as creating it would go, so the panel can
-// say what will happen -- a new branch from origin/main, an existing branch
+// say what will happen -- a new branch from main, an existing branch
 // checked out, a worktree made outside punk0 adopted where it is, or why it
 // cannot be done -- before anything is made.
 //
@@ -32,13 +32,14 @@ import (
 
 // WorkspaceOptions is what the New workspace panel asks for.
 type WorkspaceOptions struct {
-	Name     string `json:"name"`     // the workspace's label, or the branch or pull request to start from
+	Name     string `json:"name"`     // the workspace's label; "" is the default (worktree only)
+	From     string `json:"from"`     // branch, remote branch, tag, commit, pull request or worktree folder; "" is the project folder's HEAD
+	Branch   string `json:"branch"`   // the new branch's name; "" derives it from From or Name
 	Worktree bool   `json:"worktree"` // own folder and branch; else the project folder
-	Branch   string `json:"-"`        // set for a pull request; "" derives it from Name
-	Base     string `json:"base"`     // what a new branch starts from; "" is the default branch
+	Base     string `json:"-"`        // a pull request's fetched head (workOn): the start point, over From
 	Agent    string `json:"agent"`    // the first tab: a tabAgents key or "shell"; "" opens no tab
 	LSP      bool   `json:"lsp"`      // language servers on in the new folder
-	Parent   string `json:"parent"`   // a worktree's: the project's workspace it is listed under
+	Parent   string `json:"-"`        // a worktree an agent made: its agent's workspace, which it is listed under
 
 	fetched bool // Base was just fetched (a pull request's head)
 }
@@ -68,6 +69,9 @@ type WorkspacePlan struct {
 	Prune     bool    `json:"prune,omitempty"`     // Error is a deleted worktree that Prune forgets
 	Error     string  `json:"error,omitempty"`
 	PR        *prPlan `json:"pr,omitempty"`
+	// The start point asked for (From, else HEAD) is not used: Branch exists
+	// and is checked out as it is, or origin/Branch exists and is tracked.
+	StartIgnored bool `json:"startIgnored,omitempty"`
 
 	repo     string // the project folder git runs in
 	fetchRef string // the remote's branch Fetch fetches
@@ -91,9 +95,17 @@ func (r *Records) Plan(projectID string, o WorkspaceOptions) WorkspacePlan {
 	return pl
 }
 
+// plan resolves o in this order: no worktree is the project folder; a folder
+// in From is the worktree there; otherwise the start point is Base, else
+// From, else HEAD, and the branch is Branch, else one named after Name (From
+// empty, the current branch, a tag or a commit), else From itself (a local
+// branch) or the local branch for it (a remote one). A branch checked out
+// somewhere opens or adopts that worktree; one that exists is checked out as
+// it is; else a new branch is made, tracking the remote one it names.
 func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, error) {
 	pl := WorkspacePlan{Worktree: o.Worktree}
 	name := strings.TrimSpace(o.Name)
+	from := strings.TrimSpace(o.From)
 
 	// What git needs is copied out, so git runs without the lock.
 	r.mu.Lock()
@@ -125,14 +137,43 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 			return pl, fmt.Errorf("unknown agent %q", o.Agent)
 		}
 	}
-	if name == "" {
-		return pl, errors.New("type a name or a branch")
+	isGit := gitAvailable(pl.repo)
+	current := "" // the project folder's branch, "" when detached
+	if isGit {
+		if current = gitBranch(pl.repo); current == "HEAD" {
+			current = ""
+		}
+	}
+	// The name a workspace gets when none is typed: one its worktree gives,
+	// numbered rather than refused, since the user did not choose it.
+	defaultName := func(stem string) string {
+		n := stem
+		for i := 2; names[n]; i++ {
+			n = stem + "-" + strconv.Itoa(i)
+		}
+		return n
+	}
+	worktreeName := func(wt worktreeInfo) string {
+		if name != "" {
+			return name
+		}
+		if wt.Branch != "" {
+			return defaultName(wt.Branch)
+		}
+		return defaultName(filepath.Base(wt.Path))
 	}
 
+	// 1. The project folder, on whatever it has checked out.
 	if !o.Worktree {
 		pl.Action, pl.Dir = planLocal, pl.repo
-		if gitAvailable(pl.repo) {
+		if isGit {
 			pl.Branch = gitBranch(pl.repo)
+		}
+		if from != "" && from != current {
+			return pl, fmt.Errorf("%q is not checked out in the project folder", from)
+		}
+		if name == "" {
+			return pl, errors.New("Type a name")
 		}
 		var err error
 		if pl.Name, err = label(name, 80); err != nil {
@@ -144,19 +185,19 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		return pl, nil
 	}
 
-	if !gitAvailable(pl.repo) {
-		return pl, errors.New("worktrees need a git repository: choose Project folder")
+	if !isGit {
+		return pl, errors.New("worktrees need a git repository")
 	}
 	if !hasCommit(pl.repo) {
-		return pl, errors.New("no commits yet: make a first commit to create worktrees, or choose Project folder")
+		return pl, errors.New("no commits yet: make a first commit to create worktrees")
 	}
 	wts, err := listWorktrees(pl.repo)
 	if err != nil {
 		return pl, err
 	}
-	// A folder typed in names a worktree that exists, never a branch.
-	if filepath.IsAbs(name) || strings.HasPrefix(name, "~/") {
-		dir, err := expandPath(name, pl.repo)
+	// 2. A folder names a worktree that exists, never a branch.
+	if filepath.IsAbs(from) || strings.HasPrefix(from, "~/") {
+		dir, err := expandPath(from, pl.repo)
 		if err != nil {
 			return pl, err
 		}
@@ -164,41 +205,51 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		if wt == nil {
 			return pl, fmt.Errorf("%s is not a worktree of this project", tildePath(dir))
 		}
-		// The name comes from the worktree, not from the user, so one a
-		// workspace has already gets a number rather than refusing: an agent's
-		// worktree on branch "login" beside a workspace "login" is common.
-		if pl.Name = wt.Branch; pl.Name == "" {
-			pl.Name = filepath.Base(wt.Path)
-		}
-		for n, stem := 2, pl.Name; names[pl.Name]; n++ {
-			pl.Name = stem + "-" + strconv.Itoa(n)
-		}
+		pl.Name = worktreeName(*wt)
 		return planWorktree(pl, *wt, open, names)
 	}
+
+	// 3. The start point.
 	base := strings.TrimSpace(o.Base)
-	branch := strings.TrimSpace(o.Branch)
-	if strings.HasPrefix(base, "-") {
-		return pl, fmt.Errorf("invalid start point %q", base)
-	}
-	pl.Name = name
-	track := "" // the remote branch the new branch tracks
-	folder := ""
-	if branch == "" {
-		switch {
-		case refExists(pl.repo, "refs/heads/"+name):
-			branch = name
-		case remoteBranch(pl.repo, name) != "":
-			// origin/feature names the remote branch; the workspace and its
-			// local branch are feature.
-			track = name
-			branch = remoteBranch(pl.repo, name)
-			pl.Name = branch
-		default:
-			// workspace.branchPrefix marks only branches punk0 names itself;
-			// the folder keeps the bare name.
-			folder = folderName(branchSlug(name))
-			branch = strings.TrimSpace(settings.SettingOr[string]("workspace.branchPrefix")) + branchSlug(name)
+	for _, s := range []string{from, base} {
+		if strings.HasPrefix(s, "-") {
+			return pl, fmt.Errorf("invalid start point %q", s)
 		}
+	}
+	start := base
+	if start == "" {
+		start = from
+	}
+	if start == "" {
+		start = "HEAD"
+	}
+	if exec.Command("git", "-C", pl.repo, "rev-parse", "--verify", "--quiet", start+"^{commit}").Run() != nil {
+		return pl, fmt.Errorf("unknown branch or commit %q", start)
+	}
+
+	// 4. The branch checked out.
+	branch := strings.TrimSpace(o.Branch)
+	track := ""    // the remote branch From names, which the new branch tracks
+	folder := ""   // the worktree's folder, when not named after the branch
+	chosen := true // the branch was typed or made from Name, not From itself
+	switch {
+	case branch != "": // typed: used as it is, with no branchPrefix
+	case from == "" || from == current: // named after Name, below
+	case refExists(pl.repo, "refs/heads/"+from):
+		branch, chosen = from, false
+	case remoteBranch(pl.repo, from) != "":
+		// origin/feature names the remote branch; the local one is feature.
+		track, branch, chosen = from, remoteBranch(pl.repo, from), false
+	}
+	if branch == "" {
+		// A tag, a commit or the current HEAD: a branch named after Name.
+		if name == "" {
+			return pl, errors.New("Type a name or a branch name")
+		}
+		// workspace.branchPrefix marks only branches punk0 names itself;
+		// the folder keeps the bare name.
+		folder = folderName(branchSlug(name))
+		branch = strings.TrimSpace(settings.SettingOr[string]("workspace.branchPrefix")) + branchSlug(name)
 	}
 	if strings.HasPrefix(branch, "-") || branch == "" {
 		return pl, fmt.Errorf("invalid branch name %q", branch)
@@ -207,10 +258,20 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		return pl, gitError(out, err)
 	}
 	pl.Branch = branch
-	// git checks a branch out in one worktree only: that one is opened or
+
+	// 5. git checks a branch out in one worktree only: that one is opened or
 	// adopted instead of making another.
 	if wt := checkedOutAt(wts, branch); wt != nil {
+		pl.Name = worktreeName(*wt)
 		return planWorktree(pl, *wt, open, names)
+	}
+
+	// 7. The name: the branch when none is typed. Checked before 6 so a
+	// taken name is refused before git is asked more.
+	if name == "" {
+		pl.Name = defaultName(branch)
+	} else {
+		pl.Name = name
 	}
 	if pl.Name, err = label(pl.Name, 80); err != nil {
 		return pl, err
@@ -219,23 +280,21 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		return pl, fmt.Errorf("a workspace named %q already exists", pl.Name)
 	}
 
+	// 6. What git does.
 	switch {
 	case refExists(pl.repo, "refs/heads/"+branch):
 		pl.Action = planExisting
+		pl.StartIgnored = chosen && branch != from
 	case track != "":
 		pl.Action, pl.Base = planTrack, track
-	case base != "" && remoteBranch(pl.repo, base) == branch:
-		pl.Action, pl.Base = planTrack, base
+	case remoteBranch(pl.repo, start) == branch:
+		pl.Action, pl.Base = planTrack, start
 	case refExists(pl.repo, "refs/remotes/origin/"+branch):
-		pl.Action, pl.Base = planTrack, "origin/"+branch
+		// The remote's branch of that name is not shadowed by a new one
+		// from somewhere else.
+		pl.Action, pl.Base, pl.StartIgnored = planTrack, "origin/"+branch, true
 	default:
-		pl.Action = planNew
-		if pl.Base = base; pl.Base == "" {
-			pl.Base = defaultBase(pl.repo)
-		}
-		if exec.Command("git", "-C", pl.repo, "rev-parse", "--verify", "--quiet", pl.Base+"^{commit}").Run() != nil {
-			return pl, fmt.Errorf("unknown start point %q", pl.Base)
-		}
+		pl.Action, pl.Base = planNew, start
 	}
 	if pl.Base != "" && !o.fetched && settings.SettingOr[bool]("workspace.fetchBase") {
 		if remote := remoteOf(pl.repo, pl.Base); remote != "" {
@@ -274,7 +333,7 @@ func planWorktree(pl WorkspacePlan, wt worktreeInfo, open map[string]string, nam
 		pl.Prune = true
 		return pl, fmt.Errorf("%s was deleted, but git still has %s checked out there: prune it first", tildePath(wt.Path), what)
 	case sameDir(wt.Path, pl.repo):
-		return pl, fmt.Errorf("%s is checked out in the project folder: choose Project folder", what)
+		return pl, fmt.Errorf("%s is checked out in the project folder: choose it as Branch to work there", what)
 	case wt.Main:
 		return pl, fmt.Errorf("%s is checked out in the repository's main checkout %s", what, tildePath(wt.Path))
 	}
@@ -381,15 +440,15 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 }
 
 // AdoptWorktree makes the worktree at dir, of the project's repository, a
-// workspace where it is, as typing its folder into the New workspace panel
+// workspace where it is, as choosing its folder in the New workspace panel
 // does; a folder some workspace runs in already returns that workspace. Only
-// an absolute folder is one: a relative name would be read as a branch and
+// an absolute folder is one: a relative one would be read as a branch and
 // make a worktree instead of adopting one.
 func (r *Records) AdoptWorktree(projectID, dir string) (*Workspace, error) {
 	if !filepath.IsAbs(dir) {
 		return nil, fmt.Errorf("%q is not an absolute folder", dir)
 	}
-	w, _, err := r.AddWorkspace(projectID, WorkspaceOptions{Name: dir, Worktree: true})
+	w, _, err := r.AddWorkspace(projectID, WorkspaceOptions{From: dir, Worktree: true})
 	return w, err
 }
 
@@ -471,23 +530,6 @@ func fetchBranch(repo, remote, branch string) error {
 		return gitError(out, err)
 	}
 	return nil
-}
-
-// defaultBase is what a new branch starts from when nothing else is said: the
-// remote's default branch, since the main checkout may be on any feature
-// branch, else the usual local names, else HEAD.
-func defaultBase(repo string) string {
-	if out, err := exec.Command("git", "-C", repo, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD").Output(); err == nil {
-		if b := strings.TrimSpace(string(out)); b != "" {
-			return b
-		}
-	}
-	for _, ref := range []string{"refs/remotes/origin/main", "refs/remotes/origin/master", "refs/heads/main", "refs/heads/master"} {
-		if refExists(repo, ref) {
-			return strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), "refs/heads/")
-		}
-	}
-	return "HEAD"
 }
 
 // gitRefs lists the repository's branches, local and remote, most recently
@@ -698,14 +740,18 @@ func (pp *projectPull) view() *prPlan {
 	return &prPlan{URL: url, Number: pp.target.Number, Title: pp.meta.Title, Head: pp.meta.HeadRef, Fork: pp.meta.HeadIsFork}
 }
 
-// options is o working on the pull request: a worktree named after it, on
-// its head branch, or on pr-N for a fork's, whose branch name means nothing
-// here.
+// options is o working on the pull request: a worktree named after it unless
+// o names it, on the branch o names, else its head branch, or pr-N for a
+// fork's, whose branch name means nothing here. From is dropped: it named the
+// pull request, which is no start point.
 func (pp *projectPull) options(o WorkspaceOptions) WorkspaceOptions {
 	n := pp.target.Number
 	o.Worktree = true
-	o.Name = truncateLabel(fmt.Sprintf("#%d %s", n, pp.meta.Title), 80)
-	if o.Branch == "" {
+	o.From = ""
+	if strings.TrimSpace(o.Name) == "" {
+		o.Name = truncateLabel(fmt.Sprintf("#%d %s", n, pp.meta.Title), 80)
+	}
+	if strings.TrimSpace(o.Branch) == "" {
 		o.Branch = pp.meta.HeadRef
 		if pp.meta.HeadIsFork {
 			o.Branch = fmt.Sprintf("pr-%d", n)

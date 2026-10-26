@@ -545,7 +545,7 @@ async function openChat(r) {
       : `This chat ran in ${tildify(dir)}, which is not a punk0 project. Add it?`;
     if (!confirm(what)) return;
     const added = res.data.adopt
-      ? await call('POST', `api/projects/${encodeURIComponent(res.data.project)}/workspaces`, { name: dir, worktree: true })
+      ? await call('POST', `api/projects/${encodeURIComponent(res.data.project)}/workspaces`, { from: dir, worktree: true })
       : await call('POST', 'api/projects', { dir });
     if (!added.ok) return openFailed(added);
     await reload();
