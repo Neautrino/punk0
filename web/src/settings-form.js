@@ -216,7 +216,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "terminal.idleStop",
     title: "Stop Idle Terminal After (Minutes)",
-    description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt and an agent only when it is done; 0 never stops them.",
+    description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt; an agent is stopped like any other quiet tab, except a Claude that says it is working or waiting for an answer, and picks its chat up again when reopened. 0 never stops them.",
     category: "Terminal",
     type: "number",
     default: 30,

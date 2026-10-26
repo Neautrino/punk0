@@ -855,16 +855,17 @@ func (wb *workbench) reapTabs(limit time.Duration) {
 
 // stopIdleTab decides whether a terminal nothing has used for idleFor may be
 // hung up. A shell only while it sits at its prompt, with no job in front of
-// it; an agent only when its hooks say it is done, since one that is working,
-// waiting for an answer, or reporting nothing at all may lose work.
+// it. Every agent the same way, once quiet for the limit: its restart resumes
+// the chat (agentCommand). Only Claude reports more than its output, so a
+// Claude that says it is working or waiting for an answer is kept.
 func stopIdleTab(kind, status string, foregroundIsShell bool, idleFor, limit time.Duration) bool {
 	if limit == 0 || idleFor < limit {
 		return false
 	}
-	if kind == tabClaude {
-		return status == statusIdle
+	if kind == tabShell {
+		return foregroundIsShell
 	}
-	return foregroundIsShell
+	return status != statusWorking && status != statusWaiting
 }
 
 /* ---------- HTTP ---------- */

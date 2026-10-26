@@ -833,7 +833,9 @@ func TestStopIdleTab(t *testing.T) {
 		{"idle agent", tabClaude, statusIdle, false, time.Hour, limit, true},
 		{"working agent", tabClaude, statusWorking, true, time.Hour, limit, false},
 		{"agent waiting for an answer", tabClaude, statusWaiting, true, time.Hour, limit, false},
-		{"agent that reported nothing", tabClaude, "", true, time.Hour, limit, false},
+		{"claude that reported nothing", tabClaude, "", false, time.Hour, limit, true},
+		{"quiet agent without status", "codex", "", false, time.Hour, limit, true},
+		{"agent without status used recently", "codex", "", false, time.Minute, limit, false},
 	}
 	for _, c := range cases {
 		if got := stopIdleTab(c.kind, c.status, c.foreground, c.idleFor, c.limit); got != c.want {

@@ -114,7 +114,7 @@ punk0 [passed-on flags] -workbench-host <host> -workbench-child -host 127.0.0.1 
 `reapIdle` ticks every minute and re-reads settings each time, so a change applies without a restart; `idleLimit` treats `0` as never.
 
 - **Children.** The proxy counts requests in flight per child and records when the last one ended. A running child with none in flight for `workspace.idleStop` minutes (default 5) is stopped.
-- **Terminals.** A tab whose PTY has carried nothing for `terminal.idleStop` minutes (default 30) is closed if `stopIdleTab` allows it: a shell only when the PTY's foreground process group is the shell itself (`TIOCGPGRP`; never on Windows), a claude tab only when its hook status is `idle`.
+- **Terminals.** A tab whose PTY has carried nothing for `terminal.idleStop` minutes (default 30) is closed if `stopIdleTab` allows it: a shell only when the PTY's foreground process group is the shell itself (`TIOCGPGRP`; never on Windows); any agent tab unless it is a claude tab whose hook status is `working` or `waiting`. Agents without hooks are judged by their output alone. The next attach resumes the tab's chat (`agentCommand`), except Antigravity's, which has no resume.
 
 ## PR clones ([`workbench.go`](../../workbench.go))
 

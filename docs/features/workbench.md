@@ -139,7 +139,7 @@ With no tab open, as in a new project or worktree workspace, the center shows th
 - **They outlive the browser.** Closing or reloading the page leaves every terminal running; reattaching replays its recent output. Everything stops when punk0 stops (Ctrl-C). After a restart, a Claude tab resumes its own chat.
 - **Agent status.** Claude tabs report what the agent is doing through Claude Code hooks. A dot on the tab shows **working**, **waiting** (needs you: a permission prompt or a question) or **idle** (done).
 - **Terminal settings.** Font, line height, scrollback, cursor and copy-on-select (`terminal.*`) apply to the open terminal as soon as they are saved; `terminal.shell` and `terminal.env` apply to tabs started afterwards.
-- **Idle stop.** A terminal that has carried nothing for `terminal.idleStop` minutes (default 30, `0` never) is stopped: a shell only while it sits at its prompt with nothing running in it (Unix only; elsewhere shells are never stopped), a Claude tab only when it is idle. Opening the tab again starts it again.
+- **Idle stop.** A terminal that has carried nothing for `terminal.idleStop` minutes (default 30, `0` never) is stopped: a shell only while it sits at its prompt with nothing running in it (Unix only; elsewhere shells are never stopped), and every agent the same way, except a Claude tab that says it is working or waiting for an answer. An agent that reports no status (Codex, OpenCode, Antigravity, Cursor Agent) is judged by its output alone, so one running a long silent command can be stopped. Opening the tab again starts it again and picks its chat up where it was (Antigravity starts a new one).
 
 ## Notifications
 
