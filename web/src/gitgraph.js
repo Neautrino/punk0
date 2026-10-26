@@ -4,9 +4,7 @@
 // badges, and the commits that are not pushed yet (outgoing) or not pulled yet
 // (incoming) grouped under a pseudo-row each. Every row expands in place into
 // the files it touched (commitfiles.js), each opening that commit's own diff,
-// and resting on a row opens its hover card (#commitcard). Commits a chat
-// made on its own (the turn ledger, turns.js) carry a ✳, and their node a
-// warning ring until someone marks them reviewed.
+// and resting on a row opens its hover card (#commitcard).
 //
 // It replaces both the Recent Commits list and the Unpushed section: the
 // outgoing commits are counted into S.unpushedCount, which tree.js's
@@ -621,8 +619,6 @@ export function initGitGraph() {
   addEventListener('keydown', e => { if (e.key === 'Escape') hideCommitCard(); });
 
   on('tab:activated', markActiveCommitFile);
-  // Agent commits' ✳ and review rings follow the turn ledger.
-  on('ledger:changed', draw);
   // While gitpanel.js runs a rebase/merge job, push and pull wait for it.
   on('git:sync', st => {
     syncRunning = !!st?.running;

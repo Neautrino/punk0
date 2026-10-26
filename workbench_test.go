@@ -1014,3 +1014,13 @@ func TestTabAddWithSession(t *testing.T) {
 		t.Fatalf("unsafe session: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func waitFor(t *testing.T, ok func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); !ok(); {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

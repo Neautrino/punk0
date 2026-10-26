@@ -75,7 +75,7 @@ function openTabMenu(index, x, y) {
    puts the tab back on the working tree, which is what "open this file" means
    everywhere else in px0. */
 export async function openFile(path, opts = {}) {
-  const { line, push = true, col, view, soft = false, ref = '', base = '', turnFiles = null, turnLabel = '' } = opts;
+  const { line, push = true, col, view, soft = false, ref = '', base = '' } = opts;
   const prev = doc_();
   const wantsDiff = view === 'diff';
   const wantsSource = view === 'source';
@@ -89,8 +89,6 @@ export async function openFile(path, opts = {}) {
     const t = S.tabs[idx];
     t.diffRef = ref;
     t.diffBase = base;
-    t.turnFiles = turnFiles;
-    t.turnLabel = turnLabel;
     t.diffText = undefined;
     t.diffHunks = undefined;
     t.diffDismissed = false;
@@ -98,9 +96,6 @@ export async function openFile(path, opts = {}) {
     t.openedInDiffView = true;
     await loadGutter(t);
     if (base) t.diffAvailable = true;
-  } else if (idx >= 0 && (turnFiles !== null || turnLabel !== '')) {
-    S.tabs[idx].turnFiles = turnFiles;
-    S.tabs[idx].turnLabel = turnLabel;
   }
   if (idx < 0) {
     let j;
@@ -147,8 +142,6 @@ export async function openFile(path, opts = {}) {
       openedInDiffView: initialOpenedInDiff,
       diffRef: ref,
       diffBase: base,
-      turnFiles,
-      turnLabel,
     };
     if (!isImg) {
       for (let i = 0; i < j.lines.length; i++) d.lines[j.start + i] = j.lines[i];
@@ -357,8 +350,6 @@ export async function reloadOpenTabs({ onlyIfChanged = false } = {}) {
       youCollapsed: keep.youCollapsed,
       diffRef: tgt.ref,
       diffBase: keep.diffBase || '',
-      turnFiles: keep.turnFiles || null,
-      turnLabel: keep.turnLabel || '',
       isEditing: !!keep.isEditing,
       dirty: !!keep.dirty,
       editContent: keep.editContent,
@@ -527,9 +518,7 @@ export async function reopenClosedTab() {
 async function stepCommitFile(from, file) {
   const ref = from.diffRef || '';
   const base = from.diffBase || '';
-  const turnFiles = from.turnFiles || null;
-  const turnLabel = from.turnLabel || '';
-  await openFile(file.path, { ref, base, turnFiles, turnLabel, view: 'diff' });
+  await openFile(file.path, { ref, base, view: 'diff' });
   if (doc_()?.path !== file.path) return false;
   const i = S.tabs.indexOf(from);
   if (i >= 0 && from !== doc_() && (from.diffRef || '') === ref) closeTab(i);

@@ -297,25 +297,6 @@ body.right-hidden #tab-head .side-open-right { display: inline-flex; }
 #tree.changed-only .tr.file:not(.dirty) { display: none; }
 #tree.changed-only .tw:not(:has(.dirty)) { display: none; }
 
-/* Turn lens: the git panel's selected chat turn narrows the Git view to its
-   files (tree.js setTreeLens), named by the chip above the tree. */
-#tree.changed-only.turn-lens .tr.file:not(.in-lens) { display: none; }
-#tree.changed-only.turn-lens .tw:not(:has(.in-lens)) { display: none; }
-.tree-lens {
-  flex: none; display: flex; align-items: center; gap: 6px; min-width: 0;
-  margin: 5px 8px; padding: 2px 2px 2px 8px;
-  border: 1px solid var(--accent); border-radius: 10px; background: var(--bg2);
-  font: 600 11px var(--ui); color: var(--fg);
-}
-.tree-lens[hidden] { display: none; }
-.tree-lens-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.tree-lens-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-lens-x {
-  flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
-  background: none; color: var(--faint); font: 14px/1 var(--ui); cursor: pointer;
-}
-.tree-lens-x:hover { color: var(--fg); background: var(--bg4); }
-
 /* PR review scope: whole PR vs only what you changed (prscope.js). */
 .scope-bar { display: flex; gap: 4px; padding: 5px 8px; border-bottom: 1px solid var(--line); flex: none; }
 .scope-bar[hidden] { display: none; }
@@ -666,12 +647,6 @@ a.cc-who:hover { color: var(--accent-fg); }
 .gg-refs + .gg-sha { margin-left: 0; }
 .gg-row:hover .gg-sha, .gg-row:focus-visible .gg-sha { display: inline-block; }
 .gg-sha:hover { color: var(--accent); border-color: var(--accent); }
-
-/* A commit a chat made on its own: ✳ before the subject, and a warning ring
-   round its node until someone marks it reviewed. */
-.gg-agent { flex: none; font: 600 11px/1 var(--ui); color: var(--gi); }
-.gg-agent.unreviewed { color: var(--warn, #e5a50a); }
-.gg-lanes .gg-unreviewed { fill: none; stroke: var(--warn, #e5a50a); stroke-width: 1.5; }
 
 /* "Outgoing · 2 to push" / "Incoming · 3": not commits, so not clickable. */
 .gg-group {
@@ -1527,25 +1502,6 @@ body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap
 .diff-commit-strip .gs.git-A { color: var(--gi); }
 .diff-commit-strip .gs.git-D { color: var(--gd); }
 .dcs-path { min-width: 0; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* A chat turn's snapshot or an agent's commit: whose it is, the prompt, and
-   the review toggle. The prompt gives way first. */
-.dcs-turn {
-  flex: 0 1 auto; min-width: 0; max-width: 30%; display: inline-flex; align-items: center; gap: 5px;
-  font: 600 11px var(--ui); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dcs-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
-.dcs-prompt {
-  flex: 1 1 0; min-width: 0; font: italic 11px var(--ui); color: var(--faint);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.dcs-review {
-  flex: none; height: 20px; padding: 0 8px; border: 1px solid var(--warn, #e5a50a); border-radius: var(--r);
-  background: var(--bg); color: var(--warn, #e5a50a); font: 600 11px var(--ui); cursor: pointer; white-space: nowrap;
-}
-.dcs-review:hover:not(:disabled) { background: color-mix(in srgb, var(--warn, #e5a50a) 12%, transparent); }
-.dcs-review[aria-pressed="true"] { border-color: var(--line); color: var(--gi); }
-.dcs-review[aria-pressed="true"]:hover:not(:disabled) { background: var(--bg4); }
-.dcs-review:disabled { opacity: .5; cursor: default; }
 .diff-commit-strip .grow { flex: 1; }
 .dcs-step {
   flex: none; width: 22px; height: 20px; padding: 0;

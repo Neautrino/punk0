@@ -58,11 +58,6 @@ func writeClaudeHooks(exe string) error {
 // first (slimHookEvent), so only a very long prompt comes near it.
 const hookBodyMax = 1 << 20
 
-// hookSnapshotWait bounds how long a prompt's hook holds the agent back for
-// the turn's before snapshot (one `git add -A` into a scratch index); runHook
-// waits a little longer so it never gives up first.
-const hookSnapshotWait = 8 * time.Second
-
 // runHook is `punk0 hook`: Claude Code runs it with the event on stdin. It
 // posts the event to the tab it came from and says nothing either way -- a
 // hook that writes to stderr or fails would show up in the agent's chat.
@@ -80,7 +75,7 @@ func runHook() {
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), hookSnapshotWait+2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
@@ -119,17 +114,15 @@ func slimHookEvent(body []byte) []byte {
 }
 
 // hookEvent is the part of a Claude Code hook event punk0 uses: what the tab
-// shows, the prompt a scratch chat is titled after, and what the turn ledger
-// (ledger.go) records.
+// shows, the prompt a scratch chat is titled after, and the session and
+// folders its agent works in.
 type hookEvent struct {
 	Name         string          `json:"hook_event_name"`
 	Notification string          `json:"notification_type"`
 	Background   json.RawMessage `json:"background_tasks"`
 	Prompt       string          `json:"prompt"` // UserPromptSubmit
 	Session      string          `json:"session_id"`
-	Transcript   string          `json:"transcript_path"` // the session's JSONL
 	Cwd          string          `json:"cwd"`
-	Tool         string          `json:"tool_name"`  // PreToolUse, PostToolUse
 	ToolInput    json.RawMessage `json:"tool_input"` // file_path or notebook_path for the edit tools
 }
 
@@ -172,9 +165,7 @@ func hasBackgroundTasks(raw json.RawMessage) bool {
 }
 
 // handleHook takes a hook event from a tab's agent. It is a write from this
-// machine like any other, so it goes through the same Origin check. The turn
-// ledger only queues the event -- the agent waits for this answer -- except a
-// prompt, which waits (bounded) for the turn's before snapshot.
+// machine like any other, so it goes through the same Origin check.
 func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
@@ -205,14 +196,6 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wb.noteAgentDirs(tab.ID, ev)
-	if place, ok := wb.records.Place(tab.ID); ok {
-		if done := wb.ledgers.hook(place, ev); done != nil {
-			select {
-			case <-done:
-			case <-time.After(hookSnapshotWait):
-			}
-		}
-	}
 	if ev.Name == "UserPromptSubmit" {
 		if err := wb.records.ChatPrompt(tab.ID, ev.Prompt); err != nil {
 			fail(w, http.StatusInternalServerError, err.Error())

@@ -182,23 +182,21 @@ function renderDiff(d) {
   diffContent.replaceChildren();
   const frag = document.createDocumentFragment();
   if (d.diffRef) {
-    /* Pinned to one commit by the git panel's commit graph (a chat turn's
-       snapshot or an agent's commit among them), or a thread turn
-       snapshot range (diffBase..diffRef). Its line numbers are that commit's,
-       not the working tree's, so nothing here is a review target
-       (reviewable=false) -- see anchor() in difftable.js. */
+    /* Pinned to one commit by the git panel's commit graph, or a range
+       (diffBase..diffRef). Its line numbers are that commit's, not the
+       working tree's, so nothing here is a review target (reviewable=false)
+       -- see anchor() in difftable.js. */
     const hunks = d.diffHunks || [];
-    const label = d.turnLabel || '';
     if (!hunks.length) {
       const p = document.createElement('div');
       p.className = 'diff-empty';
-      p.textContent = (label || 'This commit') + ' made no change to ' + d.name + '.';
+      p.textContent = 'This commit made no change to ' + d.name + '.';
       diffContent.append(p);
       return;
     }
-    frag.append(d.turnFiles ? reviewStrip(d) : commitStrip(d));
-    const title = label || ('In commit ' + d.diffRef.slice(0, 7));
-    const sub = d.turnLabel ? 'snapshot diff for this agent turn' : turn?.kind === 'turn' ? 'what this chat turn changed' : 'this commit only, not the working tree';
+    frag.append(commitStrip(d));
+    const title = 'In commit ' + d.diffRef.slice(0, 7);
+    const sub = 'this commit only, not the working tree';
     frag.append(createDiffSection(d, 'commit', title, sub,
       (bodyEl) => appendHunks(bodyEl, hunks, d.diffMode, false)));
     diffContent.append(frag);
@@ -344,10 +342,7 @@ function commitStepTarget(files, i, dir) {
 }
 
 /* Where a pinned tab's file sits in its commit, with ‹ › to step through the
-   rest. The file list is fetched on first need and filled in when it lands.
-   When the commit is a chat turn's snapshot or an agent's own commit (the
-   turn ledger, turns.js), the strip leads with the turn and its prompt and
-   carries the "Mark reviewed" toggle. */
+   rest. The file list is fetched on first need and filled in when it lands. */
 function commitStrip(d) {
   const el = document.createElement('div');
   el.className = 'diff-commit-strip';
@@ -395,12 +390,9 @@ const ICON_HUNK_NEXT = svg('m6 9 6 6 6-6');
 const ICON_FILE_PREV = svg('m15 18-6-6 6-6');
 const ICON_FILE_NEXT = svg('m9 18 6-6-6-6');
 
-/* The files ‹ › and [f / ]f step through: the turn's or commit's files, else
-   the working tree's changes in the order the file tree lists them. */
+/* The files ‹ › and [f / ]f step through: the commit's files, else the
+   working tree's changes in the order the file tree lists them. */
 function currentChangedFiles(d = doc_()) {
-  if (d?.turnFiles?.length) {
-    return d.turnFiles.map(p => (typeof p === 'string' ? { path: p, status: 'M' } : p));
-  }
   if (d?.diffRef) {
     return cachedCommitFiles(d.diffRef) || [];
   }
@@ -464,7 +456,6 @@ function reviewStrip(d) {
   const el = document.createElement('div');
   el.className = 'diff-commit-strip diff-review-strip';
   el.innerHTML =
-    (d.turnLabel ? '<span class="gs git-M">' + esc(d.turnLabel) + '</span>' : '') +
     '<span class="dcs-path" title="' + esc(d.path) + '">' + esc(d.path) + '</span>' +
     '<span class="grow"></span>' +
     hunkControls(d) +
@@ -475,7 +466,7 @@ function reviewStrip(d) {
 export function stepChangedFile(dir = 1) {
   const d = doc_();
   if (!d) return;
-  if (d.diffRef && !d.turnFiles) {
+  if (d.diffRef) {
     const files = cachedCommitFiles(d.diffRef);
     if (!files) return;
     const i = files.findIndex(f => f.path === d.path);
@@ -828,12 +819,6 @@ export function initDiff() {
     if (reviewStep) {
       e.stopPropagation();
       if (!reviewStep.disabled) stepChangedFile(+reviewStep.dataset.reviewStep);
-      return;
-    }
-    const review = e.target.closest('[data-ledger-review]');
-    if (review) {
-      e.stopPropagation();
-      if (!review.disabled) toggleReviewed(review);
       return;
     }
     const step = e.target.closest('[data-commit-step]');

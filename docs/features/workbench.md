@@ -45,14 +45,6 @@ Clicking a file in the changed-files view opens it as its diff: one tab per file
 
 **± All changes N**, the first row of the changed-files view while anything changed (N is how many files), opens a **Changes** tab first in the file group: every changed file one after another, each under a header with its status, path and `+`/`−` lines; click a header to fold the file, or its ↗ button to open the file. Beside the terminals a diff is one column. **Maximize** shows it side by side, and a switch in the path row picks side by side or one column; the choice is remembered. A diff re-reads the changes each time it comes into view, and with the refresh button in the path row.
 
-### Changes by chat
-
-punk0 records which agent chat (one Claude tab) changed which uncommitted file: its turn ledger, read every 3 seconds while the page is in view and whenever git changes. The changed files are shown once, in the changed-files view; the chats only narrow and label it.
-
-- **Scope.** A button over the changed files picks whose changes they show: **All changes**, each chat (its colour dot, the same colour as in the editor, its name and file count), **Group: <workspace>** for a workspace with two chats or more that changed files, **Last turn (<chat> · n)** (the files the newest finished prompt changed that are still uncommitted), and **Not from a chat** (files you or a shell changed). The choice is remembered per workspace in this browser, and changes only when you pick another one; a chat whose files were all committed falls back to All. A folder with no chats offers only All and Not from a chat.
-- **Dots.** A changed file a chat changed carries that chat's dot; a file more than one chat changed carries a dot for each and ⚠.
-- **Chat tabs.** An agent tab with uncommitted files shows their count beside its name (hover: *N files +a −d uncommitted*); clicking the count opens the files pane on the changed files, scoped to that chat.
-
 ### Chats
 
 Chats mode lists every chat your coding agents kept on disk, read live, so a conversation started in any terminal — not only in a punk0 tab — can be found again and picked up here. punk0 never writes these transcripts; it reads Claude Code's (`~/.claude`, or `CLAUDE_CONFIG_DIR`), Codex's (`~/.codex`, or `CODEX_HOME`) and asks OpenCode's own CLI (`opencode session list`). Chats whose folder punk0 cannot work out are left out, and `.jsonl.zst` rollouts are not read. OpenCode answers per folder, so **only OpenCode chats that ran in a folder punk0 knows — a project folder or one of its workspaces' — are listed**; the others are invisible to punk0 until you add their folder.
@@ -118,7 +110,7 @@ The panel opens on a short menu: a **Folder** field, **Browse folder**, **Clone 
 - **Agent.** The first tab: an installed agent, a shell, or none (the welcome view); not shown for **Open**, which makes nothing. **Language servers in this folder** turns them on for a new or adopted worktree (each costs 300 MB to 1.5 GB).
 - **Ctrl+Enter** creates. Agent, the new-worktree box and language servers are remembered per project, in this browser.
 
-Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, what its folder has uncommitted (`3 · +40 −2`: files, lines added and removed), or, with nothing uncommitted, `○ 2 to review` for agent commits not reviewed yet, and, on hover, delete. Under the name, a second line says where it runs and on what: `⌂ main · project folder` for a workspace in the project folder (the folder's branch as it is now, shared by every workspace there), `⑂ branch` for a worktree, with `· adopted` for one made outside punk0 and `· missing` when its folder was deleted. A worktree punk0 does not list yet shows the same way, with `· found`.
+Each workspace row shows its editor's state (stopped, starting, running, failed), a badge with the number of running tabs or the most urgent agent status, and, on hover, delete. Under the name, a second line says where it runs and on what: `⌂ main · project folder` for a workspace in the project folder (the folder's branch as it is now, shared by every workspace there), `⑂ branch` for a worktree, with `· adopted` for one made outside punk0 and `· missing` when its folder was deleted. A worktree punk0 does not list yet shows the same way, with `· found`.
 
 ### Scratch chats
 
@@ -209,11 +201,9 @@ Everything is kept in the state directory, `$XDG_STATE_HOME/punk0`, falling back
 | `workbench.json` | Pull requests in the Reviews list, and the clone each repository's PRs use |
 | `repos/` | Clones punk0 makes for PRs |
 | `claude-hooks.json` | The hook settings Claude tabs start with |
-| `turns/<id>.json` | Each folder's chat turns: prompt, reply, files changed, commits made (the newest 500; past two weeks, only those whose work is still uncommitted) |
-| `reviews.json` | Which agent commits and turns were marked reviewed |
 | `workbench.lock` | The running punk0's address |
 
-Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs), the `refs/px0/*` refs that PR review uses and removes on exit, and a `refs/punk0/turns/<turn>` ref per chat turn, pointing at a snapshot commit of the working tree as the turn left it (untracked files included, ignored ones not; your index, branches and stash are never touched). The refs go with their turns.
+Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs) and the `refs/px0/*` refs that PR review uses and removes on exit.
 
 ## Flags
 
