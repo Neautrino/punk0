@@ -118,9 +118,6 @@ px0 is structured into decoupled core files and modular `internal/` packages:
 | `/api/git/hunk`       | `POST` | Stage, unstage, or discard an isolated diff hunk (`?path=...&action=...`) | JSON (`{ok: true}`)                     |
 | `/api/git/commit`     | `POST` | Commit exactly what is staged, or amend HEAD (`{message, amend?}`); never auto-stages | JSON (`{ok, hash, subject}`)            |
 | `/api/git/undo-commit` | `POST` | Soft-reset the last (unpushed, non-merge) commit                       | JSON (`{ok, message}`)                     |
-| `/api/git/commit-message` | `POST`/`GET` | Dispatch harness to write a commit message from the staged diff; `?job=` reads it | JSON job snapshot / `{message}`   |
-| `/api/git/commit-plan` | `POST`/`GET` | Dispatch harness to plan commits for every change (nothing staged); `?job=` reads the plan | JSON job snapshot / `{commits, unassigned, dropped}` |
-| `/api/git/commit-plan/apply` | `POST` | Stage and commit a reviewed plan group by group                  | JSON (`{ok, done, error?}`)                |
 | `/api/git/preflight`  | `GET`  | Secret/large-file warnings for staged or all changed paths (`?scope=`)   | JSON (`{warnings}`)                        |
 | `/api/git/push`       | `POST` | Push current branch (or PR head) to remote                              | JSON (`{ok: true}`)                        |
 | `/api/git/pull`       | `POST` | Fast-forward pull from upstream                                         | JSON (`{ok: true}`)                        |

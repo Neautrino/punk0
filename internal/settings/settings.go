@@ -725,7 +725,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "git.commitMessageInstruction",
 		Title:       "Commit Message Instructions",
-		Description: "Extra instructions given to the coding harness when it writes a commit message for the staged diff (e.g. \"Follow Conventional Commits\" or \"Reference the ticket number in the branch name\").",
+		Description: "Extra instructions given to the coding harness when it writes a pull request's merge or squash commit message (e.g. \"Follow Conventional Commits\" or \"Reference the ticket number in the branch name\").",
 		Category:    "Git & Diff",
 		Type:        "textarea",
 		Default:     "",

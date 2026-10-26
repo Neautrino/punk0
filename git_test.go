@@ -1299,13 +1299,13 @@ func TestGitStagedFilesStatAndDiff(t *testing.T) {
 		t.Fatalf("staged files missing expected entries: %v", files)
 	}
 
-	stat := gitStagedStat(dir)
+	stat := gitDiffStat(dir, "--cached")
 	if !strings.Contains(stat, "app.go") || !strings.Contains(stat, "package-lock.json") {
 		t.Fatalf("diffstat missing expected files:\n%s", stat)
 	}
 
 	// Staged diff should exclude package-lock.json because app.go has changes
-	diff := gitStagedDiff(dir)
+	diff := gitPromptDiff(dir, "--cached")
 	if !strings.Contains(diff, "app.go") {
 		t.Fatalf("diff expected to contain app.go diff:\n%s", diff)
 	}
@@ -1315,7 +1315,7 @@ func TestGitStagedFilesStatAndDiff(t *testing.T) {
 
 	// Commit app.go, leaving only package-lock.json staged: should fall back to showing package-lock.json
 	gitTestRun(t, dir, "commit", "-m", "commit app.go", "app.go")
-	diffOnlyLock := gitStagedDiff(dir)
+	diffOnlyLock := gitPromptDiff(dir, "--cached")
 	if !strings.Contains(diffOnlyLock, "package-lock.json") {
 		t.Fatalf("diff expected to fallback to package-lock.json when only lockfiles staged:\n%s", diffOnlyLock)
 	}
@@ -1342,7 +1342,7 @@ func TestGitStagedDiffTruncation(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "large.txt"), large.Bytes(), 0o644)
 	gitTestRun(t, dir, "add", "large.txt")
 
-	diff := gitStagedDiff(dir)
+	diff := gitPromptDiff(dir, "--cached")
 	if !strings.Contains(diff, "[Diff truncated: showing first 32KB") {
 		t.Fatalf("expected diff to be truncated with notice, got %d bytes without notice", len(diff))
 	}
@@ -2186,7 +2186,7 @@ func TestGitCommitStagedOnly(t *testing.T) {
 	if code != http.StatusBadRequest || body["error"] != "nothing staged to commit" {
 		t.Fatalf("commit with nothing staged = %d %v, want 400", code, body)
 	}
-	if gitHasStaged(root) || gitHeadSHA(root) != head {
+	if len(gitStagedPaths(root)) > 0 || gitHeadSHA(root) != head {
 		t.Fatal("a refused commit staged or committed something")
 	}
 
@@ -2223,8 +2223,8 @@ func TestGitAmendUndoRefusePushed(t *testing.T) {
 	}
 
 	code, body = agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{})
-	if code != http.StatusOK || body["message"] != "local two, reworded" || !gitHasStaged(root) {
-		t.Fatalf("undo = %d %v (staged=%v)", code, body, gitHasStaged(root))
+	if code != http.StatusOK || body["message"] != "local two, reworded" || len(gitStagedPaths(root)) == 0 {
+		t.Fatalf("undo = %d %v (staged=%v)", code, body, gitStagedPaths(root))
 	}
 	gitTestRun(t, root, "reset", "-q", "--hard")
 	code, body = agentPostJSON(t, s, "/api/git/undo-commit", map[string]any{})
@@ -2287,94 +2287,6 @@ func TestGitChangedPaths(t *testing.T) {
 	want := map[string]string{"sub/mod.go": "M", "add.go": "A", "untr.go": "??", "del.go": "D", "sub/ren2.go": "A", "sub/ren.go": "D"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("changed = %v, want %v", got, want)
-	}
-}
-
-// A plan is committed group by group, in order, with only each group's
-// files: untracked ones, deletions and both halves of a rename included,
-// while the user's own staged entries stay staged and out of the commits. A
-// group that fails (here a pre-commit hook) has its added files unstaged
-// again and nothing after it runs.
-func TestGitCommitPlanApply(t *testing.T) {
-	if !gitInstalled() {
-		t.Skip("git not installed")
-	}
-	t.Setenv("GIT_OPTIONAL_LOCKS", "0") // see TestGitCommitStagedOnly
-	root := gitRepo(t)
-	gitTestRun(t, root, "reset", "-q")
-	s := NewServer(NewIndex(root), nil)
-	apply := func(commits ...map[string]any) (int, map[string]any) {
-		t.Helper()
-		return agentPostJSON(t, s, "/api/git/commit-plan/apply", map[string]any{"commits": commits})
-	}
-	group := func(msg string, files ...string) map[string]any {
-		return map[string]any{"message": msg, "files": files}
-	}
-
-	if code, body := apply(group("x", "nope.go")); code != http.StatusBadRequest || !strings.Contains(fmt.Sprint(body["error"]), "nope.go") {
-		t.Fatalf("unknown path = %d %v, want 400 naming it", code, body)
-	}
-	if code, _ := apply(group("x", "add.go"), group("y", "add.go")); code != http.StatusBadRequest {
-		t.Fatalf("path in two groups = %d, want 400", code)
-	}
-	if code, _ := apply(group(" ", "add.go")); code != http.StatusBadRequest {
-		t.Fatalf("empty message = %d, want 400", code)
-	}
-	// The user's own staged work: a new file and an edit.
-	if err := os.WriteFile(filepath.Join(root, "keep.go"), []byte("keep staged\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitTestRun(t, root, "add", "add.go", "keep.go")
-	staged := func() string { return gitTestRun(t, root, "diff", "--cached", "--name-status") }
-	before := staged()
-	if before != "A\tadd.go\nM\tkeep.go\n" {
-		t.Fatalf("staged before = %q", before)
-	}
-
-	code, body := apply(group("first\n\nwhy", "sub/mod.go", "del.go"), group("second", "untr.go"), group("rename", "sub/ren.go", "sub/ren2.go"))
-	done, _ := body["done"].([]any)
-	if code != http.StatusOK || body["ok"] != true || len(done) != 3 || done[1].(map[string]any)["subject"] != "second" {
-		t.Fatalf("apply = %d %v", code, body)
-	}
-	if log := gitTestRun(t, root, "log", "-4", "--format=%s"); log != "rename\nsecond\nfirst\ninit\n" {
-		t.Fatalf("log = %q", log)
-	}
-	for rev, want := range map[string]string{
-		"HEAD~2": "D\tdel.go\nM\tsub/mod.go\n",
-		"HEAD~1": "A\tuntr.go\n",
-		"HEAD":   "D\tsub/ren.go\nA\tsub/ren2.go\n",
-	} {
-		if got := gitTestRun(t, root, "show", "--no-renames", "--name-status", "--format=", rev); got != want {
-			t.Fatalf("%s has %q, want %q", rev, got, want)
-		}
-	}
-	if after := staged(); after != before {
-		t.Fatalf("staged after = %q, want %q", after, before)
-	}
-	if got := gitTestRun(t, root, "show", ":keep.go"); got != "keep staged\n" {
-		t.Fatalf("staged keep.go = %q", got)
-	}
-	hook := filepath.Join(root, ".git", "hooks", "pre-commit")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\ngit diff --cached --name-only | grep -q bad.txt && exit 1\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// A global core.hooksPath would bypass .git/hooks.
-	gitTestRun(t, root, "config", "core.hooksPath", filepath.Dir(hook))
-	for _, f := range []string{"good.txt", "bad.txt", "later.txt"} {
-		if err := os.WriteFile(filepath.Join(root, f), []byte(f+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	code, body = apply(group("good", "good.txt"), group("bad", "bad.txt"), group("later", "later.txt"))
-	done, _ = body["done"].([]any)
-	if code != http.StatusOK || body["ok"] != false || len(done) != 1 || body["error"] == "" {
-		t.Fatalf("failing apply = %d %v", code, body)
-	}
-	if after := staged(); after != before {
-		t.Fatalf("staged after the failure = %q, want %q (the failed group unstaged)", after, before)
-	}
-	if log := gitTestRun(t, root, "log", "-1", "--format=%s"); log != "good\n" {
-		t.Fatalf("HEAD = %q, want good (nothing after the failure)", log)
 	}
 }
 

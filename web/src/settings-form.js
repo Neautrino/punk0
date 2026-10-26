@@ -1042,7 +1042,7 @@ function renderCard(item, currentSettings, defaults) {
       </div>`;
   } else if (type === 'textarea') {
     const placeholder = key === 'git.commitMessageInstruction'
-      ? 'Enter custom instructions for AI commit messages (e.g. Follow Conventional Commits, reference issue key from branch)...'
+      ? 'Enter custom instructions for AI-written pull request merge messages (e.g. Follow Conventional Commits, reference issue key from branch)...'
       : 'Enter instructions...';
     controlHtml = `<textarea class="settings-input settings-textarea" data-key="${esc(key)}" rows="6" spellcheck="false" placeholder="${esc(placeholder)}">${esc(String(val || ''))}</textarea>`;
   } else {

@@ -11,8 +11,6 @@ px0 does not ship a model or an API key. It finds the coding harnesses you alrea
 | Feature | What the harness does | Where it runs | Guide |
 | :--- | :--- | :--- | :--- |
 | **Quick Edit** | Rewrites the selected lines from your instruction; you review a -/+ preview before anything is written | An empty temporary folder, 30 s limit | [Editor Terminal & Quick Edit](editor-terminal-and-quick-edit.md) |
-| **Commit message** | Writes a message for the staged diff (the git panel's **✦**) | The workspace | [Git Integration](git-integration.md) |
-| **Commit plan** | With nothing staged, plans one or more commits for you to review and edit (**✦**) | The workspace | [Git Integration](git-integration.md) |
 | **Rebase / Merge with AI** | Replays or merges diverged history, resolving conflicts | The workspace | [Git Integration](git-integration.md) |
 | **PR merge message** | Rewrites the commit message for a squash merge | The workspace | [Pull Request Review](github-pr-review.md) |
 | **PR Batch Apply** | Applies every located draft review comment to the code in one run | The workspace | [Pull Request Review](github-pr-review.md) |
@@ -68,7 +66,7 @@ Quick Edit is different: it runs outside the workspace and only returns text. px
 ## Configuration Options
 
 - **`agent.harness`** (stored as `agent` in `settings.json`): the chosen harness, a preset name or a command template. `models` holds the model picked for each harness. The selects write both.
-- **`git.commitMessageInstruction`**: extra instructions for commit messages (Settings, `Cmd/Ctrl+,`).
+- **`git.commitMessageInstruction`**: extra instructions for the PR merge message (Settings, `Cmd/Ctrl+,`).
 - **CLI flags**:
   - `px0 -agent <name>`: pin a harness for this run; the selects show it as fixed. A command template works too: `px0 -agent "claude -p --permission-mode acceptEdits {prompt}"`.
   - `px0 -no-agent`: turn off every harness-backed feature.

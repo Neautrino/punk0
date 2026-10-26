@@ -158,7 +158,7 @@ The first row of the PR bar shows a **status pill** with the forge's answer to "
 
 ### 7. Editing, Committing, and Pushing Back
 A PR checkout is a real git worktree, and the git panel works inside it exactly as it does in a plain workspace:
-- **Edit and commit**: Make a change (by hand, or by dispatching a coding agent on the checkout), stage it, and either write a commit message yourself or press **✦** in the message box to have your harness write one, then **Commit N staged**.
+- **Edit and commit**: Make a change (by hand, or by dispatching a coding agent on the checkout), stage it,, write a commit message, then **Commit N staged**.
 - **Push**: Sends the checkout's `HEAD` to the pull request's *actual* head branch on its actual repository — a fork included — not wherever the checkout happens to live locally.
 - **Pull**: Re-fetches the PR's current head. If new commits landed on it since you opened the review and your checkout can fast-forward onto them cleanly, px0 updates the worktree and refreshes the diff, the PR bar, and the comments panel automatically. If your checkout has diverged — you made local commits that aren't on the PR head yet, or the head was force-pushed — px0 refuses with a clear message rather than merging; commit and push first, or resolve it in a terminal. (Bringing the PR up to date with its *base* branch is the separate **Resolve conflicts** flow above.)
 
@@ -236,4 +236,3 @@ Implementation details are in [the internals guide](../internals/github-pr-revie
 | **Force-push** | Sidebar git panel | After a rebase: replace the PR branch's commits, with a lease (asks first) |
 | **Pull** | Sidebar git panel | Fast-forward the checkout onto the PR's current head; refuses on divergence |
 | **Push** | Sidebar git panel | Push the checkout's `HEAD` to the PR's actual head branch |
-| **✦** | Sidebar git panel message box | Write a message for the staged diff with your coding harness (you commit it); with nothing staged, plan the commits for review |

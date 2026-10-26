@@ -90,13 +90,6 @@ export const DEFAULT_TIPS = [
     content: "The Git panel lets you stage changes, write commit messages, push upstream, and pull updates. If branches diverge, your coding harness can automatically resolve the rebase."
   },
   {
-    id: "ai-commit-messages",
-    title: "Commit with AI",
-    category: "AI",
-    tag: "Git",
-    content: "In the Git panel, press **✦** in the message box to have your coding harness write a message for the staged files. With nothing staged, **✦ Commit N changes** asks it to plan one or more commits for review before anything is committed; the **▾** menu also has **Commit all as one with AI**."
-  },
-  {
     id: "quick-file-edit",
     title: "Quick In-Browser Editing",
     category: "Editing",

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -740,211 +739,6 @@ func readLineRange(abs string, l1, l2 int) (string, error) {
 	return strings.Join(lines[l1-1:l2], "\n"), nil
 }
 
-// commitMessagePrompt asks the harness to write a commit message for the
-// staged changes. instruction is the user's git.commitMessageInstruction
-// setting (empty when unset), appended verbatim so it can refine or override
-// the base convention below.
-func commitMessagePrompt(files []string, stat, diff, instruction string) string {
-	var b strings.Builder
-	b.WriteString("Write a git commit message for the staged changes below.\n")
-	b.WriteString("Rules: imperative mood, a concise summary line under 72 characters, a blank line before an optional body, and explain why rather than just what changed.\n")
-	b.WriteString("Answer with ONLY the commit message wrapped in <commit-message> and </commit-message> tags -- no markdown code fences, no preamble, no explanation afterwards -- and do not edit any files.\n")
-	if instruction != "" {
-		fmt.Fprintf(&b, "\nAdditional instructions from the user: %s\n", instruction)
-	}
-	if len(files) > 0 {
-		fmt.Fprintf(&b, "\nChanged files (%d):\n", len(files))
-		maxFiles := 100
-		for i, f := range files {
-			if i >= maxFiles {
-				fmt.Fprintf(&b, "... and %d more files\n", len(files)-maxFiles)
-				break
-			}
-			fmt.Fprintf(&b, "- %s\n", f)
-		}
-	}
-	if strings.TrimSpace(stat) != "" {
-		b.WriteString("\nSummary of changes (diffstat):\n")
-		b.WriteString(stat)
-		b.WriteString("\n")
-	}
-	if strings.TrimSpace(diff) != "" {
-		b.WriteString("\nStaged diff:\n")
-		b.WriteString(diff)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// maxPlanPaths caps the changed-path list in a commit-plan prompt, which is
-// one exec argument (MAX_ARG_STRLEN); paths past it come back unassigned.
-const maxPlanPaths = 300
-
-// commitPlanPrompt asks the harness to group the uncommitted changes into
-// one or more commits for the user to review; px0 stages and commits each
-// group itself. changes are every changed path; untracked holds the heads
-// of new files (gitUntrackedHeads), which no diff shows. hint is the user's
-// own note about the changes, instruction their commit-message setting.
-func commitPlanPrompt(changes []gitChange, stat, diff, untracked, instruction, hint string) string {
-	var b strings.Builder
-	b.WriteString("Plan git commits for the uncommitted changes below. Nothing is staged; after the user reviews your plan, px0 stages and commits each group in order.\n")
-	b.WriteString("Rules:\n")
-	b.WriteString("- Make ONE commit unless the changes are clearly unrelated; only then split them, into groups that each make sense on their own.\n")
-	b.WriteString("- Order the commits so each builds on the previous one.\n")
-	b.WriteString("- Put every changed path listed below in exactly one commit, spelled exactly as listed. A rename shows as two paths (the old one deleted, the new one added): keep both in the same commit.\n")
-	b.WriteString("- Messages: imperative mood, a concise summary line under 72 characters, a blank line before an optional body, and explain why rather than just what changed.\n")
-	b.WriteString("- Do not edit any files and do not run git: only answer.\n")
-	b.WriteString("Answer with ONLY the plan as JSON wrapped in tags, nothing before or after it:\n")
-	b.WriteString(`<commit-plan>{"commits":[{"message":"subject\n\nbody","files":["path", ...]}]}</commit-plan>` + "\n")
-	if instruction != "" {
-		fmt.Fprintf(&b, "\nAdditional instructions from the user for commit messages: %s\n", instruction)
-	}
-	if hint != "" {
-		fmt.Fprintf(&b, "\nThe user's notes about these changes: %s\n", hint)
-	}
-	fmt.Fprintf(&b, "\nChanged paths (%d), with their git status:\n", len(changes))
-	for i, c := range changes {
-		if i >= maxPlanPaths {
-			fmt.Fprintf(&b, "... and %d more, left out of the plan\n", len(changes)-maxPlanPaths)
-			break
-		}
-		fmt.Fprintf(&b, "%s %s\n", c.Status, c.Path)
-	}
-	if strings.TrimSpace(stat) != "" {
-		b.WriteString("\nSummary of changes to tracked files (diffstat):\n")
-		b.WriteString(stat)
-		b.WriteString("\n")
-	}
-	if strings.TrimSpace(diff) != "" {
-		b.WriteString("\nDiff of tracked files:\n")
-		b.WriteString(diff)
-		b.WriteString("\n")
-	}
-	if strings.TrimSpace(untracked) != "" {
-		b.WriteString("\nNew (untracked) files, first lines of each:\n")
-		b.WriteString(untracked)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// lastTagged returns the text inside the last <tag>...</tag> in out. The
-// last, because a harness that echoes its prompt repeats the example too.
-func lastTagged(out, tag string) (string, bool) {
-	openTag, closeTag := "<"+tag+">", "</"+tag+">"
-	i := strings.LastIndex(out, openTag)
-	if i < 0 {
-		return "", false
-	}
-	body := out[i+len(openTag):]
-	j := strings.Index(body, closeTag)
-	if j < 0 {
-		return "", false
-	}
-	return body[:j], true
-}
-
-var codeFenceRe = regexp.MustCompile("(?s)```[a-zA-Z0-9_-]*\\r?\\n(.*?)\\r?\\n```")
-
-// stripFence unwraps a markdown code fence a harness added despite being
-// asked not to, and the quotes some wrap a bare answer in.
-func stripFence(t string) string {
-	t = strings.TrimSpace(t)
-	if m := codeFenceRe.FindStringSubmatch(t); m != nil {
-		t = strings.TrimSpace(m[1])
-	} else if strings.HasPrefix(t, "```") && strings.HasSuffix(t, "```") && len(t) >= 6 {
-		t = strings.TrimSpace(t[3 : len(t)-3])
-	}
-	if len(t) >= 2 && (t[0] == '"' && t[len(t)-1] == '"' || t[0] == '\'' && t[len(t)-1] == '\'') {
-		t = strings.TrimSpace(t[1 : len(t)-1])
-	}
-	return t
-}
-
-// parseCommitMessage reads a commit message out of a harness's answer: the
-// <commit-message> tags when present, else the whole answer, cleaned up.
-func parseCommitMessage(out string) string {
-	if body, ok := lastTagged(out, "commit-message"); ok {
-		out = body
-	}
-	return stripFence(out)
-}
-
-// CommitPlanGroup is one commit of a reviewed plan.
-type CommitPlanGroup struct {
-	Message string      `json:"message"`
-	Files   []gitChange `json:"files"`
-}
-
-// CommitPlan is a harness's commit plan checked against the changed paths:
-// unassigned holds changed paths the plan left out, dropped the paths it
-// named that aren't changed.
-type CommitPlan struct {
-	Commits    []CommitPlanGroup `json:"commits"`
-	Unassigned []gitChange       `json:"unassigned"`
-	Dropped    []string          `json:"dropped"`
-}
-
-// parseCommitPlan reads the JSON inside <commit-plan> tags and fits it to
-// changes: a path named twice stays in its first group, a group left with
-// no files is dropped, and an empty message is an error, as is a plan that
-// assigns nothing.
-func parseCommitPlan(out string, changes []gitChange) (CommitPlan, error) {
-	body, ok := lastTagged(out, "commit-plan")
-	if !ok {
-		return CommitPlan{}, errors.New("the harness didn't answer with a <commit-plan>")
-	}
-	var raw struct {
-		Commits []struct {
-			Message string   `json:"message"`
-			Files   []string `json:"files"`
-		} `json:"commits"`
-	}
-	if err := json.Unmarshal([]byte(stripFence(body)), &raw); err != nil {
-		return CommitPlan{}, fmt.Errorf("the commit plan isn't valid JSON: %v", err)
-	}
-	status := make(map[string]string, len(changes))
-	for _, c := range changes {
-		status[c.Path] = c.Status
-	}
-	plan := CommitPlan{Commits: []CommitPlanGroup{}, Unassigned: []gitChange{}, Dropped: []string{}}
-	seen := map[string]bool{}
-	dropped := map[string]bool{}
-	for _, g := range raw.Commits {
-		group := CommitPlanGroup{Message: strings.TrimSpace(g.Message), Files: []gitChange{}}
-		for _, p := range g.Files {
-			p = strings.TrimSpace(p)
-			st, changed := status[p]
-			switch {
-			case !changed:
-				if p != "" && !dropped[p] {
-					dropped[p] = true
-					plan.Dropped = append(plan.Dropped, p)
-				}
-			case !seen[p]:
-				seen[p] = true
-				group.Files = append(group.Files, gitChange{Path: p, Status: st})
-			}
-		}
-		if len(group.Files) == 0 {
-			continue
-		}
-		if group.Message == "" {
-			return CommitPlan{}, errors.New("the commit plan has a commit with no message")
-		}
-		plan.Commits = append(plan.Commits, group)
-	}
-	if len(plan.Commits) == 0 {
-		return CommitPlan{}, errors.New("the commit plan assigns none of the changed files")
-	}
-	for _, c := range changes {
-		if !seen[c.Path] {
-			plan.Unassigned = append(plan.Unassigned, c)
-		}
-	}
-	return plan, nil
-}
-
 // gitSyncPrompt asks the harness to rebase (or merge) the current branch
 // onto its upstream after a fast-forward-only pull was refused, or to finish
 // one a previous attempt left half-done. It may run git and edit conflicted
@@ -996,9 +790,9 @@ func gitSyncPrompt(strategy string, st gitSyncState) string {
 }
 
 // mergeMessagePrompt asks the harness for the commit message a squash (or a
-// merge commit) of a PR lands on its base branch with. Like
-// commitMessagePrompt it only writes text: no files, no git. draft is the
-// message as it stands in the merge dialog, rewritten rather than ignored.
+// merge commit) of a PR lands on its base branch with. It only writes text:
+// no files, no git. draft is the message as it stands in the merge dialog,
+// rewritten rather than ignored.
 // commits is newest first.
 func mergeMessagePrompt(method string, meta PRMeta, commits []UnpushedCommit, stat, diff, draft string, instructions []string) string {
 	var b strings.Builder

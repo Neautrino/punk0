@@ -17,7 +17,7 @@ px0 does not author changes itself. Every harness-backed feature hands a prompt 
 
 | Shape | Callers | Working directory | Result |
 | --- | --- | --- | --- |
-| **Workspace job** (`agentManager.StartPrompt`, `StartEdit`) | Commit message and commit plan, Rebase / Merge with AI, PR merge message, PR Batch Apply | The workspace root | An `agentJob` polled through `/api/agent/job`; whatever the harness wrote is detected and reloaded (sections 5 and 6) |
+| **Workspace job** (`agentManager.StartPrompt`, `StartEdit`) | Rebase / Merge with AI, PR merge message, PR Batch Apply | The workspace root | An `agentJob` polled through `/api/agent/job`; whatever the harness wrote is detected and reloaded (sections 5 and 6) |
 | **Quick Edit** (`handleQuickEdit`) | The editor's Quick Edit box | A fresh empty temp folder | The replacement text in the HTTP response; px0 writes it only on Accept, through `/api/file/replace` (section 4) |
 
 The hot path (indexing, highlighting, navigation) is untouched by either.
@@ -141,7 +141,7 @@ Quick Edit is offered only in the source view and is refused while the file is o
 
 `agentManager` keeps every job in `jobs map[int64]*agentJob`. Two entry points share `startLocked` and `run`:
 
-- `StartPrompt(label, prompt)` for jobs that answer rather than edit a range: the commit message and plan (`handleGitCommitMessage`, `handleGitCommitPlan`, see [Git Awareness](git-integration.md)), Rebase / Merge with AI (`handleGitSyncAgent`), and the PR merge message (`pr.go`). No range, no overlap check.
+- `StartPrompt(label, prompt)` for jobs that answer rather than edit a range: Rebase / Merge with AI (`handleGitSyncAgent`, see [Git Awareness](git-integration.md)), and the PR merge message (`pr.go`). No range, no overlap check.
 - `StartEdit(items)` for PR Batch Apply (`POST /api/agent/batch`, `{edits: [{path, l1, l2, instruction}]}`). `editPrompt` quotes each item's lines from disk (capped at 8,000 bytes each) with its instruction, and asks the harness to carry them out in place and reply with a short summary.
 
 `StartEdit` refuses two items in the same batch whose ranges overlap, and refuses a batch whose ranges intersect a batch still running on the same path (`overlappingLocked`, a `409`): two harnesses rewriting the same lines leave a state nobody can review. Disjoint ranges and prompt jobs run concurrently.
@@ -189,7 +189,7 @@ px0 started the harness, so it knows when the work ended: completion is the proc
 | `/api/agent/cancel` | POST | Stop job `id`, or every running job when `id` is omitted. Whatever each already wrote stays. |
 | `/api/quick-edit` | POST | `{path, l1, l2, selection, instruction}` → `{ok, replacement}`. `422` with the message on a harness error or unparseable reply. |
 | `/api/file/replace` | POST | `{path, l1, l2, original, replacement}` → `{ok}`. `409` when the lines no longer read `original`. |
-| `/api/git/commit-message`, `/api/git/commit-plan`, `/api/git/sync-agent`, `/api/pr/merge-message` | POST | Start a prompt job; see [Git Awareness](git-integration.md) and [Pull Request Review](github-pr-review.md). |
+| `/api/git/sync-agent`, `/api/pr/merge-message` | POST | Start a prompt job; see [Git Awareness](git-integration.md) and [Pull Request Review](github-pr-review.md). |
 
 A job snapshot:
 

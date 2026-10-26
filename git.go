@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -333,12 +332,6 @@ func gitStagedFiles(root string) []string {
 	return files
 }
 
-// gitStagedStat returns the diffstat summary of staged changes against HEAD.
-// Fails quiet -> "".
-func gitStagedStat(root string) string {
-	return gitDiffStat(root, "--cached")
-}
-
 // gitDiffStat is `git diff --stat` with diffArgs (refs or --cached), trimmed.
 // Fails quiet -> "".
 func gitDiffStat(root string, diffArgs ...string) string {
@@ -370,17 +363,8 @@ var lockfileExclusions = []string{
 	":(exclude)*.map",
 }
 
-// gitStagedDiff returns the unified diff of the index (staged changes)
-// against HEAD, for handing to a coding harness asked to write a commit
-// message. Large diffs are capped to maxStagedDiffBytes and noise files
-// (lockfiles, minified assets) are excluded when other changes exist.
-// Fails quiet -> "".
-func gitStagedDiff(root string) string {
-	return gitPromptDiff(root, "--cached")
-}
-
-// gitRangeDiff is gitStagedDiff for the commits between from and to: what a
-// squash of a PR would land, trimmed the same way for a harness prompt.
+// gitRangeDiff is the diff between from and to: what a squash of a PR
+// would land, trimmed for a harness prompt (gitPromptDiff).
 func gitRangeDiff(root, from, to string) string {
 	return gitPromptDiff(root, from, to)
 }
@@ -390,6 +374,10 @@ func gitRangeStat(root, from, to string) string {
 	return gitDiffStat(root, from, to)
 }
 
+// gitPromptDiff returns the unified diff for diffArgs, for handing to a
+// coding harness. Large diffs are capped to maxStagedDiffBytes and noise
+// files (lockfiles, minified assets) are excluded when other changes exist.
+// Fails quiet -> "".
 func gitPromptDiff(root string, diffArgs ...string) string {
 	if !gitAvailable(root) {
 		return ""
@@ -664,18 +652,6 @@ func gitCommit(root, message string) error {
 	return nil
 }
 
-// gitCommitOnly commits exactly paths as they are in the working tree
-// (`git commit --only`), whatever else is staged: the rest of the index is
-// left as it was, so the user's own staged entries stay staged. A path git
-// doesn't track yet must be added first. Literal pathspecs, as gitStagePaths.
-func gitCommitOnly(root, message string, paths []string) error {
-	args := append([]string{"--literal-pathspecs", "-C", root, "commit", "--only", "-m", message, "--"}, paths...)
-	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("git commit: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
 // gitAmend rewrites HEAD with whatever is staged, which may be nothing (a
 // reworded message). An empty message keeps HEAD's own.
 func gitAmend(root, message string) error {
@@ -701,13 +677,6 @@ func gitHeadSummary(root string) (hash, subject string) {
 	}
 	hash, subject, _ = strings.Cut(strings.TrimRight(string(out), "\n"), "\x1f")
 	return hash, subject
-}
-
-// gitHasStaged reports whether the index differs from HEAD anywhere in the
-// repository -- not just under the served root, since a commit takes the
-// whole index.
-func gitHasStaged(root string) bool {
-	return exec.Command("git", "-C", root, "diff", "--cached", "--quiet").Run() != nil
 }
 
 // gitHeadSHA returns HEAD's full SHA, "" while unborn or with git off.
@@ -803,69 +772,6 @@ func gitChangedPaths(root string) []gitChange {
 		}
 	}
 	return list
-}
-
-// gitStagePaths stages exactly paths (additions, edits and deletions alike).
-// Literal pathspecs: a path is a file name, never a glob.
-func gitStagePaths(root string, paths []string) error {
-	args := append([]string{"--literal-pathspecs", "-C", root, "add", "-A", "--"}, paths...)
-	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-		return fmt.Errorf("git add: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// gitUnstagePaths takes paths back out of the index, leaving the working
-// tree alone. On an unborn HEAD there is nothing to reset to, so they are
-// dropped from the index instead (as gitUnstage does).
-func gitUnstagePaths(root string, paths []string) error {
-	args := append([]string{"--literal-pathspecs", "-C", root, "reset", "-q", "--"}, paths...)
-	out, err := exec.Command("git", args...).CombinedOutput()
-	if err == nil {
-		return nil
-	}
-	rm := append([]string{"--literal-pathspecs", "-C", root, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--"}, paths...)
-	if exec.Command("git", rm...).Run() == nil {
-		return nil
-	}
-	return fmt.Errorf("git reset: %w: %s", err, strings.TrimSpace(string(out)))
-}
-
-const (
-	untrackedHeadLines = 40
-	maxUntrackedBytes  = 16 * 1024 // all untracked heads together, same ARG_MAX reasoning as maxStagedDiffBytes
-)
-
-// gitUntrackedHeads shows a harness what new files hold, which no git diff
-// does: the first lines of each text file in paths (relative to root),
-// binary ones skipped, all of it capped at maxUntrackedBytes.
-func gitUntrackedHeads(root string, paths []string) string {
-	var b strings.Builder
-	for i, p := range paths {
-		f, err := os.Open(filepath.Join(root, filepath.FromSlash(p)))
-		if err != nil {
-			continue
-		}
-		buf := make([]byte, 8*1024)
-		n, _ := io.ReadFull(f, buf)
-		f.Close()
-		buf = buf[:n]
-		if bytes.IndexByte(buf, 0) >= 0 {
-			continue // binary
-		}
-		lines := bytes.SplitAfter(buf, []byte("\n"))
-		if len(lines) > untrackedHeadLines {
-			lines = lines[:untrackedHeadLines]
-		}
-		head := strings.ToValidUTF8(string(bytes.Join(lines, nil)), "")
-		entry := "--- " + p + "\n" + strings.TrimRight(head, "\n") + "\n\n"
-		if b.Len()+len(entry) > maxUntrackedBytes {
-			fmt.Fprintf(&b, "[%d more new file(s) not shown]\n", len(paths)-i)
-			break
-		}
-		b.WriteString(entry)
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 // PreflightWarning flags a path about to be committed that probably

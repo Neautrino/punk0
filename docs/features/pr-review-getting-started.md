@@ -6,7 +6,7 @@ It works the same on **GitHub**, **GitLab** (gitlab.com and self-hosted), **Gite
 
 **What you need**
 - `git` installed.
-- For conflict resolution, AI commit messages and batch-applying comments: a coding harness px0 supports (Claude Code, Codex, OpenCode, Antigravity or Cursor Agent; see [Editing with Coding Agents](agent-editing.md)). Everything else works without one.
+- For conflict resolution and batch-applying comments: a coding harness px0 supports (Claude Code, Codex, OpenCode, Antigravity or Cursor Agent; see [Editing with Coding Agents](agent-editing.md)). Everything else works without one.
 
 ---
 
@@ -96,7 +96,7 @@ The checkout is a real git worktree with the full git panel:
 
 - Edit a file (`Cmd/Ctrl+E`), rewrite a selection with your coding harness (**Quick Edit**, `Cmd/Ctrl+K` in the source view), or hand it to the agent in the editor's terminal (`Alt+L`).
 - **⚡ Batch Apply** turns all your draft comments into code changes in one go.
-- Stage, then press **✦** for an AI-written message or write your own, commit, then **Push to PR**. The push goes to the PR's own branch, even when it comes from a fork.
+- Stage, write a message, commit, then **Push to PR**. The push goes to the PR's own branch, even when it comes from a fork.
 - If someone pushes to the PR while you review, **Pull** brings their commits in.
 
 ---
