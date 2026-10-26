@@ -10,17 +10,22 @@ punk0 keeps px0's fast viewer, search, git and pull request review, and adds wha
 - Real terminals running your own shell and the unmodified agent CLIs
 - Listens on `127.0.0.1` by default
 
-> **Status:** early. This repository holds px0 v0.1.19 as the starting point of the fork. The orchestrator is being moved in from the original from-scratch punk0 on the [`scratch`](https://github.com/Neautrino/punk0/tree/scratch) branch.
+> **Status:** early.
 
 ## Install
 
-Build from source (requires Go 1.25+ and Node.js or Bun):
+Install the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh
+```
+
+Or build from source (requires Go 1.25+ and Bun):
 
 ```bash
 git clone https://github.com/Neautrino/punk0.git
 cd punk0
-make web
-go build -o punk0 .
+make build
 install -d ~/.local/bin && install punk0 ~/.local/bin/
 ```
 
@@ -44,8 +49,6 @@ punk0 -host 0.0.0.0 -port 7777 ~/workspace
 punk0 listens on <http://127.0.0.1:7777> by default. See [Agents Page](docs/features/workbench.md).
 
 ## What punk0 adds
-
-In progress, moving over from the `scratch` branch.
 
 **01 · Projects and workspaces** — A sidebar of projects; each workspace is the main checkout, a git worktree on its own branch, or a scratch folder.
 
@@ -88,8 +91,6 @@ git config remote.px0.tagOpt --no-tags   # px0's version tags would clash with o
 git config remote.px0.pushurl no_push    # never push to px0
 git fetch px0 && git merge px0/master
 ```
-
-The guides in [docs/features](docs/features/README.md) come from px0 and still use its name.
 
 ## License and credits
 

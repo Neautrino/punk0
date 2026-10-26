@@ -1,8 +1,8 @@
-# px0 Internal Architecture & Design Documentation
+# punk0 Internal Architecture & Design Documentation
 
-Welcome to the internal engineering documentation for px0, an ultra-lightweight, zero-config code reader and navigator that delegates edits to the user's coding agent, packaged as a single statically-linked binary (~3.5 MB).
+Welcome to the internal engineering documentation for punk0, an ultra-lightweight, zero-config code reader and navigator that delegates edits to the user's coding agent, packaged as a single statically-linked binary (~18 MB).
 
-This directory contains in-depth technical write-ups explaining how px0 achieves sub-millisecond startup, instantaneous file navigation, deep code intelligence, and a minimal memory footprint (~20–30 MB RSS) across codebases containing tens of thousands of files.
+This directory contains in-depth technical write-ups explaining how punk0 achieves sub-millisecond startup, instantaneous file navigation, deep code intelligence, and a minimal memory footprint (~20–30 MB RSS, measured on px0) across codebases containing tens of thousands of files.
 
 ## 1. Subsystem Architecture Map
 
@@ -16,7 +16,7 @@ flowchart TD
         Palette["Command Palette & Fuzzy Picker"]
     end
 
-    subgraph GoServer ["px0 Go Backend (HTTP / JSON / Gzip)"]
+    subgraph GoServer ["punk0 Go Backend (HTTP / JSON / Gzip)"]
         Router["HTTP Router & Middleware"]
         Scavenger["Memory Scavenger (FreeOSMemory after 15s)"]
         IndexEngine["In-Memory Index (Paths & Tree Nodes)"]
@@ -84,6 +84,6 @@ The internal documentation is modularized into the following focused guides:
 ### Operations & Maintenance
 
 - [Testing, Micro-Benchmarks & Subsystem Coverage](testing-and-benchmarks.md): Comprehensive testing philosophy, 100% package coverage guarantee, statement coverage metrics, over 80 Go micro-benchmarks, and the unified verification runner (`./scripts/test-bench.sh`).
-- [User Features Documentation](../features/README.md): High-level feature guides, practical workflows, and keyboard shortcuts for all px0 capabilities.
+- [User Features Documentation](../features/README.md): High-level feature guides, practical workflows, and keyboard shortcuts for all punk0 capabilities.
 - [AI Agent Operational Guidelines](../agents/README.md): Engineering principles for AI coding agents, mandatory documentation maintenance protocol, and frontend codebase index.
-- [Publishing & Release Guide](../../PUBLISHING.md): Step-by-step instructions for preparing, testing, and publishing new px0 releases.
+- [Publishing & Release Guide](../../PUBLISHING.md): Step-by-step instructions for preparing, testing, and publishing new punk0 releases.

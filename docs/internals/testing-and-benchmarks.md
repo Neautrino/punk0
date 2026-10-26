@@ -1,12 +1,12 @@
 # Testing, Micro-Benchmarks & Subsystem Coverage
 
-This document outlines the testing architecture, benchmark methodology, coverage standards, and automated verification tools in `px0`.
+This document outlines the testing architecture, benchmark methodology, coverage standards, and automated verification tools in `punk0`.
 
 ---
 
 ## 1. Core Testing Philosophy
 
-`px0` is engineered to deliver sub-millisecond responsiveness with a minimal memory footprint (~20–30 MB RSS). To protect both correctness and performance across every commit:
+`punk0` is engineered to deliver sub-millisecond responsiveness with a minimal memory footprint (~20–30 MB RSS, measured on px0). To protect both correctness and performance across every commit:
 
 1. **100% Subsystem & Package Coverage**: Every Go package in the repository (the root package and all `internal/*` packages) maintains an active, automated unit test suite and micro-benchmark suite. No package is allowed to remain without tests or benchmarks.
 2. **Zero Runtime Dependencies**: All tests run out of the box using pure Go (`go test`). No external services, databases, or containerized daemons are needed.
@@ -17,7 +17,7 @@ This document outlines the testing architecture, benchmark methodology, coverage
 
 ## 2. Package & Subsystem Coverage Breakdown
 
-All 11 packages in `px0` achieve **100% Package Test and Benchmark Coverage**:
+All 11 packages in the Go module `px0` achieve **100% Package Test and Benchmark Coverage** (statement coverage figures below were measured on px0, not re-measured for punk0):
 
 | Package | Statement Coverage | Test Files | Primary Focus & Capabilities Tested |
 | :--- | :--- | :--- | :--- |
@@ -35,13 +35,13 @@ All 11 packages in `px0` achieve **100% Package Test and Benchmark Coverage**:
 
 > [!NOTE]
 > In Go, 100.0% line/statement coverage on a full application is blocked by unexecutable dead branches (e.g. fatal `os.Exit(1)` handlers in CLI `main()`, OS signal loops in server shutdown, unreachable filesystem syscall error handlers, and alternate platform files like `metrics_unix.go` vs `metrics_windows.go`).
-> `px0` enforces **100% Package and Feature Coverage** across all packages with high statement coverage on testable subsystems.
+> `punk0` enforces **100% Package and Feature Coverage** across all packages with high statement coverage on testable subsystems.
 
 ---
 
 ## 3. Micro-Benchmarks & Allocation Profiles
 
-px0 includes **over 80 micro-benchmarks** executing across all packages to catch performance regressions and allocation bloat:
+punk0 includes **over 80 micro-benchmarks** executing across all packages to catch performance regressions and allocation bloat:
 
 ```bash
 # Run all micro-benchmarks across every package

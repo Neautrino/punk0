@@ -1,16 +1,16 @@
 # Git Awareness, Diffing & Stage/Commit/Push/Pull
 
-This document describes the design and implementation of px0's git integration engine ([`git.go`](../../git.go)), its diff-rendering frontend ([`web/src/diff.js`](../../web/src/diff.js)), and the sidebar git panel that stages, commits, pushes, and pulls ([`web/src/gitpanel.js`](../../web/src/gitpanel.js), [`web/src/tree.js`](../../web/src/tree.js)).
+This document describes the design and implementation of punk0's git integration engine ([`git.go`](../../git.go)), its diff-rendering frontend ([`web/src/diff.js`](../../web/src/diff.js)), and the sidebar git panel that stages, commits, pushes, and pulls ([`web/src/gitpanel.js`](../../web/src/gitpanel.js), [`web/src/tree.js`](../../web/src/tree.js)).
 
 ## 1. Zero-Dependency Shell-Out Architecture
 
-px0 avoids heavy third-party Go git libraries (such as `go-git`, which can consume large amounts of memory re-parsing packfiles, or `libgit2`, which requires CGO).
+punk0 avoids heavy third-party Go git libraries (such as `go-git`, which can consume large amounts of memory re-parsing packfiles, or `libgit2`, which requires CGO).
 
-Instead, px0 adheres to a Pure Shell-Out Architecture:
+Instead, punk0 adheres to a Pure Shell-Out Architecture:
 
 - Shells out directly to the host `git` binary, for reads (`status`, `diff`, `merge-base`) and, since the git panel, for writes (`add`, `reset`, `commit`, `push`, `fetch`, `merge --ff-only`, `reset --hard`, `rebase --abort`, `merge --abort`).
 - Status and diffing themselves never stage, commit, or change refs or the index — that half of the engine is still purely read-only. The git panel's write endpoints (`/api/git/stage`, `unstage`, `commit`, `push`, `pull`, `abort`) are the only exception, and every one of them fires exactly once per explicit click; nothing runs on a timer or in response to a file change. See §9.
-- A dispatched coding harness ([Harness Editing & Agent Dispatch](agent-editing.md)) can still write anything else in the workspace but never touches git state itself, with one opt-in exception: **Rebase/Merge with AI** (§9), which the user starts explicitly after a pull can't fast-forward. Otherwise only px0's own git-panel endpoints touch git state.
+- A dispatched coding harness ([Harness Editing & Agent Dispatch](agent-editing.md)) can still write anything else in the workspace but never touches git state itself, with one opt-in exception: **Rebase/Merge with AI** (§9), which the user starts explicitly after a pull can't fast-forward. Otherwise only punk0's own git-panel endpoints touch git state.
 - Zero disk footprint: holds all status and diff structures in volatile memory on the `Index` (`Node.Status`, `Node.Staged`).
 - Graceful degradation: if `git` is not installed, or if the opened directory is not a git repository, git features degrade silently without warnings or errors.
 - Can be disabled explicitly using the `-no-git` CLI flag.
@@ -19,7 +19,7 @@ Instead, px0 adheres to a Pure Shell-Out Architecture:
 
 On large repositories, running `git status` can take 50-100 milliseconds. Running this serially during startup would delay index readiness.
 
-px0 runs `git status` concurrently alongside the filesystem walk:
+punk0 runs `git status` concurrently alongside the filesystem walk:
 
 ```go
 gsCh := make(chan map[string]string, 1)
@@ -34,7 +34,7 @@ gs := <-gsCh
 
 ### Git Command Specification
 
-px0 invokes:
+punk0 invokes:
 
 ```bash
 git status --porcelain=v2 -z
@@ -117,7 +117,7 @@ Both layouts share the same hunk-header, line-number, marker, and code-cell buil
 
 ## 5. Real-Time Streaming & Adaptive Monitoring Engine
 
-To keep git statuses, sidebar badges, and editor gutter diff indicators in sync without requiring manual page reloads or full workspace re-indexing, px0 uses a hybrid real-time monitoring engine (`git.go` and `web/src/gitstream.js`).
+To keep git statuses, sidebar badges, and editor gutter diff indicators in sync without requiring manual page reloads or full workspace re-indexing, punk0 uses a hybrid real-time monitoring engine (`git.go` and `web/src/gitstream.js`).
 
 ### Design Constraints: Small vs. Massive Repositories
 
@@ -125,14 +125,14 @@ To keep git statuses, sidebar badges, and editor gutter diff indicators in sync 
 | :--- | :--- | :--- | :--- |
 | **Recursive FS Watcher (`inotify`)** | Fast, low RAM | Exhausts OS watch descriptors (`max_user_watches`), high memory footprint, breaks across symlinks / mount points | **Rejected** |
 | **Fixed High-Frequency Polling** | Instant updates (~6ms) | Heavy CPU and battery drain (100k+ file `git status` takes 150ms-1s) | **Rejected** |
-| **px0 Hybrid Adaptive Engine** | Sub-millisecond latency, zero RAM overhead | Sub-millisecond on CLI git actions; worktree polling throttled dynamically; CPU usage bounded $\le 10\%$ | **Adopted** |
+| **punk0 Hybrid Adaptive Engine** | Sub-millisecond latency, zero RAM overhead | Sub-millisecond on CLI git actions; worktree polling throttled dynamically; CPU usage bounded $\le 10\%$ | **Adopted** |
 
 ### Dual-Layer Hybrid Architecture
 
 1. **Sub-millisecond Metadata Stat-Checking (Fast Path)**
-   - Every 1 second, px0 checks the `os.Stat` timestamps and sizes of key `.git` control files: `.git/index`, `.git/HEAD`, and `.git/packed-refs`.
+   - Every 1 second, punk0 checks the `os.Stat` timestamps and sizes of key `.git` control files: `.git/index`, `.git/HEAD`, and `.git/packed-refs`.
    - Any git operation performed in the terminal (`git commit`, `git checkout`, `git add`, `git reset`, `git merge`) immediately touches these files.
-   - When a metadata change is detected, px0 triggers an immediate `UpdateGitStatus()` and broadcasts the delta to the frontend within milliseconds without waiting for the next worktree poll.
+   - When a metadata change is detected, punk0 triggers an immediate `UpdateGitStatus()` and broadcasts the delta to the frontend within milliseconds without waiting for the next worktree poll.
 
 2. **Adaptive Worktree Polling (Worktree Path)**
    - To catch file changes made outside the git CLI (e.g. saving an editor file or external scripts), the engine polls `UpdateGitStatus()`.
@@ -142,7 +142,7 @@ To keep git statuses, sidebar badges, and editor gutter diff indicators in sync 
 
 3. **Visibility & Focus Gating**
    - **Page Visibility API**: When the browser tab is hidden (`document.visibilityState === 'hidden'`), the frontend closes the SSE connection. The backend detects zero active subscribers and pauses background worktree polling completely, saving CPU and laptop battery.
-   - **Instant Focus Wakeup**: When the user switches back to px0 (`focus` or `visibilitychange` to visible), the client reconnects and immediately issues a POST to `/api/git/refresh` to catch any changes made while the user was in another application.
+   - **Instant Focus Wakeup**: When the user switches back to punk0 (`focus` or `visibilitychange` to visible), the client reconnects and immediately issues a POST to `/api/git/refresh` to catch any changes made while the user was in another application.
 
 4. **In-Memory Concurrency & Tree Updates (`UpdateGitStatus`)**
    - Refreshing git status does not re-walk the directory tree on disk.
@@ -165,7 +165,7 @@ To keep git statuses, sidebar badges, and editor gutter diff indicators in sync 
 
 ## 6. How Git Detects Changes Under the Hood
 
-To understand why px0's metadata stat-checking fast path works in sub-milliseconds, it is essential to understand how Git itself detects changes in the working tree.
+To understand why punk0's metadata stat-checking fast path works in sub-milliseconds, it is essential to understand how Git itself detects changes in the working tree.
 
 ### The Stat Cache (`.git/index`)
 
@@ -211,7 +211,7 @@ Whenever a developer runs a Git command in the terminal (`git checkout`, `git re
 * This atomic rename guarantees that the `mtime` and `ctime` of `.git/index` change.
 * Git also updates `.git/HEAD` or ref pointers (`.git/refs/heads/<branch>` or `.git/packed-refs`).
 
-By monitoring the `os.Stat` timestamp of just `.git/index`, `.git/HEAD`, and `.git/packed-refs`, px0's fast path detects any terminal Git action in sub-millisecond time without scanning the workspace.
+By monitoring the `os.Stat` timestamp of just `.git/index`, `.git/HEAD`, and `.git/packed-refs`, punk0's fast path detects any terminal Git action in sub-millisecond time without scanning the workspace.
 
 ---
 
@@ -224,7 +224,7 @@ sequenceDiagram
     autonumber
     actor Dev as Developer (Terminal / CLI)
     participant FS as Local Filesystem (.git/index)
-    participant GW as px0 GitWatcher (Go Backend)
+    participant GW as punk0 GitWatcher (Go Backend)
     participant SSE as SSE Stream (/api/git/stream)
     participant JS as Browser Frontend (gitstream.js)
     participant UI as DOM (Tree, Tabs, Diff Overlay)
@@ -244,7 +244,7 @@ sequenceDiagram
 
 ### Auto-Closing Discarded / Reset Diff Tabs
 
-When developers use px0 to inspect AI agent changes or review git branches, they frequently open modified files directly in git diff view (`diffMode: 'split' | 'unified'`). When changes to those files are subsequently discarded or checked out in the terminal (`git checkout -- file` or `git reset`):
+When developers use punk0 to inspect AI agent changes or review git branches, they frequently open modified files directly in git diff view (`diffMode: 'split' | 'unified'`). When changes to those files are subsequently discarded or checked out in the terminal (`git checkout -- file` or `git reset`):
 
 1. **Diff Tab Tracking**: Tabs opened with git changes or toggled into diff view are tagged with `openedInDiffView = true` alongside `diffMode` in [`web/src/tabs.js`](../../web/src/tabs.js).
 2. **Reverse-Order Reconciliation**: When `handleGitStatus(data)` receives an updated status payload where `statuses[t.path]` is clean (`!isDiff`):
@@ -262,11 +262,11 @@ When developers use px0 to inspect AI agent changes or review git branches, they
    ```
    Iterating in reverse index order ensures index stability when removing multiple tabs simultaneously.
 3. **Active Pointer Stability**: In `closeTab(i)`, closing tabs to the left of the currently active tab decrements `S.active` (`S.active--`) rather than jumping the user to an unintended tab.
-4. **Empty State & Explorer Fallback**: If all git changes are discarded while the sidebar is in changed-only mode (`#tree.changed-only`), px0 automatically toggles back to standard file explorer mode so the user is never left viewing an empty tree.
+4. **Empty State & Explorer Fallback**: If all git changes are discarded while the sidebar is in changed-only mode (`#tree.changed-only`), punk0 automatically toggles back to standard file explorer mode so the user is never left viewing an empty tree.
 
 ## 8. Diffing Against an Arbitrary Base
 
-`gitDiff`/`gitHunks` above are thin `base="HEAD"` wrappers around `gitDiffAgainst`/`gitHunksAgainst`, which take an arbitrary base ref rather than assuming the working tree's `HEAD`. The one other caller is PR review (`px0 <url>`), which diffs a checked-out PR against its merge-base with the target branch instead. See [Pull Request Review](github-pr-review.md).
+`gitDiff`/`gitHunks` above are thin `base="HEAD"` wrappers around `gitDiffAgainst`/`gitHunksAgainst`, which take an arbitrary base ref rather than assuming the working tree's `HEAD`. The one other caller is PR review (`punk0 <url>`), which diffs a checked-out PR against its merge-base with the target branch instead. See [Pull Request Review](github-pr-review.md).
 
 ## 9. Stage, Commit, Push, Pull
 
@@ -288,7 +288,7 @@ Amend and **Undo last commit** (`POST /api/git/undo-commit`, `git reset --soft H
 
 ### Single-Hunk Actions (`/api/git/hunk`)
 
-Beyond whole-file staging, px0 allows staging, unstaging, or discarding individual diff hunks from the diff view. `gitApplyHunk(root, patch, action)` (`git.go`) pipes a zero-context unified patch (`--unidiff-zero`) directly into Git:
+Beyond whole-file staging, punk0 allows staging, unstaging, or discarding individual diff hunks from the diff view. `gitApplyHunk(root, patch, action)` (`git.go`) pipes a zero-context unified patch (`--unidiff-zero`) directly into Git:
 - **`stage`**: Runs `git apply --cached --unidiff-zero -` to stage only the selected hunk.
 - **`unstage`**: Runs `git apply --reverse --cached --unidiff-zero -` to unstage that specific hunk from the index while keeping working-tree modifications.
 - **`discard`**: Runs `git apply --reverse --unidiff-zero -` to discard that hunk's changes from the working tree.
@@ -301,11 +301,11 @@ A whole-file hunk (a new file, or one deleted from disk) can't go through `git a
 
 ### Fast-Forward-Only Pull
 
-`gitFFOnlyPull(root, remote, ref)` fetches `ref` from `remote` and runs `git merge --ff-only FETCH_HEAD`. If that merge fails for any reason, it returns the sentinel `errNotFastForward` without having touched history — px0 never falls back to a real merge, so there is never a conflicted state to clean up. `handleGitPull` (`server.go`) first refuses (409, `code: "in-progress"`) if a rebase or merge is already half-done (`gitOpInProgress`, which looks for `rebase-merge`/`rebase-apply`/`MERGE_HEAD` in the git dir), then refuses (409) if the working tree is dirty, then resolves the branch's upstream (`gitUpstream`, wrapping `git rev-parse --abbrev-ref <branch>@{u}`) and calls `gitFFOnlyPull`. On `errNotFastForward` it answers 409 through `failSync`, which carries a `gitSyncState` (`code: "diverged"`, branch, upstream, ahead/behind, in-progress op, dirty) next to the message. The fetch has already landed by then, so the counts describe the remote as it is now.
+`gitFFOnlyPull(root, remote, ref)` fetches `ref` from `remote` and runs `git merge --ff-only FETCH_HEAD`. If that merge fails for any reason, it returns the sentinel `errNotFastForward` without having touched history — punk0 never falls back to a real merge, so there is never a conflicted state to clean up. `handleGitPull` (`server.go`) first refuses (409, `code: "in-progress"`) if a rebase or merge is already half-done (`gitOpInProgress`, which looks for `rebase-merge`/`rebase-apply`/`MERGE_HEAD` in the git dir), then refuses (409) if the working tree is dirty, then resolves the branch's upstream (`gitUpstream`, wrapping `git rev-parse --abbrev-ref <branch>@{u}`) and calls `gitFFOnlyPull`. On `errNotFastForward` it answers 409 through `failSync`, which carries a `gitSyncState` (`code: "diverged"`, branch, upstream, ahead/behind, in-progress op, dirty) next to the message. The fetch has already landed by then, so the counts describe the remote as it is now.
 
 ### Agent Rebase / Merge
 
-A diverged pull is where px0's own git writes stop, but the panel can hand the rest to the selected coding harness, only on an explicit click. `POST /api/git/sync-agent` with `{strategy: "rebase" | "merge"}` (`handleGitSyncAgent`) re-reads the sync state, refuses a dirty tree or a mismatched in-progress op, and dispatches `gitSyncPrompt` (`agent.go`) through `agentManager.StartPrompt`, the same one-shot path the PR merge message uses. The prompt states the situation ("git pull is failing ... can't fast-forward ... Run rebase."), the exact commands, how to resolve conflicts, and the rules: never push or force-push, never `rebase --skip`, and `--abort` if a conflict can't be resolved with confidence. When a rebase or merge is already half-done, the prompt asks the harness to finish that one instead of starting over. Mid-rebase HEAD is detached, so `gitRebasingBranch` reads the branch from the rebase's `head-name`.
+A diverged pull is where punk0's own git writes stop, but the panel can hand the rest to the selected coding harness, only on an explicit click. `POST /api/git/sync-agent` with `{strategy: "rebase" | "merge"}` (`handleGitSyncAgent`) re-reads the sync state, refuses a dirty tree or a mismatched in-progress op, and dispatches `gitSyncPrompt` (`agent.go`) through `agentManager.StartPrompt`, the same one-shot path the PR merge message uses. The prompt states the situation ("git pull is failing ... can't fast-forward ... Run rebase."), the exact commands, how to resolve conflicts, and the rules: never push or force-push, never `rebase --skip`, and `--abort` if a conflict can't be resolved with confidence. When a rebase or merge is already half-done, the prompt asks the harness to finish that one instead of starting over. Mid-rebase HEAD is detached, so `gitRebasingBranch` reads the branch from the rebase's `head-name`.
 
 The frontend doesn't trust the harness's exit status. When the job ends it reads `GET /api/git/sync-state` and branches on where the branch actually is: an op still in progress (offer **Finish with AI** or **Abort**), still behind upstream (didn't complete), or caught up (done, offer **Push**). `POST /api/git/abort` (`gitAbortOp`) runs `git rebase --abort` or `git merge --abort`. PR review sessions don't offer any of this; their Pull keeps its own divergence handling.
 
@@ -340,7 +340,7 @@ For a plain workspace, `handleGitPush` runs a bare `gitPush` (`git push`); if th
 | `/api/git/abort` | POST | Abort the rebase or merge in progress. `409` if there is none. |
 | `/api/git/log?limit=` | GET | The commit graph (§10): `{commits, commitsUrl, upstream, head, more}`. |
 
-Every write endpoint is guarded by `localPost` ([`server.go`](../../server.go)), the same POST-only, same-origin, IP-or-localhost check every other mutating px0 endpoint uses.
+Every write endpoint is guarded by `localPost` ([`server.go`](../../server.go)), the same POST-only, same-origin, IP-or-localhost check every other mutating punk0 endpoint uses.
 
 ## 10. Commit History: the Graph and Per-Commit Reads
 
@@ -350,7 +350,7 @@ It is strictly read-only: no endpoint here writes to the index, a ref, or a remo
 
 ### The Graph, and What It Is Measured Against
 
-`GET /api/git/log?limit=N` (default 30, max 200; `handleGitLog`) answers `{commits, commitsUrl, upstream, head, more}`. `gitGraphLog` runs `git log -z --topo-order --decorate=full -n N --format=%H%x1f%h%x1f%P%x1f%D%x1f%s%x1f%an%x1f%cr HEAD <boundary>`, so commits only the upstream has (incoming) are listed alongside yours. Each row carries its `parents` (full SHAs, first parent first) and `refs` parsed from the full-name `%D` (`parseGraphRefs`): full names are what tell a local branch `feat/x` from a remote `origin/x`. Kinds are `head` (the branch HEAD points to, or `HEAD` itself when detached), `branch`, `remote` (remote `HEAD` aliases left out) and `tag`; other refs (stash, px0's own `refs/px0/…`) aren't shown. `outgoing`/`incoming` come from one `git rev-list --left-right HEAD...<boundary>` (`gitSides`). `more` is true when the log filled `N`.
+`GET /api/git/log?limit=N` (default 30, max 200; `handleGitLog`) answers `{commits, commitsUrl, upstream, head, more}`. `gitGraphLog` runs `git log -z --topo-order --decorate=full -n N --format=%H%x1f%h%x1f%P%x1f%D%x1f%s%x1f%an%x1f%cr HEAD <boundary>`, so commits only the upstream has (incoming) are listed alongside yours. Each row carries its `parents` (full SHAs, first parent first) and `refs` parsed from the full-name `%D` (`parseGraphRefs`): full names are what tell a local branch `feat/x` from a remote `origin/x`. Kinds are `head` (the branch HEAD points to, or `HEAD` itself when detached), `branch`, `remote` (remote `HEAD` aliases left out) and `tag`; other refs (stash, punk0's own `refs/px0/…`) aren't shown. `outgoing`/`incoming` come from one `git rev-list --left-right HEAD...<boundary>` (`gitSides`). `more` is true when the log filled `N`.
 
 The boundary is `Server.pushBoundary`: `@{u}` as named by `gitUpstreamRef` (`git rev-parse --abbrev-ref --symbolic-full-name @{u}`, e.g. `origin/master`), or in a PR session the PR head as last pushed, labelled `PR #N head (branch)`. Unlike `gitAheadBehind`, there is **no `origin/<branch>` fallback and no "count every local commit" fallback**. Those exist so the Push button can still light up on an unpublished branch, where being approximately right is better than being dead. Marking commits is different: measuring against a branch git does not consider upstream would show a confident, wrong answer. With no upstream configured, `upstream` is empty and nothing is marked. A boundary that doesn't resolve (a PR head never fetched) is dropped rather than failing the whole log.
 
@@ -368,7 +368,7 @@ Three reads share one set of `git diff-tree` flags (`commitDiffArgs`): `--no-com
 
 `gitHunksCommit` feeds `gitDiffCommit`'s output to `parseDiffHunks` — the same state machine `gitHunksAgainst` uses, split out of it so a commit's gutter and the working tree's are parsed by one piece of code.
 
-Every SHA that reaches `exec.Command` as a bare revision passes `validSHA` (`^[0-9a-fA-F]{4,40}$`) first. The only way a SHA reaches these endpoints is from a list px0 itself produced, so anything else is a bug or a probe; refusing it keeps a crafted `--upload-pack=…` out of an argument list.
+Every SHA that reaches `exec.Command` as a bare revision passes `validSHA` (`^[0-9a-fA-F]{4,40}$`) first. The only way a SHA reaches these endpoints is from a list punk0 itself produced, so anything else is a bug or a probe; refusing it keeps a crafted `--upload-pack=…` out of an argument list.
 
 ### The `ref` Parameter on `/api/diff` and `/api/gutter`
 

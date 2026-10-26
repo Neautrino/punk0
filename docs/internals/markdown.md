@@ -1,6 +1,6 @@
 # Markdown Preview Implementation
 
-This document describes how px0 renders Markdown files: the server-side conversion, the browser-side sanitizer, and the logic that keeps the rendered view and the source view in step.
+This document describes how punk0 renders Markdown files: the server-side conversion, the browser-side sanitizer, and the logic that keeps the rendered view and the source view in step.
 
 A Markdown tab (`.md` or `.markdown`) opens rendered by default. The reader switches to the raw source with the Preview / Source switch in the tab bar or Alt+M. The code lives in two files: [`internal/render/render.go`](../../internal/render/render.go) on the server and [`web/src/markdown.js`](../../web/src/markdown.js) in the browser.
 
@@ -121,7 +121,7 @@ Two cases stay plain and HTML-escaped:
 ## 4. Sanitization
 ### Why the Browser Treats the HTML as Untrusted
 
-The preview renders on px0's own origin. That origin also serves `/api/lsp/install` and `/api/lsp/start`, which accept a POST whose `Origin` matches the host. Script injected into the preview would pass that check. A Markdown file in any repository the reader opens is attacker-controlled input, so every byte from `/api/markdown` goes through `mdSanitize` before it touches the page.
+The preview renders on punk0's own origin. That origin also serves `/api/lsp/install` and `/api/lsp/start`, which accept a POST whose `Origin` matches the host. Script injected into the preview would pass that check. A Markdown file in any repository the reader opens is attacker-controlled input, so every byte from `/api/markdown` goes through `mdSanitize` before it touches the page.
 
 ### Pipeline
 
@@ -134,7 +134,7 @@ The preview renders on px0's own origin. That origin also serves `/api/lsp/insta
 1. Strip every attribute from kept elements, then restore only those that follow these rules:
   - Attributes in `MD_ATTRS`: `align valign alt title lang dir width height colspan rowspan start reversed open checked disabled type data-line data-lang`.
   - `id`, and `name` on `<a>`, rewritten as `id="md-<value>"`. A heading called "Status" becomes `md-status` and cannot shadow the status bar's `#status`.
-  - Class tokens only when they are `md-code`, start with `footnote`, or are highlighter tokens on `<i>`. Content cannot borrow px0's layout classes such as `row`.
+  - Class tokens only when they are `md-code`, start with `footnote`, or are highlighter tokens on `<i>`. Content cannot borrow punk0's layout classes such as `row`.
   - `src` and `href` through the URL rules below.
 
 The cleaned children move into a `DocumentFragment` with `document.adoptNode`. The cleaned tree is never serialized and re-parsed, which rules out mutation XSS from parser round trips. `style` attributes never survive, so content cannot position an overlay over the UI.
@@ -171,7 +171,7 @@ These cases come from the browser checks run against the implementation:
 
 ## 5. Presentation
 
-`mdEnhance` runs after sanitization and adds markup that px0 itself creates:
+`mdEnhance` runs after sanitization and adds markup that punk0 itself creates:
 
 - GitHub alerts. A blockquote whose first paragraph opens with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` loses the marker, gains a `.md-alert-title` paragraph, and gets `.md-alert .md-alert-<kind>`.
 - Code block wrappers. Each `<pre>` moves into `.md-pre`, which carries `data-lang` for a corner label and a copy button. The button holds an SVG icon rather than a text label, because find in the preview walks text nodes and would otherwise match the word "Copy".
@@ -184,17 +184,17 @@ Styles live under `/* ---------- markdown preview ---------- */` in [`web/style.
 
 ### Mermaid Diagrams
 
-Mermaid is a presentation-stage enhancement, not a server renderer. `renderFence` emits the same escaped `<pre><code>` and `data-line` metadata as every other fence. After `mdSanitize` has rejected repository-supplied SVG, `renderMermaidBlocks` lazy-loads the pinned, same-origin `web/vendor/mermaid-12.0.0.min.js` asset and inserts Mermaid's generated SVG. The runtime is fetched on demand at runtime and cached persistently under the user cache directory (`~/.px0/cache/vendor/`), keeping the compiled binary lean while still allowing diagrams to work offline after initial fetch and under `-base-path`.
+Mermaid is a presentation-stage enhancement, not a server renderer. `renderFence` emits the same escaped `<pre><code>` and `data-line` metadata as every other fence. After `mdSanitize` has rejected repository-supplied SVG, `renderMermaidBlocks` lazy-loads the pinned, same-origin `web/vendor/mermaid-12.0.0.min.js` asset and inserts Mermaid's generated SVG. The runtime is fetched on demand at runtime and cached persistently under the user cache directory (`~/.punk0/cache/vendor/`), keeping the compiled binary lean while still allowing diagrams to work offline after initial fetch and under `-base-path`.
 
 The adapter initializes Mermaid with `startOnLoad: false`, `securityLevel: strict`, disabled error rendering, and Mermaid's secure configuration keys. Diagram directives therefore cannot enable HTML labels, click callbacks, or a weaker security level. The returned `bindFunctions` hook is intentionally ignored.
 
 Rendering leverages an LRU diagram cache and cooperative event-loop yielding to optimize resource utilization and responsiveness. Every asynchronous continuation checks the preview generation and active document before changing the DOM. `drawPreview` waits for the batch before restoring a line, anchor, or saved scroll position. A syntax error affects only its fence: the original source remains visible and neighboring diagrams continue.
 
-The original `<pre>` stays in the DOM after a successful render, hidden from presentation and find but available to the existing copy button and `domToMarkdown`. This preserves exact Mermaid source when copying code or raw Markdown. Each rendered diagram owns a lightweight toolbar with controls for zooming (from 25% through 400%, with percentage label and fit-to-view), click-and-drag panning, and a full-screen toggle button. Full-screen mode maximizes the diagram into a focused overlay (`.md-mermaid.is-fullscreen`) centered across the entire viewport with locked page background scrolling, recalculating optimal fit while retaining zoom and pan. Dedicated close buttons in the controls toolbar and top-right corner, as well as `Esc`, cleanly dismiss full-screen view. `theme:changed` rerenders only the active preview after a short debounce, using the current px0 theme tokens.
+The original `<pre>` stays in the DOM after a successful render, hidden from presentation and find but available to the existing copy button and `domToMarkdown`. This preserves exact Mermaid source when copying code or raw Markdown. Each rendered diagram owns a lightweight toolbar with controls for zooming (from 25% through 400%, with percentage label and fit-to-view), click-and-drag panning, and a full-screen toggle button. Full-screen mode maximizes the diagram into a focused overlay (`.md-mermaid.is-fullscreen`) centered across the entire viewport with locked page background scrolling, recalculating optimal fit while retaining zoom and pan. Dedicated close buttons in the controls toolbar and top-right corner, as well as `Esc`, cleanly dismiss full-screen view. `theme:changed` rerenders only the active preview after a short debounce, using the current punk0 theme tokens.
 
 ## 6. Keeping the Reader's Place
 
-Navigation in px0 is line-based: the outline, go to line, search results, references, history, and `openFile(path, { line })`. All of them call `centerLine(n)` in [`web/src/tabs.js`](../../web/src/tabs.js), which hands off to `previewLine(n)` while previewing.
+Navigation in punk0 is line-based: the outline, go to line, search results, references, history, and `openFile(path, { line })`. All of them call `centerLine(n)` in [`web/src/tabs.js`](../../web/src/tabs.js), which hands off to `previewLine(n)` while previewing.
 
 ### Line to Block (`previewLine`)
 
@@ -262,7 +262,7 @@ Hover cards, Ctrl+click definitions and the selection bar listen on `#viewport`.
 
 ## 11. Tests
 
-[`markdown_test.go`](../../markdown_test.go) covers the server side:
+[`internal/render/render_test.go`](../../internal/render/render_test.go) and the `/api/markdown` tests in [`px0_test.go`](../../px0_test.go) cover the server side:
 
 - `TestMarkdownPreview` checks heading ids and `data-line`, highlighted fenced code, preserved relative links, task list checkboxes, the `markdown` flag on `/api/file`, and the 415 and 400 responses.
 - `TestHeadingIDsFollowGitHub` checks the id rules and deduplication.
@@ -295,4 +295,4 @@ CSV and TSV tabs reuse this overlay. `/api/file` returns `"table": true` for `.c
 
 ### Tests
 
-[`table_test.go`](../../table_test.go) holds the parsing rules (quoted comma and newline, line skipping, ragged rows, TSV, BOM, blank lines, stray quotes, empty file, row cap, exactly-at-cap), separator detection and ties, the endpoint and `table` flag, and the byte cap: an endless reader proves no more than 1 MiB is read and that the record the cap cuts through is dropped. The browser behaviour was checked with a headless Playwright run in Chromium, WebKit and Firefox; there is no browser test in the repository.
+[`internal/table/table_test.go`](../../internal/table/table_test.go) holds the parsing rules (quoted comma and newline, line skipping, ragged rows, TSV, BOM, blank lines, stray quotes, empty file, row cap, exactly-at-cap), separator detection and ties, and the byte cap: an endless reader proves no more than 1 MiB is read and that the record the cap cuts through is dropped. The endpoint and `table` flag tests are in [`px0_test.go`](../../px0_test.go). The browser behaviour was checked with a headless Playwright run in Chromium, WebKit and Firefox; there is no browser test in the repository.

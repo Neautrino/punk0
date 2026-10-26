@@ -1,6 +1,6 @@
 # Operational Guidelines for AI Agents
 
-Welcome agent! This document contains essential instructions and workflows for working productively and quickly in `px0`.
+Welcome agent! This document contains essential instructions and workflows for working productively and quickly in `punk0`.
 
 ---
 
@@ -13,9 +13,9 @@ To keep iteration fast and avoid unnecessary delays:
 
 | Task | Command | Typical Time | Notes |
 | :--- | :--- | :--- | :--- |
-| **Frontend Check** | `make web-check` or `npm run check` | **<100ms** | Validates JS syntax, relative imports, and runs frontend tests. |
-| **Frontend Bundle** | `make web` or `node scripts/build-web.js` | **<50ms** | Run whenever modifying files under `web/src/`. |
-| **Build Binary** | `make build` | **~2s** | Bundles frontend (`web/app.js`) and compiles local `./px0` binary. |
+| **Frontend Check** | `make web-check` or `bun run check` | **<100ms** | Validates JS syntax, relative imports, and runs frontend tests. |
+| **Frontend Bundle** | `make web` or `bun ./scripts/build-web.js` | **<50ms** | Run whenever modifying files under `web/src/`. |
+| **Build Binary** | `make build` | **~2s** | Bundles frontend (`web/app.js`) and compiles local `./punk0` binary. |
 | **Fast Verification** | `make check` or `go test -short ./...` | **~7s** | Runs frontend validation, asset bundling, and fast Go unit tests. |
 | **Full Test Suite** | `make test` or `go test ./...` | **~20s** | Run once all changes are done; iterate until all tests pass before concluding. |
 | **Subsystem Verification** | `make verify` or `./scripts/test-bench.sh --fast` | **~15s** | Verifies 100% package test/benchmark coverage + statement coverage. |
@@ -26,7 +26,7 @@ To keep iteration fast and avoid unnecessary delays:
 
 ### Unified Test & Benchmark Verification Utility
 
-`px0` provides a unified script to run all unit tests, compute statement coverage across all packages, run all micro-benchmarks, and assert **100% package test and benchmark coverage**:
+`punk0` provides a unified script to run all unit tests, compute statement coverage across all packages, run all micro-benchmarks, and assert **100% package test and benchmark coverage**:
 
 ```bash
 # Fast verification (recommended during development): runs tests (-short) and micro-benchmarks (-benchtime=100ms)
@@ -75,9 +75,9 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
 
 ## 3. Core Architectural Tenets
 
-1. **Reads First, Edits via Harness**: `px0` is an ultra-fast code reader and reviewer. File modifications are delegated to external coding harnesses (`agent.go`), never authored directly to disk by `px0` (with the exception of explicit user-initiated Git operations in the sidebar).
+1. **Reads First, Edits via Harness**: `punk0` is an ultra-fast code reader and reviewer. File modifications are delegated to external coding harnesses (`agent.go`), never authored directly to disk by `punk0` (with the exception of explicit user-initiated Git operations in the sidebar).
 2. **Zero Runtime Dependencies**: The output must remain a single, standalone static binary. No CGO, no Node.js runtime requirement for the user, no external databases.
-3. **No Workspace Litter**: `px0` never creates `.px0/` folders or cache files inside a workspace tree. Persistent configuration and thread transcripts live in `$XDG_CONFIG_HOME/px0/` or `~/.px0/`; per-workspace session files (PR review drafts) and the workbench store live in `$XDG_STATE_HOME/px0/` or `~/.px0/`.
+3. **No Workspace Litter**: `punk0` never creates `.punk0/` folders or cache files inside a workspace tree. Persistent configuration lives in `$XDG_CONFIG_HOME/punk0/` or `~/.punk0/`; per-workspace session files (PR review drafts) and the agents page store live in `$XDG_STATE_HOME/punk0/` or `~/.punk0/`.
 4. **Fast & Non-Blocking**: Operations must remain responsive. All background tasks, network calls, and git operations must respect timeouts and set `GIT_TERMINAL_PROMPT=0`.
 
 ---
@@ -90,9 +90,7 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
   - Major architectural patterns -> [`docs/internals/`](docs/internals/)
   - User features -> [`docs/features/`](docs/features/)
 - **Keeping Tips & Tricks Updated**: Whenever rolling out an important user-facing feature, shortcut, command, or workflow improvement:
-  - Add a concise, helpful tip entry to both:
-    1. [`../web/public/tips.json`](../web/public/tips.json): Served publicly at `https://px0.ai/tips.json`.
-    2. [`web/src/tips-util.js`](web/src/tips-util.js): Built-in offline fallback in `DEFAULT_TIPS`.
+  - Add a concise, helpful tip entry to [`web/src/tips-util.js`](web/src/tips-util.js) in `DEFAULT_TIPS` (the built-in offline fallback; the remote list at `https://px0.ai/tips.json` is px0's and not in this repo).
   - Tips use the standard schema:
     ```json
     {
@@ -104,7 +102,7 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
       "shortcut": "Mod+Key" // optional
     }
     ```
-  - Rebundle frontend assets via `make web` (`npm run build`) and run `npm run check`.
+  - Rebundle frontend assets via `make web` (`bun run build`) and run `bun run check`.
 
 ---
 
@@ -112,7 +110,7 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
 
 When committing a version bump (triggered after updating the `VERSION` file):
 1. **Verify Release Pipeline**:
-   - Verify frontend bundling: `node ./scripts/build-web.js`
+   - Verify frontend bundling: `bun ./scripts/build-web.js`
    - Verify full test suite: `make test`
    - Verify builds: `build.sh` / `.github/workflows/release.yml`
 2. **Commit Release Fixes First**: If bundlers or scripts need fixes, commit those separately first.

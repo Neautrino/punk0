@@ -1,6 +1,6 @@
 # Direct File Editing & Creation
 
-px0 can edit a file in place and create new files and folders from the browser. This is for small, direct changes. Larger or multi-file changes still go through a coding harness (see [Agent Editing](agent-editing.md)).
+punk0 can edit a file in place and create new files and folders from the browser. This is for small, direct changes. Larger or multi-file changes still go through a coding harness (see [Agent Editing](agent-editing.md)).
 
 ---
 

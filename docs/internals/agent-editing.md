@@ -1,6 +1,6 @@
 # Harness Editing & Agent Dispatch
 
-This document describes how px0 runs a coding harness and what it does with the result:
+This document describes how punk0 runs a coding harness and what it does with the result:
 
 - harness selection, workspace jobs and change detection: [`agent.go`](../../agent.go)
 - Quick Edit's one-shot run: [`quickedit.go`](../../quickedit.go), [`web/src/quick_edit.js`](../../web/src/quick_edit.js)
@@ -13,12 +13,12 @@ Harnesses are discovered automatically, the same way language servers are, but n
 
 ## 1. The Dispatcher Model
 
-px0 does not author changes itself. Every harness-backed feature hands a prompt to a harness already installed on the machine and uses what comes back. There are two shapes:
+punk0 does not author changes itself. Every harness-backed feature hands a prompt to a harness already installed on the machine and uses what comes back. There are two shapes:
 
 | Shape | Callers | Working directory | Result |
 | --- | --- | --- | --- |
 | **Workspace job** (`agentManager.StartPrompt`, `StartEdit`) | Rebase / Merge with AI, PR merge message, PR Batch Apply | The workspace root | An `agentJob` polled through `/api/agent/job`; whatever the harness wrote is detected and reloaded (sections 5 and 6) |
-| **Quick Edit** (`handleQuickEdit`) | The editor's Quick Edit box | A fresh empty temp folder | The replacement text in the HTTP response; px0 writes it only on Accept, through `/api/file/replace` (section 4) |
+| **Quick Edit** (`handleQuickEdit`) | The editor's Quick Edit box | A fresh empty temp folder | The replacement text in the HTTP response; punk0 writes it only on Accept, through `/api/file/replace` (section 4) |
 
 The hot path (indexing, highlighting, navigation) is untouched by either.
 
@@ -26,7 +26,7 @@ The hot path (indexing, highlighting, navigation) is untouched by either.
 sequenceDiagram
     autonumber
     participant UI as Browser
-    participant S as px0 server
+    participant S as punk0 server
     participant H as Harness
     participant G as git CLI
 
@@ -60,8 +60,8 @@ Discovery alone never enables a harness. Finding `claude` on PATH is not consent
 The choice is written to:
 
 ```
-$XDG_CONFIG_HOME/px0/settings.json     # when XDG_CONFIG_HOME is set
-~/.px0/settings.json                   # otherwise
+$XDG_CONFIG_HOME/punk0/settings.json     # when XDG_CONFIG_HOME is set
+~/.punk0/settings.json                   # otherwise
 ```
 
 ```json
@@ -71,7 +71,7 @@ $XDG_CONFIG_HOME/px0/settings.json     # when XDG_CONFIG_HOME is set
 }
 ```
 
-px0 never writes its own state into a working tree: there is no `.px0/` directory in the repository.
+punk0 never writes its own state into a working tree: there is no `.punk0/` directory in the repository.
 
 A corrupt or stale settings file is never an error. If the saved harness has since been uninstalled it resolves to nothing selected, and the selects ask again.
 
@@ -94,10 +94,10 @@ When a model is chosen, its flag is inserted just before the prompt (before `-p`
 A full command template is accepted anywhere a harness name is, and must contain `{prompt}`; `{model}` is substituted too when present:
 
 ```bash
-px0 -agent "claude -p --permission-mode acceptEdits {prompt}"
+punk0 -agent "claude -p --permission-mode acceptEdits {prompt}"
 ```
 
-The template is split on whitespace, and `{prompt}` is substituted inside each token, so both `{prompt}` and `--prompt={prompt}` work. The prompt is always one argument and never passes through a shell. Presets are a convenience, not a coupling: a harness that changes its flags is a one-line template fix for the user rather than a px0 release.
+The template is split on whitespace, and `{prompt}` is substituted inside each token, so both `{prompt}` and `--prompt={prompt}` work. The prompt is always one argument and never passes through a shell. Presets are a convenience, not a coupling: a harness that changes its flags is a one-line template fix for the user rather than a punk0 release.
 
 The binary is resolved before a harness can be selected, so a typo or an uninstalled tool fails at the point of choosing rather than on first use.
 
@@ -111,7 +111,7 @@ The harness runs in its own process group, and cancel or timeout kills the whole
 
 ### Streaming and Output
 
-During a workspace job, lines from stdout and stderr stream to the terminal where px0 is running (`lineStreamer`), and are kept in `tailBuffer`s (the last 32 KB of each) for `/api/agent/job`. A failed job comes back with an `error` field and both tails, so the UI can show the harness's own explanation (an invalid API key, a missing login) instead of a bare status.
+During a workspace job, lines from stdout and stderr stream to the terminal where punk0 is running (`lineStreamer`), and are kept in `tailBuffer`s (the last 32 KB of each) for `/api/agent/job`. A failed job comes back with an `error` field and both tails, so the UI can show the harness's own explanation (an invalid API key, a missing login) instead of a bare status.
 
 ## 4. Quick Edit
 
@@ -176,7 +176,7 @@ The frontend's `reloadWorkspace()` in `agent.js` then reloads in dependency orde
 
 ### No File Watcher for Jobs
 
-px0 started the harness, so it knows when the work ended: completion is the process exiting, not a filesystem event.
+punk0 started the harness, so it knows when the work ended: completion is the process exiting, not a filesystem event.
 
 ## 8. HTTP Surface
 
@@ -216,9 +216,9 @@ Every mutating endpoint is guarded by `localPost` ([`server.go`](../../server.go
 
 ### Security Posture
 
-A workspace job runs a general-purpose coding agent with shell access as the user who started px0. Quick Edit runs the same agent, only from an empty folder: that keeps it from changing the workspace through its working directory, but it is not a sandbox. `localPost` restricts both to px0's own page reached by IP address or `localhost`. That shuts out other websites and DNS rebinding, and makes these features unavailable through the hostname-based tunnels and reverse proxies described in the README. It is not authentication: with `-host 0.0.0.0`, anyone who can reach px0 by IP, for example over Tailscale, can start a run.
+A workspace job runs a general-purpose coding agent with shell access as the user who started punk0. Quick Edit runs the same agent, only from an empty folder: that keeps it from changing the workspace through its working directory, but it is not a sandbox. `localPost` restricts both to punk0's own page reached by IP address or `localhost`. That shuts out other websites and DNS rebinding, and makes these features unavailable through the hostname-based tunnels and reverse proxies described in the README. It is not authentication: with `-host 0.0.0.0`, anyone who can reach punk0 by IP, for example over Tailscale, can start a run.
 
-The explicit first pick matters for the same reason. Auto-enabling on discovery would make any px0 instance on a machine with a harness installed a code execution endpoint that nobody opted into.
+The explicit first pick matters for the same reason. Auto-enabling on discovery would make any punk0 instance on a machine with a harness installed a code execution endpoint that nobody opted into.
 
 ## 9. Limits
 

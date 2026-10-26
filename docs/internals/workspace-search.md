@@ -1,10 +1,10 @@
 # Workspace Search & Symbol Extraction
 
-This document explains px0's high-throughput parallel search engine ([`search.go`](../../search.go)) and fast regex symbol extractor ([`internal/symbols/symbols.go`](../../internal/symbols/symbols.go)).
+This document explains punk0's high-throughput parallel search engine ([`search.go`](../../search.go)) and fast regex symbol extractor ([`internal/symbols/symbols.go`](../../internal/symbols/symbols.go)).
 
 ## 1. Search Engine Architecture
 
-Full-text search in px0 is built to scan hundreds of megabytes of source code in milliseconds without spawning external processes (like `grep` or `ripgrep`) and without thrashing the Go heap.
+Full-text search in punk0 is built to scan hundreds of megabytes of source code in milliseconds without spawning external processes (like `grep` or `ripgrep`) and without thrashing the Go heap.
 
 ```mermaid
 flowchart TD
@@ -37,7 +37,7 @@ flowchart TD
 
 ## 2. Memory Optimization: `workBuf` Pooling
 
-Reading thousands of files off disk can overwhelm Go's memory allocator if buffers are created per file. px0 eliminates per-file allocations using a `sync.Pool` of reusable worker buffers:
+Reading thousands of files off disk can overwhelm Go's memory allocator if buffers are created per file. punk0 eliminates per-file allocations using a `sync.Pool` of reusable worker buffers:
 
 ```go
 type workBuf struct {
@@ -67,7 +67,7 @@ For case-insensitive literal searches, converting full UTF-8 strings with `strin
 
 The vast majority of files in any repository do not contain the search term. Splitting file contents into lines and iterating line-by-line is expensive.
 
-px0 applies a whole-file rejection test before doing any line parsing—covering plain literal queries, whole-word queries (`Word: true`, used by `/api/def`), and regular expressions that expose a literal prefix (`re.LiteralPrefix()`):
+punk0 applies a whole-file rejection test before doing any line parsing—covering plain literal queries, whole-word queries (`Word: true`, used by `/api/def`), and regular expressions that expose a literal prefix (`re.LiteralPrefix()`):
 
 - For case-sensitive searches, `bytes.Contains(data, s.lit)` rejects non-matching files immediately.
 - For case-insensitive searches, a zero-allocation ASCII fold scan (`containsFoldASCII(data, s.lit)`) checks the raw file buffer first, populating `w.lower` only when a match actually exists in the file.
@@ -104,7 +104,7 @@ type Match struct {
 
 ## 5. Regex Symbol Extraction ([`internal/symbols/symbols.go`](../../internal/symbols/symbols.go))
 
-When language servers are disabled or unavailable, px0 provides instantaneous symbol outlines and declaration jump navigation via heuristic regular expressions.
+When language servers are disabled or unavailable, punk0 provides instantaneous symbol outlines and declaration jump navigation via heuristic regular expressions.
 
 ### Parallel Symbol Flagging
 

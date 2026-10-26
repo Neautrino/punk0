@@ -1,12 +1,12 @@
 # Selection Toolbar & Context Actions
 
-When code is selected, px0 offers actions in three places: a floating pill just above the selection (Quick Edit, Add to Chat, Copy Ref), the footer selection bar (the copy actions), and a right-click menu with all of them plus Find Usages. Every action also has a keyboard shortcut.
+When code is selected, punk0 offers actions in three places: a floating pill just above the selection (Quick Edit, Add to Chat, Copy Ref), the footer selection bar (the copy actions), and a right-click menu with all of them plus Find Usages. Every action also has a keyboard shortcut.
 
 ---
 
 ## Overview & Core Purpose
 
-Sharing code with a teammate or an AI agent usually means selecting lines, copying them, writing down the path and line numbers, and adding a code fence by hand. px0 turns a selection into those steps directly: copy a `path:line` reference, copy the code with its path and lines in a fenced block, send that block to the agent in the editor's terminal, or have your coding harness rewrite the lines with Quick Edit.
+Sharing code with a teammate or an AI agent usually means selecting lines, copying them, writing down the path and line numbers, and adding a code fence by hand. punk0 turns a selection into those steps directly: copy a `path:line` reference, copy the code with its path and lines in a fenced block, send that block to the agent in the editor's terminal, or have your coding harness rewrite the lines with Quick Edit.
 
 ---
 
@@ -58,7 +58,7 @@ Searches the workspace for the selected symbol and opens the results in the side
 
 ## Split Diff Selection
 
-When selecting in the split (side-by-side) diff, on either the left (`HEAD`) or right (working tree) side, px0 normalizes the selection:
+When selecting in the split (side-by-side) diff, on either the left (`HEAD`) or right (working tree) side, punk0 normalizes the selection:
 - Gutter line numbers and `+`/`-` signs are excluded.
 - The selection is mapped to working-tree line numbers, so Copy Ref and Add to Chat point at the file on disk.
 

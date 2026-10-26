@@ -1,6 +1,6 @@
 # Language Server Protocol (LSP) & Code Intelligence
 
-px0 includes an integrated Language Server Protocol (LSP) client that brings IDE-grade semantic code intelligence to your browser. It provides instant Go to Definition (`F12`), Find References (`Shift+F12`), interactive Call Trails (`Alt+Shift+H`), and rich Hover documentation cards.
+punk0 includes an integrated Language Server Protocol (LSP) client that brings IDE-grade semantic code intelligence to your browser. It provides instant Go to Definition (`F12`), Find References (`Shift+F12`), interactive Call Trails (`Alt+Shift+H`), and rich Hover documentation cards.
 
 ---
 
@@ -8,19 +8,19 @@ px0 includes an integrated Language Server Protocol (LSP) client that brings IDE
 
 Navigating unfamiliar codebases often requires tracing types, following abstraction layers, and exploring how classes and functions interconnect. Pure text searching or regex heuristics can struggle when symbols share common names across different modules or packages.
 
-px0 connects to official language servers already installed on your system (such as `gopls`, `rust-analyzer`, `typescript-language-server`, `pyright`, and `clangd`). It operates without background indexing drag: language servers are spawned lazily on-demand upon your first semantic action. If no language server is installed, px0 automatically falls back to high-speed regex-based outlines and text searches without breaking your flow.
+punk0 connects to official language servers already installed on your system (such as `gopls`, `rust-analyzer`, `typescript-language-server`, `pyright`, and `clangd`). It operates without background indexing drag: language servers are spawned lazily on-demand upon your first semantic action. If no language server is installed, punk0 automatically falls back to high-speed regex-based outlines and text searches without breaking your flow.
 
 ---
 
 ## Key Capabilities
 
-- **Go to Definition (`F12`, `Cmd/Ctrl+Click`)**: Jump directly to where any function, struct, interface, type, or variable is defined. If the definition lives in a different file or an external standard library module, px0 opens the file seamlessly and positions the cursor at the declaration line.
+- **Go to Definition (`F12`, `Cmd/Ctrl+Click`)**: Jump directly to where any function, struct, interface, type, or variable is defined. If the definition lives in a different file or an external standard library module, punk0 opens the file seamlessly and positions the cursor at the declaration line.
 - **Find All References (`Shift+F12`, `Alt+U`)**: Discover every location across the workspace where a symbol is referenced, called, or implemented. Results are organized by file in the sidebar's References mode, complete with line numbers and preview snippets.
 - **Interactive Call Trails (`Alt+Shift+H`)**: Explore bidirectional call hierarchies for any function or method:
   - **Incoming Calls (Callers)**: See every function that calls the selected routine, expandable level-by-level into an interactive call tree.
   - **Outgoing Calls (Callees)**: See all functions invoked by the routine.
 - **Hover Documentation Cards**: Hovering your pointer over any identifier displays its type signature, return types, package path, and rendered docstring comments.
-- **External Standard Library Navigation**: When jumping to definitions in standard libraries (such as Go's `net/http` or Rust's `std::sync`), px0 opens external read-only tabs so you can inspect standard library internals without cloning their sources.
+- **External Standard Library Navigation**: When jumping to definitions in standard libraries (such as Go's `net/http` or Rust's `std::sync`), punk0 opens external read-only tabs so you can inspect standard library internals without cloning their sources.
 - **Inline Diagnostics & Error Badges**: Receives published language server diagnostics (`publishDiagnostics`) in real time. Errors and warnings are marked directly on the relevant lines in both code and diff views using non-destructive gutter badges.
 - **Zero-Config Discovery & In-App Setup**: Automatically detects language servers in your `PATH`. If a server is missing, clicking **LSP: set up** in the status bar reveals one-click installation recipes tailored to your operating system.
 
@@ -28,7 +28,7 @@ px0 connects to official language servers already installed on your system (such
 
 ## Supported Language Servers
 
-px0 natively detects and communicates with standard language servers across major programming languages:
+punk0 natively detects and communicates with standard language servers across major programming languages:
 
 | Language | Detected Binary | Installation Command |
 | :--- | :--- | :--- |

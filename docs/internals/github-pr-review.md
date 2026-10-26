@@ -1,6 +1,6 @@
 # Git Forge PR Review & Provider Architecture
 
-This document describes the design and implementation of px0's pull request review feature:
+This document describes the design and implementation of punk0's pull request review feature:
 - the `GitProvider` abstraction layer and its implementations for GitHub, GitLab, Gitea / Forgejo, and Bitbucket Cloud ([`forge.go`](../../forge.go));
 - connecting a forge token from the UI ([`forge.go`](../../forge.go), [`server.go`](../../server.go));
 - the checkout lifecycle, push/pull, merging and progress reporting ([`pr.go`](../../pr.go)), and merge-base diffing ([`git.go`](../../git.go));
@@ -12,10 +12,10 @@ For the user-facing behaviour, see [Pull Request Review](../features/github-pr-r
 
 ## 1. Zero-Dependency, Process-Scoped Design
 
-Two core px0 tenets shape pull request reviews:
+Two core punk0 tenets shape pull request reviews:
 
-- **Zero-dependency shell-out**: Like `git.go` (which links no Go git library), px0 avoids external forge SDKs. Every provider uses standard Go `net/http` against its forge's REST API, plus an optional shell-out to the forge's CLI for a token (`gh auth token`, `glab config get token`). Checkout itself uses standard `git fetch`, `git worktree add`, or `git clone` via `exec.Command`.
-- **Stateless on disk**: px0 maintains no persistent cache in `~/.px0`. A PR checkout is strictly process-scoped: `checkoutPR` (`pr.go`) places the worktree in `os.MkdirTemp("", "px0-pr-*")`, and `prSession.Close` removes it upon exit (`Ctrl+C` or normal shutdown). This ensures zero leftover disk clutter and prevents stale cache bugs.
+- **Zero-dependency shell-out**: Like `git.go` (which links no Go git library), punk0 avoids external forge SDKs. Every provider uses standard Go `net/http` against its forge's REST API, plus an optional shell-out to the forge's CLI for a token (`gh auth token`, `glab config get token`). Checkout itself uses standard `git fetch`, `git worktree add`, or `git clone` via `exec.Command`.
+- **Stateless on disk**: punk0 maintains no persistent cache in `~/.punk0`. A PR checkout is strictly process-scoped: `checkoutPR` (`pr.go`) places the worktree in `os.MkdirTemp("", "px0-pr-*")`, and `prSession.Close` removes it upon exit (`Ctrl+C` or normal shutdown). This ensures zero leftover disk clutter and prevents stale cache bugs.
 - **Persisted draft comments**: Draft comments live in `prSession.comments` as a thread-safe, mutex-guarded slice in server memory. Every add, delete and submit also writes them to the workspace session file (see [§6](#6-draft-comments-submission--batch-apply)), so unsubmitted drafts survive a restart of the same review.
 
 ---
@@ -78,14 +78,14 @@ Both use `forge.go`'s `forgeAPI`, which handles one JSON request, decodes a 2xx 
   - `HeadRepoCloneURL`, `HeadIsFork`
 
 ### URL Matching & Routing
-Pull requests are opened exclusively via `px0 <url>`. URL routing in `main.go` calls:
+Pull requests are opened exclusively via `punk0 <url>`. URL routing in `main.go` calls:
 ```go
 provider, target, ok := DetectPRURL(arg0)
 ```
 - Iterates over `defaultProviders` in order: GitHub, GitLab, Bitbucket, then Gitea last, because its `<host>/<owner>/<repo>/pulls/<n>` pattern is the loosest. Each provider's URL shape is distinct (`/pull/`, `/-/merge_requests/`, `/pull-requests/`, `/pulls/`), and `TestForgeURLRouting` pins every shape to its provider.
-- If a provider matches and successfully parses the URL, px0 enters PR review mode.
-- Bare numbers (e.g. `px0 123`) and file paths are never mistaken for PR targets; they are processed as regular filesystem paths.
-- Running `px0 pr` outputs an explicit error guiding the user to pass the URL directly.
+- If a provider matches and successfully parses the URL, punk0 enters PR review mode.
+- Bare numbers (e.g. `punk0 123`) and file paths are never mistaken for PR targets; they are processed as regular filesystem paths.
+- Running `punk0 pr` outputs an explicit error guiding the user to pass the URL directly.
 
 ---
 
@@ -124,7 +124,7 @@ sequenceDiagram
 4. `PR #... checked out (<title>)` (or `[merged]` if already merged)
 
 ### Merged PR Handling
-When `meta.Merged` is true, px0 does not block or prompt: it proceeds immediately to check out the PR and surfaces the merged status with a `[merged]` badge in the CLI and a purple `Merged` pill badge in the review header.
+When `meta.Merged` is true, punk0 does not block or prompt: it proceeds immediately to check out the PR and surfaces the merged status with a `[merged]` badge in the CLI and a purple `Merged` pill badge in the review header.
 
 ---
 
@@ -132,7 +132,7 @@ When `meta.Merged` is true, px0 does not block or prompt: it proceeds immediatel
 
 ### Token resolution
 
-Each provider's `ResolveToken(cfg, target)` checks px0 Settings, then the environment, then the forge's CLI. The first match wins:
+Each provider's `ResolveToken(cfg, target)` checks punk0 Settings, then the environment, then the forge's CLI. The first match wins:
 
 | Provider | Settings | Environment | CLI | Host scoping |
 | :--- | :--- | :--- | :--- | :--- |
@@ -203,7 +203,7 @@ func gitMergeBase(root, a, b string) string
 ### Drafts and the Session File
 Drafts are held in `prSession.comments` and mirrored to the workspace session file by `sessionManager` ([`server.go`](../../server.go)). Adding or deleting a draft writes `WorkspaceSession.Drafts`; a successful submit clears it. `SetPR` switches the server to the PR's own session file (`newPRSessionManager`), and when `prSession.comments` is empty it loads the saved drafts and advances `nextID` past them.
 
-The file lives at `$XDG_STATE_HOME/px0/sessions/pr-<id>.json`, falling back to `~/.px0/sessions/` or `os.TempDir()/px0-sessions/`. `<id>` is the PR's workbench item ID (`wbPRItem`, from the lowercased `provider/owner/repo#n`), not the base path or checkout root: every opening checks the PR out into a new temporary directory, so a root-keyed file would never be found again. Drafts therefore carry over between runs whether the PR is opened with `px0 <pr-url>` or from the [workbench](workbench.md). If the PR's file has no drafts and the base-path file (`sessionFilePath`, where older versions kept them) does, `SetPR` moves them across.
+The file lives at `$XDG_STATE_HOME/punk0/sessions/pr-<id>.json`, falling back to `~/.punk0/sessions/` or `os.TempDir()/punk0-sessions/`. `<id>` is the PR's workbench item ID (`wbPRItem`, from the lowercased `provider/owner/repo#n`), not the base path or checkout root: every opening checks the PR out into a new temporary directory, so a root-keyed file would never be found again. Drafts therefore carry over between runs whether the PR is opened with `punk0 <pr-url>` or from the [workbench](workbench.md). If the PR's file has no drafts and the base-path file (`sessionFilePath`, where older versions kept them) does, `SetPR` moves them across.
 
 The file also has `tabs`, `active` and `openDirs` fields, and `/api/session` still reads and writes them, but the browser no longer uses them: open tabs and expanded folders are not restored on reload.
 
@@ -277,6 +277,6 @@ The git panel's agent rebase/merge flow ([git-integration internals](git-integra
   - Talks to `gitpanel.js` over the bus to avoid an import cycle. It emits `pr:resolve` (fetch the base, then offer rebase or merge), `pr:force-push` (the confirmation card), and `pr:pull`. It listens to `git:sync` (`{running, inProgress, rewritten}`), which drives the pill, the main button, and `reviewGate()`.
 - **Child PR Launching**:
   - Command Palette **Git: Open Pull Request…** posts to `/api/pr/launch`, or, in a workbench child (`S.meta.workbench` set), to the workbench's `/api/wb/open` (see [workbench.md](workbench.md)).
-  - Spawns `px0 -y <url>` in a new detached process on an ephemeral port.
+  - Spawns `punk0 -y <url>` in a new detached process on an ephemeral port.
 - **Git Panel Resync (`web/src/pr.js`'s `refreshPRMeta`)**:
   - Called by `gitpanel.js` after a successful Pull. Re-fetches `/api/pr/meta`, re-renders the PR bar, and re-fetches existing/draft comments, so a PR that moved forward under the reviewer never leaves the bar, diff warning, or comment threads showing the state from session start.

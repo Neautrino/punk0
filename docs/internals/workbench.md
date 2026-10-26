@@ -4,7 +4,7 @@ The orchestrator (`workbench.go`, `records.go`, `term*.go`, `ring.go`, `hook.go`
 
 ## Why child processes
 
-`Server` is built around a single workspace: one `Index`, `lspManager`, `agentManager`, `prSession`, `GitWatcher` and `diffBase`, all fixed in `main()`. Rather than threading a workspace ID through every handler, the parent re-runs the punk0 binary per folder. Each child keeps px0's single-folder performance, a crashing or memory-hungry language server only takes down its own child, and stopping a child frees everything it held. Terminals stay in the parent, so stopping a child never kills a shell or an agent.
+`Server` is built around a single workspace: one `Index`, `lspManager`, `agentManager`, `prSession`, `GitWatcher` and `diffBase`, all fixed in `main()`. Rather than threading a workspace ID through every handler, the parent re-runs the punk0 binary per folder. Each child keeps punk0's single-folder performance, a crashing or memory-hungry language server only takes down its own child, and stopping a child frees everything it held. Terminals stay in the parent, so stopping a child never kills a shell or an agent.
 
 ```mermaid
 flowchart LR
@@ -90,7 +90,7 @@ Routes:
 punk0 [passed-on flags] -workbench-host <host> -workbench-child -host 127.0.0.1 -port 0 -no-open -no-update -no-color -base-path <base>w/<id>/ [-no-lsp] <dir | pr-url>
 ```
 
-- **Language servers.** A folder child gets `-no-lsp` unless `Records.LSPOn(dir)`; a parent started with `-no-lsp` already passes it to all. `POST /api/workspaces/{id}/lsp` stores the choice and stops the folder's child, since the flag is read only when a child starts; the next request starts one that matches. The page's status bar item (`web/src/orch/lsp.js`, px0's `#st-lsp` / `#lsp-menu` styles) toggles it and, while the child runs, lists and starts / stops its servers through the child's own `/api/lsp/servers`, `/start` and `/stop`.
+- **Language servers.** A folder child gets `-no-lsp` unless `Records.LSPOn(dir)`; a parent started with `-no-lsp` already passes it to all. `POST /api/workspaces/{id}/lsp` stores the choice and stops the folder's child, since the flag is read only when a child starts; the next request starts one that matches. The page's status bar item (`web/src/orch/lsp.js`, punk0's `#st-lsp` / `#lsp-menu` styles) toggles it and, while the child runs, lists and starts / stops its servers through the child's own `/api/lsp/servers`, `/start` and `/stop`.
 - **Readiness.** With `-workbench-child`, `main` prints `px0-ready <addr>` once it is listening. The parent reads child output through `lineWriter`, which also drops spinner frames (`\r`), and keeps the last 20 lines; `wbChild.failure` reports the last `punk0: …` line as the error.
 - **Lifetime.** The parent holds the child's stdin. The child treats EOF on stdin as SIGTERM and shuts down the normal way, which removes PR worktrees and stops language servers. This works if the parent is stopped, crashes or is killed, on every platform. `stop` closes stdin and kills the child after 5 seconds. `cmd.WaitDelay` keeps a grandchild holding the output pipes from blocking `Wait`.
 - **States.** `starting` → `running` → `stopped`, or `failed` if the child exits before it is ready or takes longer than `wbStartTimeout` (3 minutes; a PR may clone a large repository). Live state is kept only in memory.

@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Propose a feature, enhancement, or capability for px0
+about: Propose a feature, enhancement, or capability for punk0
 title: "[FEATURE] "
 labels: ["enhancement"]
 assignees: ""

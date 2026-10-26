@@ -1,24 +1,24 @@
 # Tips & Tricks System
 
-px0 includes an interactive tips and tricks system designed to introduce developers to powerful keyboard shortcuts, Git workflows, review capabilities, and editor features without obstructing startup.
+punk0 includes an interactive tips and tricks system designed to introduce developers to powerful keyboard shortcuts, Git workflows, review capabilities, and editor features without obstructing startup.
 
 ---
 
 ## Overview & Architecture
 
-Unlike heavy IDEs that display large intrusive modals on startup, px0 loads tips asynchronously in the background.
+Unlike heavy IDEs that display large intrusive modals on startup, punk0 loads tips asynchronously in the background.
 
 - **Non-Intrusive Floating Widget**: Appears gently in the bottom-right corner after an initial delay (~1.8 seconds), presenting one tip at a time with previous/next navigation and automatic progression.
 - **Tips Tab in the Help Card**: The help card (`#helpsheet`) has tabs **Shortcuts | Tips | Vim**. The Tips tab lists all tips in a two-column grid (`#tips-list`) with a filter (`#tips-filter`), a count, a reload button and a **Show tip popups** checkbox.
 - **Left Bottom Bar Help Button**: The `#btn-help` button in the status bar's first section (`.status-side`, under the sidebar) opens the help card on its Tips tab.
-- **Public URL Delivery**: Tips are loaded live from `https://px0.ai/tips.json` (hosted in the `../web` repository) and cached locally, with built-in offline fallbacks (`web/src/tips-util.js`).
+- **Public URL Delivery**: Tips are loaded live from `https://px0.ai/tips.json` (px0's site; the list is not part of this repo) and cached locally, with built-in offline fallbacks (`web/src/tips-util.js`).
 - **Permanent Dismissal**: Users can permanently hide the floating tip popups at any time via the "Don't show tips" button, the Tips tab's **Show tip popups** checkbox, or the `tips.enabled` preference in Settings (`Cmd/Ctrl+,`).
 
 ---
 
 ## How to Access Tips
 
-1. **Floating Tip Widget**: Automatically appears shortly after opening px0 unless permanently hidden. Use **‹** and **›** to browse tips one after another.
+1. **Floating Tip Widget**: Automatically appears shortly after opening punk0 unless permanently hidden. Use **‹** and **›** to browse tips one after another.
 2. **Help Button**: Click the question mark icon in the left bottom bar (beside the theme and settings buttons) to open the help card on its Tips tab.
 3. **Tip Widget**: Click **All Tips** on the floating tip widget.
 4. **Command Palette**: Press **`Cmd/Ctrl + Shift + P`** and choose **Help: Tips & Tricks (All Tips)** or **Help: Show Tip**.
@@ -48,14 +48,13 @@ Each tip is a JSON object with the following fields:
 
 ### Steps to Add or Update a Tip
 
-1. **Add to Public Repository**:
-   Add the new tip entry to `../web/public/tips.json`.
-   Run `npm run build` in `../web` to verify the Astro static site compiles cleanly.
+1. **Public List**:
+   The live list is served from px0's site (`https://px0.ai/tips.json`), outside this repo, so punk0 cannot publish tips there.
 
 2. **Add to Built-in Fallbacks**:
-   Add the identical entry to `DEFAULT_TIPS` in `web/src/tips-util.js` within `px0` so the tip is available offline.
+   Add the identical entry to `DEFAULT_TIPS` in `web/src/tips-util.js` so the tip is available offline.
 
 3. **Verify and Rebuild**:
-   - Run `npm test` in `px0` to run the frontend unit tests.
-   - Run `npm run check` and `npm run build` to rebuild `web/app.js`.
+   - Run `bun test web/src/` to run the frontend unit tests.
+   - Run `bun ./scripts/check-web.js` and `bun ./scripts/build-web.js` to rebuild `web/app.js`.
    - Run `go test ./...` and `make build`.

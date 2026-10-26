@@ -1,6 +1,6 @@
 # In-File Find & Caret Navigation
 
-px0 provides precise in-file text search and caret navigation tools designed for rapid reading, auditing, and spot-checking within individual source files. Accessible via `Cmd/Ctrl+F` and `Cmd/Ctrl+G`, these controls allow you to jump between occurrences and specific lines without leaving the keyboard.
+punk0 provides precise in-file text search and caret navigation tools designed for rapid reading, auditing, and spot-checking within individual source files. Accessible via `Cmd/Ctrl+F` and `Cmd/Ctrl+G`, these controls allow you to jump between occurrences and specific lines without leaving the keyboard.
 
 ---
 
@@ -8,7 +8,7 @@ px0 provides precise in-file text search and caret navigation tools designed for
 
 When reading through an implementation file or verifying modifications, developers frequently need to trace where a specific variable is declared, mutated, or passed within the current document. In-file find offers instant text highlighting, match iteration, and minimap indicators to help you locate every occurrence across small and massive files alike.
 
-Combined with dedicated line-jumping tools (`Cmd/Ctrl+G` or direct CLI opening like `px0 file.go:42`), caret motion controls, and back/forward navigation history (`Alt+Left` / `Alt+Right`), you can navigate large files with high speed and zero disorientation.
+Combined with dedicated line-jumping tools (`Cmd/Ctrl+G` or direct CLI opening like `punk0 file.go:42`), caret motion controls, and back/forward navigation history (`Alt+Left` / `Alt+Right`), you can navigate large files with high speed and zero disorientation.
 
 ---
 
@@ -36,8 +36,8 @@ To audit how a parameter or variable is manipulated inside a 500-line function:
 
 ### Jumping Directly to Compiler or Linter Errors
 When a compiler or CI runner outputs an error like `router.go:148:12: undefined identifier`, you can navigate directly there without manual scrolling:
-- From the terminal: `px0 router.go:148`
-- From within px0: Press `Cmd/Ctrl+G`, type `148`, and press `Enter`.
+- From the terminal: `punk0 router.go:148`
+- From within punk0: Press `Cmd/Ctrl+G`, type `148`, and press `Enter`.
 
 ### Tracing Flow with Back / Forward History
 When exploring deep nested logic, clicking definitions or jumping to line anchors moves your viewport. Pressing **`Alt+Left`** steps back through your navigation history, allowing you to trace complex logic paths and effortlessly retrace your steps.

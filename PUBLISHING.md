@@ -1,14 +1,14 @@
 # Publishing & Release Guide
 
-This document outlines the step-by-step instructions for preparing, testing, and publishing a new release of `px0`.
+This document outlines the step-by-step instructions for preparing, testing, and publishing a new release of `punk0`.
 
 ## 1. Prerequisites
 
 Before cutting a new release, ensure you have:
 
-- Git with push and tag permissions for `px0-ai/px0`.
-- Go (version 1.24+).
-- Node.js (v18+ or v20+) or Bun for bundling frontend assets.
+- Git with push and tag permissions for `Neautrino/punk0`.
+- Go (version 1.25+).
+- Bun for bundling frontend assets.
 - A clean working tree with all tests passing.
 
 ## 2. Pre-Release Verification
@@ -21,7 +21,7 @@ make test
 
 # 2. Build local binary and verify sanity
 make build
-./px0 --version
+./punk0 -version
 ```
 
 ## 3. Release Methods
@@ -45,7 +45,7 @@ make publish 0.2.0
 #### Step 2: Push commit and tags to GitHub
 
 ```bash
-git push origin master --tags
+git push origin main --tags
 ```
 
 ### Method 2: Manual Release via Git
@@ -65,13 +65,13 @@ git commit -m "Release v0.2.0"
 git tag -fa v0.2.0 -m "Release v0.2.0"
 
 # 5. Push to GitHub
-git push origin master
+git push origin main
 git push origin v0.2.0
 ```
 
 ### Method 3: GitHub Actions Workflow Dispatch
 
-1. Navigate to Actions -> Release on GitHub: `https://github.com/px0-ai/px0/actions/workflows/release.yml`
+1. Navigate to Actions -> Release on GitHub: `https://github.com/Neautrino/punk0/actions/workflows/release.yml`
 1. Click Run workflow.
 1. Enter the version tag (e.g. `v0.2.0`).
 1. Trigger the workflow.
@@ -79,12 +79,12 @@ git push origin v0.2.0
 ## 4. Post-Release Verification
 
 1. Verify GitHub Actions workflow completion on the Actions tab.
-1. Confirm artifacts on the [Releases](https://github.com/px0-ai/px0/releases) page (cross-platform binaries and `checksums.txt`). The self-updater requires this file and verifies the selected binary against it before execution.
+1. Confirm artifacts on the [Releases](https://github.com/Neautrino/punk0/releases) page (cross-platform binaries and `checksums.txt`). The self-updater requires this file and verifies the selected binary against it before execution.
 1. Verify the installer script:
   ```bash
-  curl -fsSL https://px0.ai/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh
   ```
 1. Verify self-update functionality:
   ```bash
-  px0 --update
+  punk0 -update
   ```

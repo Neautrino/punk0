@@ -77,9 +77,9 @@ Quick Edit runs your coding harness once on the selected lines and shows its rep
 
 ### What runs
 
-- The harness and model are the ones selected for px0's other AI features (the git panel's commit message and plan, AI rebase/merge, PR Batch Apply). See [Editing with Coding Agents](agent-editing.md).
+- The harness and model are the ones selected for punk0's other AI features (AI rebase/merge, the PR merge message, PR Batch Apply). See [Editing with Coding Agents](agent-editing.md).
 - The harness runs in an empty temporary folder with stdin closed, and is stopped after 30 seconds. It never runs in, or writes to, your workspace.
-- The prompt carries the path, line range, selected lines and your instruction, and asks for the replacement inside `<replacement>` tags. px0 takes the last `<replacement>` block in the reply, or the last fenced code block when there is none. The lines' indentation is kept.
+- The prompt carries the path, line range, selected lines and your instruction, and asks for the replacement inside `<replacement>` tags. punk0 takes the last `<replacement>` block in the reply, or the last fenced code block when there is none. The lines' indentation is kept.
 - A harness error, a timeout, or a reply with no replacement block is shown in the box. Your instruction stays, so you can change it and press `Enter` again.
 
 ### What Accept writes

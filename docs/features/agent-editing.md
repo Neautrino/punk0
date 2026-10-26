@@ -1,12 +1,12 @@
 # Editing with Coding Agents
 
-px0 is a reader first. Small direct edits are possible (see [File Editing](file-editing.md)), and longer agent sessions run in the [editor's Terminal tab](editor-terminal-and-quick-edit.md). For one-shot jobs, px0 runs the CLI coding harness already installed on your machine and uses its answer: a rewrite of selected lines, a commit message, a rebase, or a batch of review comments applied to the code.
+punk0 is a reader first. Small direct edits are possible (see [File Editing](file-editing.md)), and longer agent sessions run in the [editor's Terminal tab](editor-terminal-and-quick-edit.md). For one-shot jobs, punk0 runs the CLI coding harness already installed on your machine and uses its answer: a rewrite of selected lines, a pull request's merge message, a rebase, or a batch of review comments applied to the code.
 
 ---
 
 ## Overview & Core Purpose
 
-px0 does not ship a model or an API key. It finds the coding harnesses you already have (Claude Code, Cursor Agent, Antigravity, OpenCode, Codex), lets you pick one, and runs it headless when a feature needs it. The same harness and model serve every feature below, so choosing them once is enough.
+punk0 does not ship a model or an API key. It finds the coding harnesses you already have (Claude Code, Cursor Agent, Antigravity, OpenCode, Codex), lets you pick one, and runs it headless when a feature needs it. The same harness and model serve every feature below, so choosing them once is enough.
 
 | Feature | What the harness does | Where it runs | Guide |
 | :--- | :--- | :--- | :--- |
@@ -19,7 +19,7 @@ px0 does not ship a model or an API key. It finds the coding harnesses you alrea
 
 ## Supported Harnesses & Models
 
-px0 detects these harnesses on `PATH` and in the directories they usually install into (`~/.local/bin`, npm's global prefix, and so on):
+punk0 detects these harnesses on `PATH` and in the directories they usually install into (`~/.local/bin`, npm's global prefix, and so on):
 
 | Harness | Command run (headless) |
 | :--- | :--- |
@@ -35,7 +35,7 @@ The model list for each harness comes from the harness itself. With no model pic
 
 ## Choosing a Harness
 
-Detection alone never runs anything: nothing is sent to a harness until you pick one. The harness and model selects appear where an AI action is offered, for example in the git panel's notice card for Rebase / Merge with AI and in the PR merge dialog; Settings (`Cmd/Ctrl+,`) has the harness too, as **Coding Harness** (`agent.harness`). Changing it in one place changes it everywhere, and the choice is saved in `~/.px0/settings.json` (or `$XDG_CONFIG_HOME/px0/settings.json`), never in your repository.
+Detection alone never runs anything: nothing is sent to a harness until you pick one. The harness and model selects appear where an AI action is offered, for example in the git panel's notice card for Rebase / Merge with AI and in the PR merge dialog; Settings (`Cmd/Ctrl+,`) has the harness too, as **Coding Harness** (`agent.harness`). Changing it in one place changes it everywhere, and the choice is saved in `$XDG_CONFIG_HOME/punk0/settings.json` (else `~/.punk0/settings.json`), never in your repository.
 
 Until a harness is picked, the selects read **pick a harness** and AI actions are refused with an error.
 
@@ -45,18 +45,18 @@ Until a harness is picked, the selects read **pick a harness** and AI actions ar
 
 Commit messages and plans, Rebase / Merge with AI, the PR merge message and PR Batch Apply run the harness in the workspace:
 
-1. px0 composes the prompt (the staged diff, the conflicting commits, or each review comment with the code it points at) and starts the harness with the workspace as its working directory and stdin closed.
-2. Progress streams to the terminal where px0 was launched, prefixed per harness.
-3. When the harness exits, px0 compares `git status` (with each modified file's size and modification time) before and after the run to find every file it touched, including ones it was never pointed at.
+1. punk0 composes the prompt (the staged diff, the conflicting commits, or each review comment with the code it points at) and starts the harness with the workspace as its working directory and stdin closed.
+2. Progress streams to the terminal where punk0 was launched, prefixed per harness.
+3. When the harness exits, punk0 compares `git status` (with each modified file's size and modification time) before and after the run to find every file it touched, including ones it was never pointed at.
 4. Changed files reload in place: open tabs keep their view (source stays source, diff stays diff), scroll position and cursor; git badges and gutters update.
 
-Quick Edit is different: it runs outside the workspace and only returns text. px0 writes the replacement itself, and only when you accept it. See [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit).
+Quick Edit is different: it runs outside the workspace and only returns text. punk0 writes the replacement itself, and only when you accept it. See [Quick Edit](editor-terminal-and-quick-edit.md#quick-edit).
 
 ---
 
 ## Safety
 
-- **Local only**: AI actions are accepted only when px0 is reached through `localhost` or an IP address. Requests through a hostname, such as a public tunnel or reverse proxy, are refused.
+- **Local only**: AI actions are accepted only when punk0 is reached through `localhost` or an IP address. Requests through a hostname, such as a public tunnel or reverse proxy, are refused.
 - **No overlapping batch runs**: a PR Batch Apply whose comments cover lines that a running batch is still changing is refused.
 - **Errors are shown, not hidden**: a failed run reports the harness's own error (an expired login, a bad flag) with its output.
 - **Time limit**: a workspace run is stopped after 10 minutes; Quick Edit after 30 seconds. Whatever a stopped workspace run already wrote stays.
@@ -68,8 +68,8 @@ Quick Edit is different: it runs outside the workspace and only returns text. px
 - **`agent.harness`** (stored as `agent` in `settings.json`): the chosen harness, a preset name or a command template. `models` holds the model picked for each harness. The selects write both.
 - **`git.commitMessageInstruction`**: extra instructions for the PR merge message (Settings, `Cmd/Ctrl+,`).
 - **CLI flags**:
-  - `px0 -agent <name>`: pin a harness for this run; the selects show it as fixed. A command template works too: `px0 -agent "claude -p --permission-mode acceptEdits {prompt}"`.
-  - `px0 -no-agent`: turn off every harness-backed feature.
+  - `punk0 -agent <name>`: pin a harness for this run; the selects show it as fixed. A command template works too: `punk0 -agent "claude -p --permission-mode acceptEdits {prompt}"`.
+  - `punk0 -no-agent`: turn off every harness-backed feature.
 
 ---
 

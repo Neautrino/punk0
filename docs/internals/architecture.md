@@ -1,22 +1,22 @@
 # System Architecture & Runtime Lifecycle
 
-This document describes the high-level architecture, startup pipeline, HTTP server, memory scavenging, and security model of `px0`.
+This document describes the high-level architecture, startup pipeline, HTTP server, memory scavenging, and security model of `punk0`.
 
 ## 1. High-Level Design Principles
 
-px0 is engineered as an ultra-fast, zero-overhead code exploration console. Its architecture is guided by five foundational tenets:
+punk0 is engineered as an ultra-fast, zero-overhead code exploration console. Its architecture is guided by five foundational tenets:
 
-1. Edits Are Mostly Delegated: px0 navigates, searches, and inspects code. Large or multi-file changes are made by a coding harness px0 dispatches on request, one per non-overlapping line range so several can run at once (see [Harness Editing & Agent Dispatch](agent-editing.md)). Small direct edits and new files are the one exception: `/api/file/save` and `/api/fs/new` write content typed in the browser (see [File Editing](file-editing.md)).
-1. Single Static Binary Footprint: All frontend assets (HTML, CSS, JavaScript, icons, themes) are embedded directly into the Go binary at compile time via `go:embed`. px0 requires no Node.js, Python, or Ruby runtime, no external database, and no CGO dependencies.
+1. Edits Are Mostly Delegated: punk0 navigates, searches, and inspects code. Large or multi-file changes are made by a coding harness punk0 dispatches on request, one per non-overlapping line range so several can run at once (see [Harness Editing & Agent Dispatch](agent-editing.md)). Small direct edits and new files are the one exception: `/api/file/save` and `/api/fs/new` write content typed in the browser (see [File Editing](file-editing.md)).
+1. Single Static Binary Footprint: All frontend assets (HTML, CSS, JavaScript, icons, themes) are embedded directly into the Go binary at compile time via `go:embed`. punk0 requires no Node.js, Python, or Ruby runtime, no external database, and no CGO dependencies.
 1. Sub-Millisecond Responsiveness: The HTTP listener binds, serves the web UI, and opens the default browser in under 1 millisecond. Heavy operations (full directory indexing, git status checks, language server binary discovery) run asynchronously off the critical path.
-1. Stateless in the Workspace: px0 never writes configuration directories, temporary caches, or metadata files (e.g., `.px0/` or `.cache/`) into a workspace. Indexes and caches live in volatile memory. Outside the workspace it keeps the remembered harness choice and update/telemetry state under `~/.px0/` (or `$XDG_CONFIG_HOME/px0/`), and per-workspace session files (PR review drafts) and the workbench store under `~/.px0/` (or `$XDG_STATE_HOME/px0/`).
+1. Stateless in the Workspace: punk0 never writes configuration directories, temporary caches, or metadata files (e.g., `.punk0/` or `.cache/`) into a workspace. Indexes and caches live in volatile memory. Outside the workspace it keeps the remembered harness choice and update/telemetry state under `~/.punk0/` (or `$XDG_CONFIG_HOME/punk0/`), and per-workspace session files (PR review drafts) and the workbench store under `~/.punk0/` (or `$XDG_STATE_HOME/punk0/`).
 1. Strict Memory Reclamation: Long-lived background processes should not hold idle RAM. When the user finishes a burst of queries, unused pages are proactively returned to the operating system.
 
 The browser's file tabs are managed in `web/src/tabs.js`. Tab context-menu actions and the tab close button share cache cleanup. A bulk close updates the browser view once after removing the selected tabs. Open tabs are not saved: a reload starts with no tabs open.
 
 ## 2. Startup Pipeline (<1 ms Critical Path)
 
-When `px0` is executed in a terminal (e.g., `px0 .` or `px0 main.go:42`), the initialization flow executes as follows. A file target detects its enclosing project repository (or working directory) as the workspace and is passed to the browser with its relative path and optional line number.
+When `punk0` is executed in a terminal (e.g., `punk0 .` or `punk0 main.go:42`), the initialization flow executes as follows. A file target detects its enclosing project repository (or working directory) as the workspace and is passed to the browser with its relative path and optional line number.
 
 ```mermaid
 sequenceDiagram
@@ -51,7 +51,7 @@ sequenceDiagram
 
 1. Target Resolution: Directories become workspace roots. For a file target, its repository or project root is detected as the workspace, and its relative path (with optional line number) is retained for the initial browser tab.
 1. Socket Binding: `listen(*host, *port)` binds an ephemeral or user-specified TCP socket immediately.
-1. Network URL Discovery: When the listener binds to `0.0.0.0`, `net.InterfaceAddrs()` supplies the host's interface addresses. px0 keeps unique non-loopback IPv4 addresses, sorts them for deterministic output, and prints each with the listener's final port. Initial file and line query parameters are preserved in every advertised URL.
+1. Network URL Discovery: When the listener binds to `0.0.0.0`, `net.InterfaceAddrs()` supplies the host's interface addresses. punk0 keeps unique non-loopback IPv4 addresses, sorts them for deterministic output, and prints each with the listener's final port. Initial file and line query parameters are preserved in every advertised URL.
 1. Instant Root Tree Extraction: Before descending into subdirectories, `ix.Build()` extracts and populates the root directory entries (`dir=""`), publishing them directly to `ix.children[""]`. When the browser makes its initial request to `/api/tree`, it immediately renders the root tree nodes without waiting for the deep repository scan to finish.
 
 1. Non-Blocking Browser Launch: `go openBrowser(url)` spawns the platform-specific browser opener (`xdg-open` on Linux, `open` on macOS, `rundll32` on Windows) in a separate goroutine.
@@ -65,16 +65,16 @@ The explorer expands folders through `/api/tree` on demand. Expand All skips ign
 The server is implemented in [`server.go`](../../server.go) using Go's standard `http.ServeMux`. Every request passes through a centralized `ServeHTTP` wrapper that records activity timestamps, tracks status codes and durations, applies pooled Gzip compression when accepted by the client (excluding SSE streams), and logs every HTTP request to the terminal when the `-verbose` flag is active.
 
 ### Base Path & Subpath Prefixing
-When hosted behind reverse proxies or multi-tenant review platforms, px0 supports custom URL prefixes via the `-base-path` CLI flag or `server.basePath` in settings (e.g. `/rev-123/`):
+When hosted behind reverse proxies or multi-tenant review platforms, punk0 supports custom URL prefixes via the `-base-path` CLI flag or `server.basePath` in settings (e.g. `/rev-123/`):
 - All routes below are prefixed with the base path (`/<base-path>/api/...`, `/<base-path>/static/...`).
 - `handleIndex` dynamically injects `<base href="/<base-path>/">` into `web/index.html`, allowing the frontend to resolve relative assets and API endpoints without domain-level assumptions.
 - Requests to `/<base-path>` without a trailing slash redirect to `/<base-path>/`, and root `/` redirects to the configured base path.
 
 ### Subsystem Structure & Package Architecture
 
-px0 is structured into decoupled core files and modular `internal/` packages:
+punk0 is structured into decoupled core files and modular `internal/` packages:
 
-- **Root Package (`px0`)**: Contains the CLI entrypoint ([`main.go`](../../main.go)), HTTP routing and middleware ([`server.go`](../../server.go)), filesystem indexing and tree walk ([`index.go`](../../index.go)), search pipeline ([`search.go`](../../search.go)), Git operations and watcher ([`git.go`](../../git.go)), LSP client and supervisor ([`lsp.go`](../../lsp.go)), coding harness jobs ([`agent.go`](../../agent.go)), Quick Edit and its guarded line replacement ([`quickedit.go`](../../quickedit.go), [`replace.go`](../../replace.go)), PR review lifecycle ([`pr.go`](../../pr.go)), forge providers ([`forge.go`](../../forge.go)), and multi-repo workbench ([`workbench.go`](../../workbench.go)).
+- **Root Package (Go module `px0`, binary `punk0`)**: Contains the CLI entrypoint ([`main.go`](../../main.go)), HTTP routing and middleware ([`server.go`](../../server.go)), filesystem indexing and tree walk ([`index.go`](../../index.go)), search pipeline ([`search.go`](../../search.go)), Git operations and watcher ([`git.go`](../../git.go)), LSP client and supervisor ([`lsp.go`](../../lsp.go)), coding harness jobs ([`agent.go`](../../agent.go)), Quick Edit and its guarded line replacement ([`quickedit.go`](../../quickedit.go), [`replace.go`](../../replace.go)), PR review lifecycle ([`pr.go`](../../pr.go)), forge providers ([`forge.go`](../../forge.go)), and multi-repo workbench ([`workbench.go`](../../workbench.go)).
 - **`internal/fuzzy`**: Two-pass bounded fuzzy path finder and score ranking.
 - **`internal/ignore`**: Gitignore rule parsing and fast path glob matching.
 - **`internal/render`**: Windowed Chroma syntax highlighting, markdown rendering, and diff coloring.
@@ -175,7 +175,7 @@ The editor's Terminal tab talks to the parent `punk0` (the orchestrator), not to
 
 Even though Go's garbage collector frees unreferenced heap objects rapidly, the Go runtime does not immediately release physical memory pages back to the host operating system. In high-churn CLI sessions (such as searching a 50,000-file repository), the process resident set size (RSS) could appear inflated long after the search completes.
 
-To maintain a lean footprint (~20–30 MB RSS), `server.go` implements an automatic scavenger:
+To maintain a lean footprint (~20–30 MB RSS, measured on px0), `server.go` implements an automatic scavenger:
 
 ```go
 func (s *Server) scavenge() {
@@ -206,9 +206,9 @@ func (s *Server) scavenge() {
 
 ### Client-Server Memory Split & Total Footprint
 
-Because px0 uses a client-server architecture rather than embedding Electron:
-- **Host Server**: The Go backend daemon occupies ~20–30 MB RSS, handling indexing, symbol discovery, regex search, and git operations.
-- **Client Browser Tab**: The frontend web client runs in the user's existing browser, allocating ~80–150 MB for the DOM, V8 runtime, and GPU compositing. Memory is kept strictly bounded because px0's bespoke virtualized scroller mounts only ~60 active rows regardless of file size.
+Because punk0 uses a client-server architecture rather than embedding Electron:
+- **Host Server**: The Go backend daemon occupies ~20–30 MB RSS (px0's measurement, not re-measured for punk0), handling indexing, symbol discovery, regex search, and git operations.
+- **Client Browser Tab**: The frontend web client runs in the user's existing browser, allocating ~80–150 MB for the DOM, V8 runtime, and GPU compositing. Memory is kept strictly bounded because punk0's bespoke virtualized scroller mounts only ~60 active rows regardless of file size.
 - **Combined Impact**: Total system footprint is ~100–180 MB (~85–90% lower than the ~1,400 MB footprint of desktop Electron IDEs). On remote devboxes and containers, the host pays strictly the ~20–30 MB server cost.
 
 ### Gzip Buffer Pooling
@@ -224,7 +224,7 @@ var gzipPool = sync.Pool{New: func() any {
 
 ## 5. Security Model & Path Sandboxing
 
-Because px0 exposes a local HTTP server that can display source files and interact with local tools, strict boundary constraints are enforced.
+Because punk0 exposes a local HTTP server that can display source files and interact with local tools, strict boundary constraints are enforced.
 
 ### Path Resolution (`safePath` & `resolvePath`)
 
@@ -245,7 +245,7 @@ When navigating code via LSP Go-to-Definition, targets often reside outside the 
 
 ### Origin Verification for Installers
 
-The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.g., `go install ...` or `npm install -g ...`), and the `/api/agent/*` mutations run a coding harness. To guard against cross-origin attacks (such as a malicious website triggering command execution via JavaScript fetch while px0 is running in the background):
+The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.g., `go install ...` or `npm install -g ...`), and the `/api/agent/*` mutations run a coding harness. To guard against cross-origin attacks (such as a malicious website triggering command execution via JavaScript fetch while punk0 is running in the background):
 
 1. The request method must be `POST`.
 1. The request `Origin` header must match the request `Host` header.
@@ -267,11 +267,11 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 - `frame-ancestors 'none';` (guards against clickjacking)
 - `form-action 'none';`
 
-The pinned Mermaid browser runtime is fetched on demand at runtime and cached under the user cache directory (`~/.px0/cache/vendor/` or `$XDG_CACHE_HOME/px0/vendor/`). When a Markdown preview containing a Mermaid fence is rendered, the frontend requests `/static/vendor/mermaid-12.0.0.min.js`, which `server.go` serves same-origin from the local cache (downloading and caching from the pinned CDN release on first use if absent). This keeps the compiled executable lean while satisfying the strict same-origin `'self'` CSP, preventing exfiltration, and preserving full offline capability for subsequent sessions.
+The pinned Mermaid browser runtime is fetched on demand at runtime and cached under the user cache directory (`~/.punk0/cache/vendor/` or `$XDG_CACHE_HOME/punk0/vendor/`). When a Markdown preview containing a Mermaid fence is rendered, the frontend requests `/static/vendor/mermaid-12.0.0.min.js`, which `server.go` serves same-origin from the local cache (downloading and caching from the pinned CDN release on first use if absent). This keeps the compiled executable lean while satisfying the strict same-origin `'self'` CSP, preventing exfiltration, and preserving full offline capability for subsequent sessions.
 
 ### Binary Size Optimization & Packaging Footprint
 
-px0 employs several complementary strategies to maintain an ultra-lean binary footprint (~12 MB) without runtime packing or startup overhead:
+punk0 employs several complementary strategies to maintain an ultra-lean binary footprint (~18 MB unstripped local build) without runtime packing or startup overhead:
 
 1. **Compile-time Trimming & Stripping**: Binaries are built with `-trimpath` and `-ldflags="-s -w"`, removing host filesystem paths, symbol tables, and DWARF debug sections.
 2. **Runtime Offloading of Heavy Vendor Assets**: Bulky third-party vendor assets (such as the 1.6 MB gzipped / 4 MB uncompressed Mermaid diagramming bundle) are excluded from `go:embed`. Instead, they are downloaded on-demand and cached in volatile/persistent user storage outside the repository, served via same-origin streaming handlers.
@@ -280,4 +280,4 @@ px0 employs several complementary strategies to maintain an ultra-lean binary fo
 
 ### Self-Update Integrity
 
-Before `px0 --update` executes or installs a release binary, it verifies the download against the SHA-256 digest in that release's `checksums.txt` asset. Missing, malformed, or mismatched checksum data aborts the update without replacing the current executable.
+Before `punk0 -update` executes or installs a release binary, it verifies the download against the SHA-256 digest in that release's `checksums.txt` asset. Missing, malformed, or mismatched checksum data aborts the update without replacing the current executable.
