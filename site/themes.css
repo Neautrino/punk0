@@ -1,0 +1,375 @@
+/* Generated from web/themes/*.css: the app's own theme files, scoped to the coded
+   product views (.app[data-theme]) instead of :root. Regenerate with:
+   for f in web/themes/*.css; do sed 's/:root\[data-theme=/.app[data-theme=/' "$f"; done > site/themes.css */
+/* Catppuccin Latte: based on the Catppuccin palette. Token reference: docs/internals/styling-and-themes.md.
+   Yellow, peach, sky, green, pink and lavender are darkened from the palette so
+   code stays readable (3:1 or better) on the light base. */
+.app[data-theme="catppuccin-latte"] {
+  --theme-name: "Catppuccin Latte";
+  color-scheme: light;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #eff1f5; --bg2: #e6e9ef; --bg3: #dce0e8; --bg4: #ccd0da;
+  /* text: primary, secondary, tertiary */
+  --fg: #4c4f69; --dim: #5c5f77; --faint: #8c8fa1;
+  /* borders and accent */
+  --line: #ccd0da; --accent: #8839ef; --accent-fg: #1e66f5;
+  /* selection, search matches, current line */
+  --sel: rgba(124, 127, 147, 0.25); --mark: rgba(223, 142, 29, 0.22); --mark-active: #df8e1d; --cur: #e6e9ef;
+  --on-mark-active: var(--fg);
+  /* elevation */
+  --shadow: 0 4px 16px rgba(76, 79, 105, 0.18);
+
+  /* syntax */
+  --k: #8839ef; --kt: #b86e0a; --nf: #1e66f5; --nc: #b86e0a; --nb: #d20f39;
+  --nv: #4c4f69; --no: #d9540a; --na: #b86e0a; --nt: #1e66f5; --nd: #d9540a;
+  --np: #5f73e8; --s: #3a9127; --m: #d9540a; --o: #0287bd; --p: #6c6f85;
+  --c: #7c7f93; --cp: #c450a6; --err: #d20f39;
+
+  /* diffs and status */
+  --gi: #3a9127; --gd: #d20f39;
+  --gi-bg: rgba(64, 160, 43, 0.13); --gd-bg: rgba(210, 15, 57, 0.11);
+}
+/* Catppuccin Mocha: based on the Catppuccin palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="catppuccin-mocha"] {
+  --theme-name: "Catppuccin Mocha";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #1e1e2e; --bg2: #181825; --bg3: #313244; --bg4: #45475a;
+  /* text: primary, secondary, tertiary */
+  --fg: #cdd6f4; --dim: #a6adc8; --faint: #6c7086;
+  /* borders and accent */
+  --line: #11111b; --accent: #cba6f7; --accent-fg: #89b4fa; --on-accent: #1e1e2e;
+  /* selection, search matches, current line */
+  --sel: rgba(147, 153, 178, 0.25); --mark: rgba(249, 226, 175, 0.25); --mark-active: #fab387; --cur: #272738;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(17, 17, 27, 0.7);
+
+  /* syntax */
+  --k: #cba6f7; --kt: #f9e2af; --nf: #89b4fa; --nc: #f9e2af; --nb: #f38ba8;
+  --nv: #cdd6f4; --no: #fab387; --na: #f9e2af; --nt: #89b4fa; --nd: #fab387;
+  --np: #b4befe; --s: #a6e3a1; --m: #fab387; --o: #89dceb; --p: #bac2de;
+  --c: #9399b2; --cp: #f5c2e7; --err: #f38ba8;
+
+  /* diffs and status */
+  --gi: #a6e3a1; --gd: #f38ba8;
+  --gi-bg: rgba(166, 227, 161, 0.15); --gd-bg: rgba(243, 139, 168, 0.15);
+}
+/* Tokyo Night inspired: a low-glare dark palette tuned for long reading sessions.
+   Token reference and how to write your own theme: docs/internals/styling-and-themes.md. */
+.app[data-theme="dark"] {
+  --theme-name: "Tokyo Night";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #1a1b26; --bg2: #16161e; --bg3: #1f2335; --bg4: #292e42;
+  /* text: primary, secondary, tertiary */
+  --fg: #c0caf5; --dim: #7aa2f7; --faint: #565f89;
+  /* borders and accent */
+  --line: #24283b; --accent: #7aa2f7; --accent-fg: #7dcfff;
+  /* selection, search matches, current line */
+  --sel: #283457; --mark: rgba(224, 175, 104, 0.3); --mark-active: #ff9e64; --cur: #1e2030;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(15, 17, 26, 0.88);
+
+  /* syntax */
+  --k: #bb9af7; --kt: #2ac3de; --nf: #7aa2f7; --nc: #e0af68; --nb: #7dcfff;
+  --nv: #c0caf5; --no: #ff9e64; --na: #b4f9f8; --nt: #73daca; --nd: #bb9af7;
+  --np: #7dcfff; --s: #9ece6a; --m: #ff9e64; --o: #89ddff; --p: #9aa5ce;
+  --c: #565f89; --cp: #bb9af7; --err: #f7768e;
+
+  /* diffs and status */
+  --gi: #9ece6a; --gd: #f7768e;
+  --gi-bg: rgba(158, 206, 106, 0.16); --gd-bg: rgba(247, 118, 142, 0.16);
+}
+/* Dracula: based on the Dracula palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="dracula"] {
+  --theme-name: "Dracula";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #282a36; --bg2: #21222c; --bg3: #343746; --bg4: #44475a;
+  /* text: primary, secondary, tertiary */
+  --fg: #f8f8f2; --dim: #bcc2cd; --faint: #6272a4;
+  /* borders and accent */
+  --line: #191a21; --accent: #bd93f9; --accent-fg: #ff79c6; --on-accent: #282a36;
+  /* selection, search matches, current line */
+  --sel: #44475a; --mark: rgba(241, 250, 140, 0.25); --mark-active: #ffb86c; --cur: #2e303e;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+
+  /* syntax */
+  --k: #ff79c6; --kt: #8be9fd; --nf: #50fa7b; --nc: #8be9fd; --nb: #8be9fd;
+  --nv: #f8f8f2; --no: #bd93f9; --na: #50fa7b; --nt: #ff79c6; --nd: #50fa7b;
+  --np: #f8f8f2; --s: #f1fa8c; --m: #bd93f9; --o: #ff79c6; --p: #f8f8f2;
+  --c: #6272a4; --cp: #ff79c6; --err: #ff5555;
+
+  /* diffs and status */
+  --gi: #50fa7b; --gd: #ff5555;
+  --gi-bg: rgba(80, 250, 123, 0.14); --gd-bg: rgba(255, 85, 85, 0.14);
+}
+/* GitHub Dark: based on GitHub's dark default palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="github-dark"] {
+  --theme-name: "GitHub Dark";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #0d1117; --bg2: #010409; --bg3: #161b22; --bg4: #21262d;
+  /* text: primary, secondary, tertiary */
+  --fg: #e6edf3; --dim: #8b949e; --faint: #6e7681;
+  /* borders and accent */
+  --line: #30363d; --accent: #1f6feb; --accent-fg: #58a6ff;
+  /* selection, search matches, current line */
+  --sel: rgba(56, 139, 253, 0.25); --mark: rgba(187, 128, 9, 0.4); --mark-active: #d29922; --cur: #161b22;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(1, 4, 9, 0.85);
+
+  /* syntax */
+  --k: #ff7b72; --kt: #ff7b72; --nf: #d2a8ff; --nc: #ffa657; --nb: #79c0ff;
+  --nv: #ffa657; --no: #79c0ff; --na: #79c0ff; --nt: #7ee787; --nd: #d2a8ff;
+  --np: #79c0ff; --s: #a5d6ff; --m: #79c0ff; --o: #ff7b72; --p: #c9d1d9;
+  --c: #8b949e; --cp: #ff7b72; --err: #f85149;
+
+  /* diffs and status */
+  --gi: #3fb950; --gd: #f85149;
+  --gi-bg: rgba(46, 160, 67, 0.15); --gd-bg: rgba(248, 81, 73, 0.15);
+}
+/* Gruvbox Dark: based on the Gruvbox palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="gruvbox-dark"] {
+  --theme-name: "Gruvbox Dark";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #282828; --bg2: #1d2021; --bg3: #32302f; --bg4: #45403d;
+  /* text: primary, secondary, tertiary */
+  --fg: #ebdbb2; --dim: #bdae93; --faint: #928374;
+  /* borders and accent */
+  --line: #3c3836; --accent: #fabd2f; --accent-fg: #fe8019; --on-accent: #282828;
+  /* selection, search matches, current line */
+  --sel: #504945; --mark: rgba(250, 189, 47, 0.25); --mark-active: #fe8019; --cur: #2f2d2c;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+
+  /* syntax */
+  --k: #fb4934; --kt: #fabd2f; --nf: #8ec07c; --nc: #fabd2f; --nb: #fe8019;
+  --nv: #83a598; --no: #d3869b; --na: #8ec07c; --nt: #8ec07c; --nd: #fe8019;
+  --np: #83a598; --s: #b8bb26; --m: #d3869b; --o: #fe8019; --p: #a89984;
+  --c: #928374; --cp: #8ec07c; --err: #fb4934;
+
+  /* diffs and status */
+  --gi: #b8bb26; --gd: #fb4934;
+  --gi-bg: rgba(184, 187, 38, 0.14); --gd-bg: rgba(251, 73, 52, 0.14);
+}
+/* Gruvbox Light: based on the Gruvbox palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="gruvbox-light"] {
+  --theme-name: "Gruvbox Light";
+  color-scheme: light;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #fbf1c7; --bg2: #f2e5bc; --bg3: #ebdbb2; --bg4: #e0cfa9;
+  /* text: primary, secondary, tertiary */
+  --fg: #3c3836; --dim: #665c54; --faint: #928374;
+  /* borders and accent */
+  --line: #d5c4a1; --accent: #b57614; --accent-fg: #af3a03; --on-accent: #fbf1c7;
+  /* selection, search matches, current line */
+  --sel: #d5c4a1; --mark: rgba(215, 153, 33, 0.25); --mark-active: #fabd2f; --cur: #f5eac0;
+  --on-mark-active: var(--fg);
+  /* elevation */
+  --shadow: 0 4px 16px rgba(60, 56, 54, 0.2);
+
+  /* syntax */
+  --k: #9d0006; --kt: #b57614; --nf: #427b58; --nc: #b57614; --nb: #af3a03;
+  --nv: #076678; --no: #8f3f71; --na: #427b58; --nt: #427b58; --nd: #af3a03;
+  --np: #076678; --s: #79740e; --m: #8f3f71; --o: #af3a03; --p: #7c6f64;
+  --c: #928374; --cp: #427b58; --err: #9d0006;
+
+  /* diffs and status */
+  --gi: #79740e; --gd: #9d0006;
+  --gi-bg: rgba(121, 116, 14, 0.15); --gd-bg: rgba(157, 0, 6, 0.12);
+}
+/* Paper: a clean, high-contrast light palette.
+   Token reference and how to write your own theme: docs/internals/styling-and-themes.md. */
+.app[data-theme="light"] {
+  --theme-name: "Paper";
+  color-scheme: light;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #ffffff; --bg2: #f7f8fa; --bg3: #edf0f5; --bg4: #e1e5ee;
+  /* text: primary, secondary, tertiary */
+  --fg: #24292f; --dim: #57606a; --faint: #8c959f;
+  /* borders and accent */
+  --line: #d0d7de; --accent: #0969da; --accent-fg: #0550ae;
+  /* selection, search matches, current line */
+  --sel: #b6e3ff; --mark: #fff8c5; --mark-active: #fae17d; --cur: #f3f6f9;
+  --on-mark-active: var(--fg);
+  /* elevation */
+  --shadow: 0 4px 16px rgba(31, 35, 40, 0.18);
+
+  /* syntax */
+  --k: #cf222e; --kt: #0550ae; --nf: #8250df; --nc: #953800; --nb: #0550ae;
+  --nv: #953800; --no: #0550ae; --na: #0550ae; --nt: #116329; --nd: #8250df;
+  --np: #0550ae; --s: #0a3069; --m: #0550ae; --o: #cf222e; --p: #57606a;
+  --c: #6e7781; --cp: #cf222e; --err: #cf222e;
+
+  /* diffs and status */
+  --gi: #116329; --gd: #82071e;
+  --gi-bg: rgba(17, 99, 41, 0.12); --gd-bg: rgba(130, 7, 30, 0.12);
+}
+/* Monokai: based on the classic Monokai palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="monokai"] {
+  --theme-name: "Monokai";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #272822; --bg2: #1e1f1c; --bg3: #3e3d32; --bg4: #49483e;
+  /* text: primary, secondary, tertiary */
+  --fg: #f8f8f2; --dim: #cfcfc2; --faint: #75715e;
+  /* borders and accent */
+  --line: #414339; --accent: #a6e22e; --accent-fg: #e6db74; --on-accent: #272822;
+  /* selection, search matches, current line */
+  --sel: #49483e; --mark: rgba(230, 219, 116, 0.25); --mark-active: #fd971f; --cur: #3e3d32;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+
+  /* syntax */
+  --k: #f92672; --kt: #66d9ef; --nf: #a6e22e; --nc: #a6e22e; --nb: #66d9ef;
+  --nv: #f8f8f2; --no: #ae81ff; --na: #a6e22e; --nt: #f92672; --nd: #a6e22e;
+  --np: #f8f8f2; --s: #e6db74; --m: #ae81ff; --o: #f92672; --p: #f8f8f2;
+  --c: #75715e; --cp: #f92672; --err: #f44747;
+
+  /* diffs and status */
+  --gi: #a6e22e; --gd: #f92672;
+  --gi-bg: rgba(166, 226, 46, 0.14); --gd-bg: rgba(249, 38, 114, 0.14);
+}
+/* Nord: based on the Nord palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="nord"] {
+  --theme-name: "Nord";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #2e3440; --bg2: #292e39; --bg3: #3b4252; --bg4: #434c5e;
+  /* text: primary, secondary, tertiary */
+  --fg: #d8dee9; --dim: #a5aebd; --faint: #616e88;
+  /* borders and accent */
+  --line: #3b4252; --accent: #88c0d0; --accent-fg: #8fbcbb; --on-accent: #2e3440;
+  /* selection, search matches, current line */
+  --sel: #434c5e; --mark: rgba(235, 203, 139, 0.25); --mark-active: #d08770; --cur: #353b49;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(22, 26, 33, 0.7);
+
+  /* syntax */
+  --k: #81a1c1; --kt: #81a1c1; --nf: #88c0d0; --nc: #8fbcbb; --nb: #88c0d0;
+  --nv: #d8dee9; --no: #b48ead; --na: #8fbcbb; --nt: #81a1c1; --nd: #d08770;
+  --np: #d8dee9; --s: #a3be8c; --m: #b48ead; --o: #81a1c1; --p: #eceff4;
+  --c: #616e88; --cp: #5e81ac; --err: #bf616a;
+
+  /* diffs and status */
+  --gi: #a3be8c; --gd: #bf616a;
+  --gi-bg: rgba(163, 190, 140, 0.15); --gd-bg: rgba(191, 97, 106, 0.15);
+}
+/* One Dark: based on the One Dark palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="one-dark"] {
+  --theme-name: "One Dark";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #282c34; --bg2: #21252b; --bg3: #2c313a; --bg4: #3a3f4b;
+  /* text: primary, secondary, tertiary */
+  --fg: #abb2bf; --dim: #9da5b4; --faint: #5c6370;
+  /* borders and accent */
+  --line: #181a1f; --accent: #61afef; --accent-fg: #56b6c2; --on-accent: #282c34;
+  /* selection, search matches, current line */
+  --sel: #3e4451; --mark: rgba(229, 192, 123, 0.18); --mark-active: #d19a66; --cur: #2c313c;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+
+  /* syntax */
+  --k: #c678dd; --kt: #e5c07b; --nf: #61afef; --nc: #e5c07b; --nb: #56b6c2;
+  --nv: #e06c75; --no: #d19a66; --na: #d19a66; --nt: #e06c75; --nd: #61afef;
+  --np: #e06c75; --s: #98c379; --m: #d19a66; --o: #56b6c2; --p: #abb2bf;
+  --c: #5c6370; --cp: #c678dd; --err: #e06c75;
+
+  /* diffs and status */
+  --gi: #98c379; --gd: #e06c75;
+  --gi-bg: rgba(152, 195, 121, 0.14); --gd-bg: rgba(224, 108, 117, 0.14);
+}
+/* Rose Pine: based on the Rose Pine palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="rose-pine"] {
+  --theme-name: "Rose Pine";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #191724; --bg2: #1f1d2e; --bg3: #26233a; --bg4: #403d52;
+  /* text: primary, secondary, tertiary */
+  --fg: #e0def4; --dim: #908caa; --faint: #6e6a86;
+  /* borders and accent */
+  --line: #403d52; --accent: #c4a7e7; --accent-fg: #ebbcba; --on-accent: #191724;
+  /* selection, search matches, current line */
+  --sel: #403d52; --mark: rgba(246, 193, 119, 0.25); --mark-active: #f6c177; --cur: #21202e;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+
+  /* syntax */
+  --k: #31748f; --kt: #9ccfd8; --nf: #ebbcba; --nc: #9ccfd8; --nb: #eb6f92;
+  --nv: #e0def4; --no: #f6c177; --na: #c4a7e7; --nt: #9ccfd8; --nd: #c4a7e7;
+  --np: #9ccfd8; --s: #f6c177; --m: #f6c177; --o: #908caa; --p: #908caa;
+  --c: #6e6a86; --cp: #c4a7e7; --err: #eb6f92;
+
+  /* diffs and status */
+  --gi: #9ccfd8; --gd: #eb6f92;
+  --gi-bg: rgba(156, 207, 216, 0.14); --gd-bg: rgba(235, 111, 146, 0.14);
+}
+/* Solarized Dark: based on the Solarized palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="solarized-dark"] {
+  --theme-name: "Solarized Dark";
+  color-scheme: dark;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #002b36; --bg2: #00212b; --bg3: #073642; --bg4: #0d4452;
+  /* text: primary, secondary, tertiary */
+  --fg: #93a1a1; --dim: #839496; --faint: #586e75;
+  /* borders and accent */
+  --line: #073642; --accent: #268bd2; --accent-fg: #2aa198; --on-accent: #fdf6e3;
+  /* selection, search matches, current line */
+  --sel: #274642; --mark: rgba(181, 137, 0, 0.2); --mark-active: #b58900; --cur: #04313c;
+  /* elevation */
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  /* syntax */
+  --k: #859900; --kt: #b58900; --nf: #268bd2; --nc: #b58900; --nb: #cb4b16;
+  --nv: #268bd2; --no: #2aa198; --na: #93a1a1; --nt: #268bd2; --nd: #cb4b16;
+  --np: #93a1a1; --s: #2aa198; --m: #d33682; --o: #859900; --p: #839496;
+  --c: #586e75; --cp: #cb4b16; --err: #dc322f;
+
+  /* diffs and status */
+  --gi: #859900; --gd: #dc322f;
+  --gi-bg: rgba(133, 153, 0, 0.15); --gd-bg: rgba(220, 50, 47, 0.15);
+}
+/* Solarized Light: based on the Solarized palette. Token reference: docs/internals/styling-and-themes.md. */
+.app[data-theme="solarized-light"] {
+  --theme-name: "Solarized Light";
+  color-scheme: light;
+
+  /* surfaces, from the editor out to raised hover states */
+  --bg: #fdf6e3; --bg2: #eee8d5; --bg3: #e9e2cb; --bg4: #ddd6c1;
+  /* text: primary, secondary, tertiary */
+  --fg: #586e75; --dim: #657b83; --faint: #93a1a1;
+  /* borders and accent */
+  --line: #ddd6c1; --accent: #268bd2; --accent-fg: #2aa198; --on-accent: #fdf6e3;
+  /* selection, search matches, current line */
+  --sel: #dfd8c2; --mark: rgba(181, 137, 0, 0.16); --mark-active: #e6c35c; --cur: #f5eedb;
+  --on-mark-active: var(--fg);
+  /* elevation */
+  --shadow: 0 4px 16px rgba(88, 110, 117, 0.18);
+
+  /* syntax */
+  --k: #859900; --kt: #b58900; --nf: #268bd2; --nc: #b58900; --nb: #cb4b16;
+  --nv: #268bd2; --no: #2aa198; --na: #586e75; --nt: #268bd2; --nd: #cb4b16;
+  --np: #586e75; --s: #2aa198; --m: #d33682; --o: #859900; --p: #657b83;
+  --c: #93a1a1; --cp: #cb4b16; --err: #dc322f;
+
+  /* diffs and status */
+  --gi: #859900; --gd: #dc322f;
+  --gi-bg: rgba(133, 153, 0, 0.14); --gd-bg: rgba(220, 50, 47, 0.12);
+}
