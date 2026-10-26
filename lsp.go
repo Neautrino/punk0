@@ -137,7 +137,6 @@ type lspClient struct {
 	syncGen     map[string]uint64          // uri -> generation of the latest syncDoc read that applied
 	diagnostics map[string][]LSPDiagnostic // uri -> latest published diagnostics
 	syncGenNext atomic.Uint64              // dispenses syncDoc generations; no lock needed
-	lastUsed    atomic.Int64               // unix nanos of most recent client interaction
 	dead        error
 
 	// writeCh feeds the dedicated writer goroutine. It is created with the
@@ -194,7 +193,6 @@ func newLSPClient(def lspServerDef, root string) *lspClient {
 		readyCh:     make(chan struct{}),
 		logf:        func(string, ...any) {},
 	}
-	c.lastUsed.Store(time.Now().UnixNano())
 	return c
 }
 
@@ -672,7 +670,6 @@ func (c *lspClient) notifyAsync(method string, params any) {
 }
 
 func (c *lspClient) call(ctx context.Context, method string, params any, out any) error {
-	c.lastUsed.Store(time.Now().UnixNano())
 	c.mu.Lock()
 	if c.dead != nil {
 		err := c.dead
@@ -876,7 +873,6 @@ func (c *lspClient) shutdown() {
 // same URI. If the file changed between the read and the didOpen, the next
 // syncDoc repairs it.
 func (c *lspClient) ensureOpen(abs, rel string) error {
-	c.lastUsed.Store(time.Now().UnixNano())
 	uri := pathToURI(abs)
 	// Fail fast on a dead client instead of doing file I/O for a didOpen
 	// that can never be sent.
@@ -2867,29 +2863,6 @@ func (m *lspManager) Close() {
 		}()
 	}
 	wg.Wait()
-}
-
-func (m *lspManager) ReapIdle(maxIdle time.Duration) {
-	if maxIdle <= 0 {
-		return
-	}
-	now := time.Now()
-	var idle []*lspClient
-	m.mu.Lock()
-	for name, c := range m.clients {
-		if c == nil || c.busy() {
-			continue
-		}
-		last := time.Unix(0, c.lastUsed.Load())
-		if now.Sub(last) >= maxIdle {
-			idle = append(idle, c)
-			delete(m.clients, name)
-		}
-	}
-	m.mu.Unlock()
-	for _, c := range idle {
-		go c.shutdown()
-	}
 }
 
 func (m *lspManager) Diagnostics(abs, rel string) []LSPDiagnostic {

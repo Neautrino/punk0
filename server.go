@@ -251,15 +251,11 @@ func NewServer(ix *Index, lsp *lspManager, basePaths ...string) *Server {
 // that is doing nothing look like it is holding hundreds of megabytes.
 func (s *Server) scavenge() {
 	const idleFor = 15 * time.Second
-	const lspIdleFor = 10 * time.Minute
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	done := true // nothing to release before the first request
 	for range tick.C {
 		idle := time.Since(time.Unix(0, s.lastReq.Load()))
-		if s.lsp != nil && idle >= lspIdleFor {
-			s.lsp.ReapIdle(lspIdleFor)
-		}
 		if idle < idleFor {
 			done = false
 			continue
