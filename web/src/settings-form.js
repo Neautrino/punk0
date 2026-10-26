@@ -585,7 +585,7 @@ const BUILTIN_SCHEMA = [
     description: "Controls the maximum execution time in seconds for agent edits before canceling.",
     category: "Agent / AI",
     type: "number",
-    default: 120.0,
+    default: 600.0,
     min: 10.0,
     max: 600.0,
     step: 10.0

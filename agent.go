@@ -36,10 +36,14 @@ import (
 // over a workspace is a decision the user makes once, and it is remembered
 // in the settings file rather than a flag.
 
-const (
-	agentTimeout  = harness.DefaultTimeout
-	agentLogBytes = harness.DefaultLogBytes
-)
+const agentLogBytes = harness.DefaultLogBytes
+
+// agentTimeout is agent.timeoutSeconds, read for each job so a change applies
+// to the next edit, kept within the setting's 10-600 second range.
+func agentTimeout() time.Duration {
+	secs := min(max(settings.SettingOr[float64]("agent.timeoutSeconds"), 10), 600)
+	return time.Duration(secs * float64(time.Second))
+}
 
 // agentHarness is one row of the picker.
 type agentHarness struct {
@@ -498,7 +502,8 @@ func (m *agentManager) startLocked(label, lines, prompt string, items []agentBat
 	args := m.args
 	name := m.selected
 	m.seq++
-	ctx, cancel := context.WithTimeout(context.Background(), agentTimeout)
+	timeout := agentTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	job := &agentJob{
 		ID:      m.seq,
 		Harness: name,
@@ -525,11 +530,11 @@ func (m *agentManager) startLocked(label, lines, prompt string, items []agentBat
 
 	ui.Status("step", "agent", fmt.Sprintf("#%d %s%s · %s", job.ID, name, modelStr, label), 0, os.Stdout)
 
-	go m.run(ctx, cancel, job, args, prompt)
+	go m.run(ctx, cancel, job, args, prompt, timeout)
 	return m.Job(job.ID), nil
 }
 
-func (m *agentManager) run(ctx context.Context, cancel context.CancelFunc, job *agentJob, template []string, prompt string) {
+func (m *agentManager) run(ctx context.Context, cancel context.CancelFunc, job *agentJob, template []string, prompt string, timeout time.Duration) {
 	defer cancel()
 	defer func() {
 		m.mu.Lock()
@@ -552,7 +557,7 @@ func (m *agentManager) run(ctx context.Context, cancel context.CancelFunc, job *
 
 	res := harness.Run(ctx, harness.Command{Name: job.Harness, Args: template}, prompt, harness.Options{
 		Dir:      m.root,
-		Timeout:  agentTimeout,
+		Timeout:  timeout,
 		LogBytes: agentLogBytes,
 		Stdout:   stdoutStreamer,
 		Stderr:   stderrStreamer,

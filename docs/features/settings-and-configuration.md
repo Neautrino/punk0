@@ -58,7 +58,7 @@ punk0 stores all configuration in a single per-user global file (`$XDG_CONFIG_HO
 | `lsp.hover.enabled` | Language Servers | `true` | `true`, `false` | Hover documentation cards |
 | `workspace.lspDefault` | Language Servers | `false` | `true`, `false` | Default of the New workspace form's Language Servers checkbox for worktrees |
 | `agent.harness` | Coding Agent | `""` | `claude`, `codex`, `opencode`, `agy`, `cursor-agent`, or a command template | Coding harness for Quick Edit, AI commit messages, AI rebase/merge and PR Batch Apply |
-| `agent.timeoutSeconds` | Coding Agent | `120` | `10` – `600` (seconds) | Max runtime for agent edits |
+| `agent.timeoutSeconds` | Coding Agent | `600` | `10` – `600` (seconds) | Max runtime for agent edits; read for each new edit |
 | `github.token` | GitHub | `""` | any string | Personal access token for GitHub pull request review; takes precedence over `GITHUB_TOKEN` and `gh auth token`. Masked in the Settings UI. |
 | `gitlab.token` | GitLab | `""` | any string | Personal access token (`api` scope) for GitLab merge request review. Sent only to `gitlab.host`; takes precedence over `GITLAB_TOKEN`. Masked in the Settings UI. |
 | `gitlab.host` | GitLab | `""` | host name | The instance `gitlab.token` belongs to. Falls back to `GITLAB_HOST`, then `gitlab.com`. Set automatically when you connect through the Connect dialog. |

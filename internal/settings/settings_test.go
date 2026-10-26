@@ -45,8 +45,8 @@ func TestSettingsDefaults(t *testing.T) {
 	if m["lsp.enabled"] != true {
 		t.Errorf("expected lsp.enabled true, got %v", m["lsp.enabled"])
 	}
-	if m["agent.timeoutSeconds"] != 120.0 && m["agent.timeoutSeconds"] != 120 {
-		t.Errorf("expected agent.timeoutSeconds 120, got %v", m["agent.timeoutSeconds"])
+	if m["agent.timeoutSeconds"] != 600.0 {
+		t.Errorf("expected agent.timeoutSeconds 600, got %v", m["agent.timeoutSeconds"])
 	}
 	if m["server.basePath"] != "/" {
 		t.Errorf("expected server.basePath /, got %v", m["server.basePath"])

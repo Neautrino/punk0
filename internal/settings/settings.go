@@ -709,7 +709,7 @@ var Schema = []SchemaItem{
 		Description: "Controls the maximum execution time in seconds for agent edits before canceling.",
 		Category:    "Agent / AI",
 		Type:        "number",
-		Default:     120.0,
+		Default:     600.0,
 		Min:         numPtr(10.0),
 		Max:         numPtr(600.0),
 		Step:        numPtr(10.0),
