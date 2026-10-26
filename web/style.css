@@ -1898,18 +1898,8 @@ body.word-wrap .editview-gutter { white-space: normal; }
 
 #empty { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); }
 .empty-inner { text-align: center; color: var(--faint); }
-.empty-logo { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 28px; }
-.empty-logo img { width: 130px; height: auto; }
-/* Logo variants: the dark one by default, the light one on light themes. */
-.logo-light { display: none; }
-:root[data-theme="light"] .logo-dark,
-:root[data-theme="catppuccin-latte"] .logo-dark,
-:root[data-theme="gruvbox-light"] .logo-dark,
-:root[data-theme="solarized-light"] .logo-dark { display: none; }
-:root[data-theme="light"] .logo-light,
-:root[data-theme="catppuccin-latte"] .logo-light,
-:root[data-theme="gruvbox-light"] .logo-light,
-:root[data-theme="solarized-light"] .logo-light { display: block; }
+.empty-logo { display: flex; justify-content: center; align-items: baseline; gap: 2px; margin-bottom: 28px; font: 600 34px/1 var(--mono); color: var(--fg); letter-spacing: -.02em; }
+.empty-logo-zero { color: var(--mark-active); }
 .empty-inner dl { display: grid; grid-template-columns: auto auto; gap: 9px 16px; align-items: center; font-size: 12.5px; }
 .empty-inner dt { text-align: right; display: flex; gap: 3px; justify-content: flex-end; }
 .empty-inner dd { margin: 0; text-align: left; color: var(--dim); }
@@ -2409,7 +2399,7 @@ kbd {
 .help-header { display: flex; align-items: baseline; gap: 8px; margin: 0 0 16px; }
 .help-header h2 { margin: 0; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
 .help-version { font: 11px var(--mono); color: var(--accent-fg); background: var(--bg4); padding: 2px 6px; border-radius: var(--r); }
-#empty-ver { font: 12px var(--mono); color: var(--accent-fg); opacity: 0.8; padding-bottom: 3px; }
+#empty-ver { margin-left: 10px; font: 12px var(--mono); color: var(--accent-fg); opacity: 0.8; letter-spacing: 0; }
 .help-grid { display: grid; grid-template-columns: repeat(2, auto auto); gap: 8px 18px; align-items: center; font-size: 12.5px; }
 .help-grid dt { display: flex; gap: 3px; justify-content: flex-end; align-items: center; }
 .key-or { color: var(--faint); margin: 0 3px; font-size: 11px; }

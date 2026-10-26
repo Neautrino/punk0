@@ -41,7 +41,7 @@ import (
 	"px0/internal/ui"
 )
 
-//go:embed web/index.html web/style.css web/themes web/vendor
+//go:embed web/index.html web/style.css web/themes web/vendor web/favicon.svg
 //go:embed web/workbench.html web/workbench.css web/workbench.js
 //go:embed web/app.js
 var embedded embed.FS

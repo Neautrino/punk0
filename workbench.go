@@ -1893,7 +1893,7 @@ var holdingTmpl = template.Must(template.New("holding").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 {{if .Starting}}<meta http-equiv="refresh" content="1; url={{.Self}}">{{end}}
 <title>{{if .Starting}}Opening…{{else}}px0{{end}}</title>
-<link rel="icon" type="image/x-icon" href="https://px0.ai/favicon.ico">
+<link rel="icon" type="image/svg+xml" href="static/favicon.svg">
 <link rel="stylesheet" href="static/style.css">
 <link rel="stylesheet" href="static/themes.css">
 <link rel="stylesheet" href="static/workbench.css">
@@ -1901,8 +1901,7 @@ var holdingTmpl = template.Must(template.New("holding").Parse(`<!doctype html>
 <body class="wb">
 <main class="wb-holding">
   <div class="empty-logo">
-    <img class="logo-dark" src="https://px0.ai/logo/px0-logo-dark.png" alt="px0" width="160" height="60">
-    <img class="logo-light" src="https://px0.ai/logo/px0-logo-light.png" alt="px0" width="160" height="60">
+    punk<span class="empty-logo-zero">[0]</span>
   </div>
   {{if .Starting}}
   <p class="wb-holding-msg"><span class="wb-spin" aria-hidden="true"></span>Opening <b>{{.Title}}</b>…</p>
