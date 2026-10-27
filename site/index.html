@@ -10,8 +10,8 @@
   <meta property="og:description" content="Coding agents in real terminal tabs, one git worktree per task, the diff and a full editor beside them. One Go binary. A fork of px0.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="themes.css?v=5">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="themes.css?v=6">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -160,10 +160,10 @@
         <div class="cmp">
           <div class="table-scroll">
             <table class="data">
-              <caption>Same job for each app: the flask repository as a project, one git worktree, two idle shell tabs. Median of 3 runs on one Linux machine (Ryzen 5 5600H, 22.8 GiB RAM), measured 2026-10-26. Memory is PSS of every process the app started, shells excluded. punk0 has no browser of its own, so its row charges it for a whole Chrome running only its tab; in a browser you already have open, the tab costs about 112 MiB. Paradev requires a GitHub or Google sign-in before it opens a project, so its numbers stop at the sign-in screen.</caption>
+              <caption>Same job for each app: the flask repository as a project, one git worktree, two idle shell tabs. Median of 3 runs on one Linux machine (Ryzen 5 5600H, 22.8 GiB RAM), measured 2026-10-26. Memory is PSS of every process the app started, shells excluded. Orca and Paradev ship their own browser engine and their numbers include it; punk0 opens in the browser you already run, so its tab is listed separately (about 112 MiB, or 279 MiB if Chrome runs only for punk0). Paradev requires a GitHub or Google sign-in before it opens a project, so its numbers stop at the sign-in screen.</caption>
               <thead><tr><th scope="col">App</th><th scope="col">Startup to the project</th><th scope="col">Memory when idle</th><th scope="col">Download</th></tr></thead>
               <tbody>
-                <tr class="us"><th scope="row">punk0 0.1.0</th><td>0.64 s</td><td>331 MiB <span class="sub-num">punk0 55 + its Chrome 279</span></td><td>17 MiB</td></tr>
+                <tr class="us"><th scope="row">punk0 0.1.0</th><td>0.64 s</td><td>55 MiB <span class="sub-num">+ about 112 MiB for its tab in your browser</span></td><td>17 MiB</td></tr>
                 <tr><th scope="row">Orca 1.4.241</th><td>2.00 s</td><td>563 MiB</td><td>234 MiB</td></tr>
                 <tr><th scope="row">Paradev 2.0.0 <span class="sub-num">formerly Superset</span></th><td>1.97 s <span class="sub-num">to the sign-in screen</span></td><td>450 MiB or more <span class="sub-num">at the sign-in screen</span></td><td>470 MiB</td></tr>
               </tbody>
@@ -482,6 +482,6 @@ punk0 https://github.com/owner/repo/pull/123</pre>
     </div>
   </footer>
 
-  <script src="app.js?v=5" defer></script>
+  <script src="app.js?v=6" defer></script>
 </body>
 </html>
