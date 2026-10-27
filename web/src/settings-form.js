@@ -182,7 +182,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "terminal.copyOnSelect",
     title: "Copy on Select",
-    description: "Copy text to the clipboard as soon as it is selected with the mouse. Needs the page on localhost or https.",
+    description: "Copy terminal text to the clipboard as soon as it is selected with the mouse, on the agents page and in the editor. Needs the page on localhost or https.",
     category: "Terminal",
     type: "boolean",
     default: false

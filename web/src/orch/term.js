@@ -8,7 +8,8 @@
 // bundled, so the page itself stays small.
 import { on } from '../bus.js';
 import { pageURL, wsURL } from './api.js';
-import { getSetting } from './settings.js';
+import { installClipboard, clipboardKey } from '../termclip.js';
+import { termOptions } from '../termoptions.js';
 
 // The server closes a viewer that lags behind the PTY with 1013 (try again
 // later); reattaching replays scrollback, so nothing is lost.
@@ -44,20 +45,6 @@ function termColors() {
   };
 }
 
-// termOptions maps the terminal.* settings onto xterm's options; an empty
-// font family is the page's monospace font.
-function termOptions() {
-  const mono = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace';
-  return {
-    fontSize: getSetting('terminal.fontSize') ?? 13,
-    fontFamily: getSetting('terminal.fontFamily') || mono,
-    lineHeight: getSetting('terminal.lineHeight') ?? 1,
-    scrollback: getSetting('terminal.scrollback') ?? 10000,
-    cursorStyle: getSetting('terminal.cursorStyle') || 'block',
-    cursorBlink: getSetting('terminal.cursorBlink') ?? true,
-  };
-}
-
 function boot() {
   booting ||= Promise.all([
     import(pageURL('static/vendor/xterm.mjs')),
@@ -86,12 +73,7 @@ function boot() {
       Object.assign(term.options, termOptions());
       fitNow();
     });
-    // Copy on select: a mouse selection is done when the button comes up.
-    // The clipboard needs a secure context; without one nothing is copied.
-    termEl.addEventListener('mouseup', () => {
-      const text = getSetting('terminal.copyOnSelect') && term.getSelection();
-      if (text) navigator.clipboard?.writeText(text).catch(() => {});
-    });
+    installClipboard(term, termEl);
 
     const send = data => sock?.readyState === WebSocket.OPEN && sock.send(data);
     const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
@@ -119,6 +101,7 @@ function boot() {
     // xterm.js has no kitty keyboard protocol: send Shift+Enter as ESC CR
     // (Alt+Enter), which Claude Code reads as a newline.
     term.attachCustomKeyEventHandler(e => {
+      if (clipboardKey(term, e)) return false;
       if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
       e.preventDefault();
       if (e.type === 'keydown') send(enc.encode('\x1b\r'));

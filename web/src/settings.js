@@ -11,6 +11,7 @@ import { setVimModeEnabled } from './vim.js';
 import { showHelp } from './shortcuts.js';
 import { initSettingsModal } from './settings-form.js';
 import { drawFileDetails } from './status.js';
+import { emit } from './bus.js';
 
 export function isAutoRevealEnabled() {
   if (S.settings) {
@@ -141,6 +142,8 @@ function applySettingLive(key, val) {
       break;
     }
   }
+  // The editor's Terminal panel follows these like the agents page's.
+  if (key.startsWith('terminal.')) emit('setting:changed', key, val);
 }
 
 

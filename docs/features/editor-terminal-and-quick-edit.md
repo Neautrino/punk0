@@ -25,7 +25,7 @@ The pane is an xterm.js terminal connected to the orchestrator's PTY for the edi
 
 Shells and agents run in the orchestrator, not the page: closing the browser or the editor leaves them running, and reconnecting replays their scrollback. When the connection ends, the terminal says so; press any key to reconnect.
 
-While focus is in the terminal, every key goes to the shell or agent. Editor shortcuts such as `Esc`, `Ctrl+W`, `Ctrl+K`, `Ctrl+P`, `Ctrl+D`, `Ctrl+E`, `Ctrl+F` and `Ctrl+B` do not fire there. Click the code to give the keyboard back to the editor. `Shift+Enter` sends a newline to the agent's prompt rather than submitting it.
+While focus is in the terminal, every key goes to the shell or agent. Editor shortcuts such as `Esc`, `Ctrl+W`, `Ctrl+K`, `Ctrl+P`, `Ctrl+D`, `Ctrl+E`, `Ctrl+F` and `Ctrl+B` do not fire there. Click the code to give the keyboard back to the editor. `Shift+Enter` sends a newline to the agent's prompt rather than submitting it. The panel uses the `terminal.*` settings and copies and pastes like the agents page's terminals (see [Tabs](workbench.md#tabs)): copy on select when it is on, and on Windows and Linux `Ctrl+C` with a selection, `Ctrl+Insert`, `Ctrl+Shift+V` and `Shift+Insert`.
 
 The agents page and the editor can show the same tab at once. A PTY has one size, so the agent draws at the width of whichever view you last typed into or clicked.
 
@@ -106,6 +106,9 @@ Quick Edit runs your coding harness once on the selected lines and shows its rep
 | `Mod+Enter` | Quick Edit preview | Accept |
 | `Esc` | Quick Edit box | Reject, or cancel a running harness |
 | `Shift+Enter` | Terminal | Newline in the agent's prompt |
+| `Ctrl+C` | Terminal with a selection (Windows, Linux) | Copy the selection; without one it is `^C` |
+| `Ctrl+Insert` | Terminal (Windows, Linux) | Copy the selection |
+| `Ctrl+Shift+V`, `Shift+Insert` | Terminal (Windows, Linux) | Paste |
 
 In [Vim mode](vim-mode.md), `e` or `c` on a Visual mode selection opens Quick Edit.
 

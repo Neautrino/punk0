@@ -4,6 +4,8 @@ import { sideShown, rightView, showRightView } from './sideviews.js';
 import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
+import { installClipboard, clipboardKey } from './termclip.js';
+import { termOptions } from './termoptions.js';
 
 let termEl = null;
 let tabListEl = null;
@@ -48,15 +50,7 @@ function boot() {
       import(parentURL('static/vendor/xterm.mjs')),
       import(parentURL('static/vendor/addon-fit.mjs')),
     ]).then(([{ Terminal }, { FitAddon }]) => {
-      const term = new Terminal({
-        fontSize: 12,
-        fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace',
-        lineHeight: 1.2,
-        scrollback: 10000,
-        cursorStyle: 'block',
-        cursorBlink: true,
-        theme: termColors(),
-      });
+      const term = new Terminal({ ...termOptions(), theme: termColors() });
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(termEl);
@@ -70,6 +64,12 @@ function boot() {
       new ResizeObserver(fitNow).observe(termEl);
 
       on('theme:changed', () => { term.options.theme = termColors(); });
+      on('setting:changed', key => {
+        if (!key.startsWith('terminal.')) return;
+        Object.assign(term.options, termOptions());
+        fitNow();
+      });
+      installClipboard(term, termEl);
 
       const send = data => activeSocket?.readyState === WebSocket.OPEN && activeSocket.send(data);
       const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
@@ -97,6 +97,7 @@ function boot() {
       document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reclaim());
 
       term.attachCustomKeyEventHandler(e => {
+        if (clipboardKey(term, e)) return false;
         if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
         e.preventDefault();
         if (e.type === 'keydown') send(enc.encode('\x1b\r'));
