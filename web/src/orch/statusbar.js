@@ -1,10 +1,13 @@
 // web/src/orch/statusbar.js
 // The status bar under the three panes. Left: version, then help (the
-// keyboard shortcuts sheet), GitHub and settings (settings.js). Middle: the
+// keyboard shortcuts sheet, whose foot opens the logs folder and copies
+// diagnostics), GitHub and settings (settings.js). Middle: the
 // agents needing you and working, each a button to the next such tab; the
 // open file's details are viewer.js's. Right: the resource button and panel
 // (resources.js, respanel.js).
 import { $, esc, keyCaps } from '../state.js';
+import { showToast } from '../ui.js';
+import { call, failed } from './api.js';
 import { drawAgentStates } from '../statusparts.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
 import { state, subscribe, termTab, selectWorkspace, selectTab } from './store.js';
@@ -32,8 +35,32 @@ function showHelp() {
   helpSheet.innerHTML = '<div class="help-card"><div class="help-header"><h2>Keyboard Shortcuts</h2>' + ver +
     '</div><dl class="help-grid">' +
     SHORTCUTS.map(([combos, v]) => '<dt>' + combos.map(keyCaps).join('<span class="key-or">/</span>') + '</dt>' +
-      '<dd>' + esc(v) + '</dd>').join('') + '</dl></div>';
+      '<dd>' + esc(v) + '</dd>').join('') + '</dl>' +
+    '<div class="help-foot"><button type="button" class="wb-btn" id="help-logs">Open logs folder</button>' +
+    '<button type="button" class="wb-btn" id="help-diag">Copy diagnostics</button>' +
+    '<span class="help-foot-note">The log never holds terminal output or prompts.</span></div></div>';
+  $('#help-logs').addEventListener('click', openLogs);
+  $('#help-diag').addEventListener('click', copyDiagnostics);
   helpSheet.hidden = false;
+}
+
+async function openLogs() {
+  const res = await call('POST', 'api/logs/open');
+  if (!res.ok) return failed(res);
+  showToast('✓', 'Opened ' + res.data.dir, 3000);
+}
+
+// copyDiagnostics puts what a bug report needs on the clipboard: versions,
+// paths, workspace states and the end of the log.
+async function copyDiagnostics() {
+  const res = await call('GET', 'api/diagnostics');
+  if (!res.ok) return failed(res);
+  try {
+    await navigator.clipboard.writeText(res.data.text);
+    showToast('✓', 'Diagnostics copied: paste them into the issue', 3000);
+  } catch {
+    showToast('!', 'The browser would not let punk0 write to the clipboard; the log is ' + res.data.log, 6000);
+  }
 }
 
 // agentTabs lists the running tabs whose agent reports status, in sidebar
@@ -69,7 +96,9 @@ export function initStatusBar() {
   $('#btn-help').addEventListener('click', showHelp);
   $('#st-waiting').addEventListener('click', () => nextAgent('waiting'));
   $('#st-working').addEventListener('click', () => nextAgent('working'));
-  helpSheet.addEventListener('click', () => { helpSheet.hidden = true; });
+  helpSheet.addEventListener('click', e => {
+    if (!e.target.closest('.help-foot')) helpSheet.hidden = true;
+  });
   addEventListener('keydown', e => {
     if (e.key === 'Escape' && !helpSheet.hidden) helpSheet.hidden = true;
   });

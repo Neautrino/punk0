@@ -20,6 +20,10 @@
 .wb-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .wb-msg { margin: 0; color: var(--err); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 
+/* The agents page help sheet's foot: the log file and diagnostics. */
+.help-foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.help-foot-note { margin-left: auto; color: var(--dim); font-size: 11.5px; }
+
 /* Folder completion under a path input. It may be wider than the sidebar it
    opens from, and lies over the panes beside it. */
 .wb-suggest {

@@ -27,7 +27,7 @@ At start punk0 prints its version, the agents page URL, and for `punk0 <dir>` th
 22:20  ■ shell    portfolio  exited
 ```
 
-`+` is a folder handed over by a second `punk0 <dir>`, `▶` a tab started, `■` a tab or an editor process stopped for being idle, or a tab whose shell exited on its own. Problems are marked `!`. Editor processes starting and stopping as you browse, and tabs you close yourself, are not printed; `-v` adds one line per HTTP request. Keys typed into that terminal are not echoed while punk0 runs; echo comes back when it stops.
+`+` is a folder handed over by a second `punk0 <dir>`, `▶` a tab started, `■` a tab or an editor process stopped for being idle, or a tab whose shell exited on its own. Problems are marked `!`. Editor processes starting and stopping as you browse, and tabs you close yourself, are not printed; `-verbose` adds one line per HTTP request. Keys typed into that terminal are not echoed while punk0 runs; echo comes back when it stops. The same events, and more, go to the log file (see [Logs and diagnostics](#logs-and-diagnostics)).
 
 ## Layout
 
@@ -201,6 +201,20 @@ The middle column starts with the agents across every workspace: **N need you** 
 
 While a file is shown (in its panel, or in front among the tabs), its details sit at the right of the middle column, before the language server item, which then shows the file's language (see [Language servers](#language-servers)): **Ln, Col** (a click in the code places the cursor; tabs count to the next tab stop), the file's line count, its size on disk, **Tab Size** (the `editor.tabSize` setting, which the viewer also renders tabs at), the encoding (**UTF-8**, **UTF-8 with BOM** or **Not UTF-8**) and the line endings (**LF**, **CRLF** or **Mixed**). They are read once, when the file is opened. Click **Ln, Col**, or press Ctrl/Cmd+G outside a terminal, to go to a line: type `120` or `120:8` and press Enter. A file tab switched to its diff keeps these details, without **Ln, Col** and Go to line; the Changes tab, being every changed file, shows none. With no file shown, none of this is. As the column narrows it drops tab size, line count, size and line endings first, then encoding.
 
+## Logs and diagnostics
+
+punk0 writes a log file, `logs/punk0.log` in the state directory (on Windows `C:\Users\<you>\.punk0\logs\punk0.log`), so a problem can be looked into after the terminal that ran punk0 is closed. It holds one line per event, in time order:
+
+- punk0 starting (version, OS and its version, Go, the shell tabs use, where `claude` and `git` were found, the flags) and stopping.
+- Each editor process: starting (folder, pid), ready and how long it took, failing (with the reason), exiting, stopped for being idle, and everything it printed, panics included.
+- Tabs starting (shell, pid), failing to start, exiting, stopped for being idle.
+- The Claude Code hook events each tab reported (tool events only with `-verbose`), and a hook that could not report to punk0 or took over 500 ms.
+- Language servers starting and exiting, clones and fetches that failed or took over 5 s, requests that failed with a server error.
+
+Terminal output, prompts, file contents and environment variables are never written. The home folder is written as `~`, and tokens with a known prefix (GitHub, GitLab, `sk-` keys, Slack), `Bearer` / `Basic` values and passwords in URLs as `[redacted]`. The file starts over at 5 MiB, keeping two older parts (`punk0.log.1`, `punk0.log.2`). If Go itself crashes, the stack also goes to `logs/crash.log`.
+
+The help sheet (**?** in the status bar) ends with **Open logs folder**, which opens the folder in the system's file manager, and **Copy diagnostics**, which copies punk0's version, OS, paths, each editor process's state and the last 200 lines of the log, for pasting into an issue. Both work only while punk0 listens on loopback. An editor that could not start says why, and where the log is, both on its error page and in the files pane.
+
 ## Security
 
 Terminals are shells on your machine, so they are served only while punk0 listens on loopback (the default `-host 127.0.0.1`); otherwise opening one is refused. The page can also list and open **any directory the punk0 process can read**. With `-host 0.0.0.0`, anyone who can reach the address can browse the machine's folders and open any of them for reading and editing, and punk0 prints a warning saying so. Expose it only over networks you trust. The same DNS rebinding and same-origin checks as the rest of punk0 apply, including to the agents' hook reports.
@@ -218,6 +232,7 @@ Everything is kept in the state directory, `$XDG_STATE_HOME/punk0`, falling back
 | `repos/` | Clones punk0 makes for PRs |
 | `claude-hooks.json` | The hook settings Claude tabs start with |
 | `workbench.lock` | The running punk0's address |
+| `logs/` | `punk0.log` and its older parts, `crash.log` (see [Logs and diagnostics](#logs-and-diagnostics)) |
 
 Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs) and the `refs/px0/*` refs that PR review uses and removes on exit.
 
