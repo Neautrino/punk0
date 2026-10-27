@@ -14,10 +14,16 @@ punk0 keeps px0's fast viewer, search, git and pull request review, and adds wha
 
 ## Install
 
-Install the latest release:
+Install the latest release on macOS, Linux or the BSDs:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Neautrino/punk0/main/install.ps1 | iex
 ```
 
 Or build from source (requires Go 1.25+ and Bun):
