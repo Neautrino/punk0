@@ -2,34 +2,50 @@
 
 Thank you for your interest in improving punk0.
 
-## AI-Driven Development and Contributions
+## AI-driven development
 
-punk0 is built and maintained entirely using AI coding agents.
+punk0 is built with AI coding agents. Using one for your contribution is welcome. [`AGENT.md`](AGENT.md) has the workflow and rules the agent should follow, and you are responsible for what it produces: read the diff, run the checks, and make sure you can explain every change.
 
-Because all implementation, architecture refactoring, and code changes are written by AI agents guided by our core design principles (zero config, zero runtime dependencies, lean memory footprint, single binary, reads-first focus with edits delegated to coding agents), we generally do not accept unsolicited pull requests containing manual or disparate code patches.
+## What we accept
 
-Instead, the most valuable contribution you can provide is a clear, detailed bug report or a well-reasoned feature idea.
+Anyone can contribute. Pull requests are welcome for:
 
-## How to Contribute
-### Report a Bug
+- **Bug fixes**: navigation, rendering, terminals, git, review, anything that misbehaves.
+- **Performance work**: faster startup, search, indexing or rendering, lower memory use. Include before/after numbers (`make bench` or `make benchmark`).
+- **Features** that fit punk0: a single Go binary, no runtime dependencies, zero config, small memory footprint.
+- **Docs**: corrections and missing explanations.
 
-If you encounter unexpected behavior, memory leaks, navigation bugs, or performance issues:
+We decline bloat: new dependencies, options nobody asked for, abstractions without a second user, or features that make punk0 heavier without a clear payoff. If you're unsure, open an issue first.
 
-- Check existing [GitHub Issues](https://github.com/Neautrino/punk0/issues) first to avoid duplicates.
-- Open a new issue using our [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.md).
-- Provide comprehensive context: operating system, browser, workspace size, steps to reproduce, expected vs. observed behavior, logs, and screenshots if applicable.
+## Suggestions and bug reports
 
-### Suggest a Feature or Improvement
+Not writing code? Ideas and reports are just as useful.
 
-Have an idea to make reading and navigating code faster or smoother?
+- Search [existing issues](https://github.com/Neautrino/punk0/issues) first.
+- Bugs: use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md). Include OS, browser, workspace size, steps to reproduce, and expected vs. actual behavior.
+- Features: use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md). Say what problem it solves and who it helps.
 
-- Open a new issue using our [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.md).
-- Explain the motivation: what problem does this solve, why would it benefit users, and how would it fit punk0's reads-first, minimal-footprint philosophy?
+## Set up
 
-## Review and Implementation Process
+You need Go 1.25+ and [Bun](https://bun.sh).
 
-1. Review: Maintainers evaluate every issue against punk0's design philosophy (simplicity, single-binary distribution, minimal resource consumption, speed).
-1. Assessment: We determine whether the proposal is apt, feasible, and aligned with the project roadmap.
-1. Execution: If approved, we formulate prompt specifications and task plans, and our AI agents implement, test, benchmark, document, and release the changes. Any major or user-facing feature addition must include a corresponding tip added to the built-in offline default tips (`DEFAULT_TIPS` in `web/src/tips-util.js`).
+```sh
+git clone https://github.com/Neautrino/punk0.git
+cd punk0
+make build      # bundles web assets and builds ./punk0
+```
 
-Thank you for helping make punk0 better.
+## Before you open a pull request
+
+```sh
+make check      # web checks, asset bundle, fast Go tests
+make test       # full Go test suite
+```
+
+- New Go packages need a `*_test.go` and at least one `Benchmark` function ([testing docs](docs/internals/testing-and-benchmarks.md)).
+- User-facing features need a tip in `DEFAULT_TIPS` (`web/src/tips-util.js`) and an update to the matching page under `docs/features/`.
+- Keep each pull request to one logical change. Describe what changed and how you checked it; add screenshots for anything visible.
+
+## License
+
+punk0 is licensed under the [MIT License](LICENSE). By opening a pull request you agree that your contribution is licensed under the same terms.
