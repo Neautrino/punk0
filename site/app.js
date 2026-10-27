@@ -1,4 +1,4 @@
-// punk0 site: four independent units, each a no-op without its elements.
+// punk0 site: five independent units, each a no-op without its elements.
 (() => {
   'use strict';
 
@@ -236,27 +236,76 @@
   }
 
   // ----------------------------------------------------------------- copy
+  // Copies src's text; without clipboard access, selects it for Ctrl+C.
+  async function copyText(src) {
+    try {
+      await navigator.clipboard.writeText(src.innerText.trim());
+      return true;
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(src);
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      return false;
+    }
+  }
+
   function initCopy() {
     document.querySelectorAll('[data-copy-from]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const src = document.getElementById(btn.dataset.copyFrom);
-        try {
-          await navigator.clipboard.writeText(src.innerText.trim());
-          btn.textContent = 'Copied';
-          btn.dataset.state = 'done';
-        } catch {
-          const r = document.createRange();
-          r.selectNodeContents(src);
-          const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-          btn.textContent = 'Press Ctrl+C';
-        }
+        const ok = await copyText(document.getElementById(btn.dataset.copyFrom));
+        btn.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+        if (ok) btn.dataset.state = 'done';
         setTimeout(() => { btn.textContent = 'Copy'; delete btn.dataset.state; }, 1600);
       });
     });
+  }
+
+  // -------------------------------------------------------------- install
+  // The hero's install box opens on this device's platform tab; its Copy
+  // button copies whichever command is shown. Phones, tablets and unknown
+  // systems get macOS / Linux.
+  function detectOS() {
+    const ua = navigator.userAgent;
+    const uad = navigator.userAgentData;
+    const touchMac = /Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1; // iPadOS
+    if (uad?.mobile || /Android|iPhone|iPad|iPod/.test(ua) || touchMac) return 'unix';
+    return /Win/.test(`${uad?.platform || ''} ${navigator.platform || ''} ${ua}`) ? 'windows' : 'unix';
+  }
+
+  function initInstall() {
+    const get = document.querySelector('[data-get]');
+    if (!get) return;
+    const copy = get.querySelector('[data-copy-from]');
+    const tabs = [...get.querySelectorAll('[role="tab"]')];
+
+    const select = (which, focus) => {
+      for (const t of tabs) {
+        const on = t.dataset.os === which;
+        const panel = t.getAttribute('aria-controls');
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        document.getElementById(panel).hidden = !on;
+        if (on) copy.dataset.copyFrom = panel;
+        if (on && focus) t.focus();
+      }
+    };
+
+    tabs.forEach((t, i) => {
+      t.addEventListener('click', () => select(t.dataset.os));
+      t.addEventListener('keydown', e => {
+        const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+        if (!step) return;
+        e.preventDefault();
+        select(tabs[(i + step + tabs.length) % tabs.length].dataset.os, true);
+      });
+    });
+
+    select(detectOS());
   }
 
   initThemePicker();
   initFit();
   initHero();
   initCopy();
+  initInstall();
 })();

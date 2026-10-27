@@ -123,16 +123,28 @@
   .hero { padding: clamp(56px, 8vw, 104px) 0 72px; }
   .hero-grid { display: grid; gap: 28px; }
   h1 {
-    font-size: clamp(2.4rem, 5.4vw, 4.4rem);
-    line-height: 1.02;
+    font-size: clamp(2.2rem, 4.2vw, 3.6rem);
+    line-height: 1.04;
     letter-spacing: -0.05em;
     font-weight: 800;
     text-wrap: balance;
-    max-width: 23ch;
   }
+  /* One sentence per line; a sentence wraps on its own on narrow screens. */
+  h1 > span { display: block; }
   .hero-side { display: flex; flex-direction: column; align-items: flex-start; gap: 28px; }
   .lede { font-size: clamp(1.05rem, 1.5vw, 1.2rem); line-height: 1.6; color: var(--p-body); max-width: 52ch; }
-  .cta-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .get { display: grid; gap: 14px; width: 100%; max-width: 760px; }
+  .get-links { font: 500 13.5px/1.4 var(--mono); color: var(--p-muted); }
+  .get-links a { color: var(--p-ink); }
+  .get-tabs { display: flex; gap: 4px; margin-left: -6px; }
+  .get-card .code-head { gap: 12px; }
+  .get-tabs button {
+    height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: 3px;
+    background: none; font: 600 12px/1 var(--mono); color: var(--p-muted); cursor: pointer;
+  }
+  .get-tabs button:hover { color: var(--p-ink); }
+  .get-tabs button[aria-selected="true"] { background: #fff; border-color: #d2d5de; color: var(--p-ink); }
+  .get-card pre { font-size: 13.5px; }
 
   .stage { margin: clamp(44px, 6vw, 72px) 0 0; }
   .stage .fit { width: 1180px; transform-origin: 0 0; }

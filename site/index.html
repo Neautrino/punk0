@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>punk0: coding agents in tabs, the diff beside them</title>
-  <meta name="description" content="punk0 is one Go binary that runs Claude Code, Codex and OpenCode in real terminals, gives every task its own git worktree, and keeps the changed files and a full editor in the same browser tab. A fork of px0.">
+  <title>punk0: every agent its own branch, the work reviewed in one place</title>
+  <meta name="description" content="Run Claude Code, Codex or any agent CLI side by side, each in its own git worktree, then review the diff, edit the file and merge the pull request in the same browser tab. One Go binary. A fork of px0.">
   <meta name="theme-color" content="#ffffff">
   <meta property="og:title" content="punk0">
-  <meta property="og:description" content="Coding agents in real terminal tabs, one git worktree per task, the diff and a full editor beside them. One Go binary. A fork of px0.">
+  <meta property="og:description" content="Every agent its own branch. Review the work in one place. Claude Code, Codex or any agent CLI, a git worktree per task, the diff and a full editor beside them. One Go binary. A fork of px0.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="themes.css?v=6">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -37,12 +37,22 @@
     <!-- 3.2 Hero -->
     <section class="hero" id="top">
       <div class="wrap hero-grid">
-        <h1>Coding agents in tabs. The diff beside them.</h1>
+        <h1><span>Every agent its own branch.</span> <span>Review the work in one place.</span></h1>
         <div class="hero-side">
-          <p class="lede">punk0 is one Go binary that runs Claude Code, Codex and OpenCode in real terminals, gives every task its own git worktree, and keeps the changed files and a full editor in the same browser tab.</p>
-          <div class="cta-row">
-            <a class="btn btn-ink" href="#install">Build it</a>
-            <a class="btn btn-line" href="https://github.com/Neautrino/punk0">GitHub</a>
+          <p class="lede">Run Claude Code, Codex or any agent CLI side by side, each in its own git worktree, then review the diff, edit the file and merge the pull request in the same tab.</p>
+          <div class="get" data-get>
+            <div class="code-card get-card">
+              <div class="code-head">
+                <div class="get-tabs" role="tablist" aria-label="Platform">
+                  <button type="button" role="tab" id="get-tab-unix" aria-selected="true" aria-controls="get-unix" data-os="unix">macOS / Linux</button>
+                  <button type="button" role="tab" id="get-tab-win" aria-selected="false" aria-controls="get-win" data-os="windows" tabindex="-1">Windows</button>
+                </div>
+                <button type="button" class="copy" data-copy-from="get-unix">Copy</button>
+              </div>
+<pre id="get-unix" role="tabpanel" aria-labelledby="get-tab-unix">curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh</pre>
+<pre id="get-win" role="tabpanel" aria-labelledby="get-tab-win" hidden>irm https://raw.githubusercontent.com/Neautrino/punk0/main/install.ps1 | iex</pre>
+            </div>
+            <p class="get-links"><a href="https://github.com/Neautrino/punk0">Source on GitHub</a> · <a href="https://github.com/Neautrino/punk0/releases/latest">Release notes</a></p>
           </div>
         </div>
       </div>
@@ -434,9 +444,9 @@ ctrl-c to stop
     <section class="sec" id="install" aria-labelledby="install-title">
       <div class="wrap install">
         <div class="install-text">
-          <h2 id="install-title">Build it</h2>
-          <p class="sec-lede">punk0 is early, and no release is published yet. Build it from source with Go 1.25 or later and Bun.</p>
-          <p class="note">Once a version is tagged, the release workflow publishes binaries for Linux, macOS, Windows and the BSDs, and <code>install.sh</code> downloads the right one.</p>
+          <h2 id="install-title">Build from source</h2>
+          <p class="sec-lede">The <a href="#top">installer</a> fetches the latest release for your system. To build it yourself instead, you need Go 1.25 or later and Bun.</p>
+          <p class="note">Each release ships binaries for Linux, macOS, Windows and the BSDs, with a <code>checksums.txt</code> to check them against.</p>
         </div>
         <div class="install-docs">
           <h3 class="next">Then read</h3>
@@ -482,6 +492,6 @@ punk0 https://github.com/owner/repo/pull/123</pre>
     </div>
   </footer>
 
-  <script src="app.js?v=6" defer></script>
+  <script src="app.js?v=7" defer></script>
 </body>
 </html>
