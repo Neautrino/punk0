@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"slices"
@@ -438,6 +439,7 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 	sh, started, err := tab.Shell()
 	if err != nil {
 		ui.Event("warn", tab.Kind, wb.records.TabLabel(tab.ID), "could not start: "+err.Error(), os.Stderr)
+		slog.Warn("tab could not start", "tab", tab.ID, "kind", tab.Kind, "name", wb.records.TabLabel(tab.ID), "shell", terminalShell(), "err", err)
 		conn.Close(websocket.StatusInternalError, err.Error())
 		return
 	}
@@ -445,9 +447,12 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 		// Named now: the tab may be gone by the time its shell exits.
 		label := wb.records.TabLabel(tab.ID)
 		ui.Event("start", tab.Kind, label, "", os.Stdout)
+		slog.Info("tab started", "tab", tab.ID, "kind", tab.Kind, "name", label, "shell", terminalShell(), "pid", sh.Pid())
+		at := time.Now()
 		go func() {
 			if sh.exitedByItself() {
 				ui.Event("stop", tab.Kind, label, "exited", os.Stdout)
+				slog.Info("tab exited", "tab", tab.ID, "kind", tab.Kind, "name", label, "ran", time.Since(at).Round(time.Second).String())
 			}
 		}()
 	}

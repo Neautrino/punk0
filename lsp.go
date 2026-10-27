@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/url"
 	"os"
@@ -210,14 +211,17 @@ func (c *lspClient) start(ctx context.Context) error {
 		return err
 	}
 	if err := c.cmd.Start(); err != nil {
+		slog.Warn("language server could not start", "server", c.def.Name, "err", err)
 		return err
 	}
+	slog.Info("language server started", "server", c.def.Name, "pid", c.cmd.Process.Pid)
 	c.in, c.out = stdin, bufio.NewReaderSize(stdout, 64<<10)
 	c.beginWriteLoop()
 
 	go c.readLoop()
 	go func() {
-		c.cmd.Wait()
+		err := c.cmd.Wait()
+		slog.Info("language server exited", "server", c.def.Name, "err", err)
 		c.fail(fmt.Errorf("%s exited", c.def.Name))
 	}()
 

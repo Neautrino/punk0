@@ -11,12 +11,15 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"px0/internal/applog"
 )
 
 // Tab statuses. An empty status means nothing is known: no shell, or the
@@ -70,8 +73,10 @@ const hookBodyMax = 1 << 20
 
 // runHook is `punk0 hook`: Claude Code runs it with the event on stdin. It
 // posts the event to the tab it came from and says nothing either way -- a
-// hook that writes to stderr or fails would show up in the agent's chat.
+// hook that writes to stderr or fails would show up in the agent's chat. A
+// report that fails or is slow goes in the log file instead (hookSlow).
 func runHook() {
+	start := time.Now()
 	target := os.Getenv("PUNK0_HOOK_URL")
 	if target == "" {
 		return
@@ -80,24 +85,47 @@ func runHook() {
 	if err != nil || len(body) == 0 {
 		return
 	}
+	report := func(level slog.Level, msg string, args ...any) {
+		var ev struct {
+			Name string `json:"hook_event_name"`
+		}
+		json.Unmarshal(body, &ev)
+		args = append([]any{"event", ev.Name, "ms", time.Since(start).Milliseconds()}, args...)
+		applog.Append(workbenchStateDir(), level, msg, args...)
+	}
 	body = slimHookEvent(body)
 	u, err := url.Parse(target)
 	if err != nil {
+		report(slog.LevelWarn, "hook has a bad PUNK0_HOOK_URL", "err", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
+		report(slog.LevelWarn, "hook report failed", "err", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// The parent checks Origin on every write, like it does for its page.
 	req.Header.Set("Origin", u.Scheme+"://"+u.Host)
-	if resp, err := http.DefaultClient.Do(req); err == nil {
-		resp.Body.Close()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		report(slog.LevelWarn, "hook report failed", "err", err)
+		return
+	}
+	resp.Body.Close()
+	switch {
+	case resp.StatusCode >= 300:
+		report(slog.LevelWarn, "hook report refused", "status", resp.StatusCode)
+	case time.Since(start) > hookSlow:
+		report(slog.LevelInfo, "hook report slow")
 	}
 }
+
+// hookSlow is how long a hook may take before the log says so: Claude waits
+// for every hook, so a slow one delays the agent.
+const hookSlow = 500 * time.Millisecond
 
 // slimHookEvent drops what punk0 never reads and a tool event can carry
 // megabytes of: the tool's result, and its input but for the file it wrote.
@@ -195,9 +223,16 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if status, ok := hookStatus(ev); ok {
+	status, ok := hookStatus(ev)
+	if ok {
 		tab.setStatus(status)
 	}
+	level := slog.LevelInfo
+	switch ev.Name {
+	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
+		level = slog.LevelDebug // one per tool call
+	}
+	slog.Log(r.Context(), level, "hook", "event", ev.Name, "tab", tab.ID, "session", ev.Session, "status", status)
 	// The session it reports is filed under the tab's workspace, unless the
 	// user filed it elsewhere; a worktree it works in is listed under it.
 	if ev.Session != "" {

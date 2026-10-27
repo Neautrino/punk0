@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime"
 	"net"
 	"net/http"
@@ -502,6 +503,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 func fail(w http.ResponseWriter, code int, msg string) {
+	if code >= 500 {
+		slog.Warn("request failed", "status", code, "err", msg)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})

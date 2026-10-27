@@ -28,6 +28,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -41,6 +42,7 @@ import (
 	"sync"
 	"time"
 
+	"px0/internal/applog"
 	"px0/internal/settings"
 	"px0/internal/ui"
 )
@@ -390,6 +392,9 @@ func (wb *workbench) serveFrom(loopbackURL string) {
 	wb.records.SetHookBase(loopbackURL)
 	if err := writeClaudeHooks(wb.exe); err != nil {
 		ui.Status("warn", "claude hooks", err.Error(), 0, os.Stderr)
+		slog.Warn("claude hooks not written", "err", err)
+	} else {
+		slog.Info("claude hooks written", "file", tildePath(claudeHooksPath()), "exe", tildePath(wb.exe))
 	}
 }
 
@@ -476,6 +481,8 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/hook"), wb.handleHook)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/send"), wb.handleTabSend)
+	wb.mux.HandleFunc("GET "+wb.route("/api/diagnostics"), wb.handleDiagnostics)
+	wb.mux.HandleFunc("POST "+wb.route("/api/logs/open"), wb.handleLogsOpen)
 	wb.mux.HandleFunc(wb.route("/w/"), wb.handleWorkspace)
 	wb.mux.HandleFunc(wb.route("/"), wb.handleIndex)
 	if wb.basePath != "/" {
@@ -548,7 +555,9 @@ func (wb *workbench) start(it wbItem, forget bool) *wbChild {
 func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 	defer close(c.done)
 	defer c.cancel()
+	name := logName(it)
 	failed := func(msg string) {
+		slog.Warn("workspace failed", "ws", name, "err", msg)
 		wb.setState(c, "failed", msg)
 		if forget {
 			wb.mu.Lock()
@@ -606,9 +615,13 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 			return
 		}
 		c.appendLog(line)
+		applog.Child(name, line)
 	}}
 	cmd.Stdout = out
-	cmd.Stderr = &lineWriter{fn: c.appendLog}
+	cmd.Stderr = &lineWriter{fn: func(line string) {
+		c.appendLog(line)
+		applog.Child(name, line)
+	}}
 	// A language server or harness the child started could hold its output
 	// open after it exits; do not let that keep Wait from returning.
 	cmd.WaitDelay = wbStopGrace
@@ -619,6 +632,11 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 			err = context.Canceled
 		} else if err = cmd.Start(); err == nil {
 			c.cmd, c.stdin, c.progress = cmd, stdin, ""
+			folder := it.Path
+			if it.Kind == "pr" {
+				folder = dir
+			}
+			slog.Info("workspace started", "ws", name, "id", it.ID, "folder", tildePath(folder), "pid", cmd.Process.Pid, "args", strings.Join(args, " "))
 		}
 		wb.mu.Unlock()
 	}
@@ -638,10 +656,12 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 		exited <- err
 	}()
 
+	started := time.Now()
 	timer := time.NewTimer(wbStartTimeout)
 	defer timer.Stop()
 	select {
 	case addr := <-ready:
+		slog.Info("workspace ready", "ws", name, "addr", addr, "ms", time.Since(started).Milliseconds())
 		target, err := url.Parse("http://" + addr)
 		if err != nil {
 			cmd.Process.Kill()
@@ -689,9 +709,11 @@ func (wb *workbench) run(c *wbChild, it wbItem, forget bool) {
 
 	err = <-exited
 	if err != nil && !wb.isClosing() {
+		slog.Warn("workspace exited", "ws", name, "err", err, "last", c.failure())
 		wb.setState(c, "stopped", c.failure())
 		return
 	}
+	slog.Info("workspace stopped", "ws", name)
 	wb.setState(c, "stopped", "")
 }
 
@@ -838,6 +860,7 @@ func (wb *workbench) reapChildren(limit time.Duration) {
 			where = s.title // a pull request's
 		}
 		ui.Event("stop", "editor", where, idleNote(limit), os.Stdout)
+		slog.Info("workspace idle stop", "ws", where, "limit", idleNote(limit))
 		wb.stop(s.id)
 	}
 }
@@ -853,6 +876,7 @@ func (wb *workbench) reapTabs(limit time.Duration) {
 		}
 		if stopIdleTab(t.Kind, t.Status(), sh.Foreground(), sh.IdleFor(), limit) {
 			ui.Event("stop", t.Kind, wb.records.TabLabel(t.ID), idleNote(limit), os.Stdout)
+			slog.Info("tab idle stop", "tab", t.ID, "kind", t.Kind, "name", wb.records.TabLabel(t.ID), "limit", idleNote(limit))
 			t.close()
 		}
 	}
@@ -1785,7 +1809,7 @@ func (wb *workbench) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		if wb.waitRunning(id) && wb.serveProxy(w, r, id) {
 			return
 		}
-		fail(w, http.StatusServiceUnavailable, "workspace is not responding")
+		fail(w, http.StatusServiceUnavailable, wb.notResponding(id))
 		return
 	}
 	if !trustedGet(w, r) {
@@ -1896,6 +1920,7 @@ func itemTitle(it wbItem) string {
 type holdingPage struct {
 	Base, Theme, Title, Error, Retry, Self, Progress string
 	Choose                                           string // workbench URL that asks where the PR's clone is
+	Log                                              string // the log file, named under an error
 	Starting                                         bool
 }
 
@@ -1923,6 +1948,7 @@ var holdingTmpl = template.Must(template.New("holding").Parse(`<!doctype html>
   {{else}}
   <p class="wb-holding-msg">Could not open <b>{{.Title}}</b></p>
   <pre class="wb-error">{{.Error}}</pre>
+  {{if .Log}}<p class="wb-faint">Details are in {{.Log}}</p>{{end}}
   {{end}}
   <p class="wb-holding-actions">{{if .Retry}}<a class="wb-btn wb-primary" href="{{.Retry}}">Retry</a>{{end}}{{if .Choose}}<a class="wb-btn wb-primary" href="{{.Choose}}">Choose a clone</a>{{end}}<a class="wb-btn" href="{{.Base}}" target="punk0-agents">Back to punk0 agents</a></p>
 </main>
@@ -1932,6 +1958,9 @@ var holdingTmpl = template.Must(template.New("holding").Parse(`<!doctype html>
 
 func (wb *workbench) renderHolding(w http.ResponseWriter, p holdingPage) {
 	p.Base, p.Theme = wb.basePath, wbTheme()
+	if !p.Starting {
+		p.Log = applog.Path()
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	holdingTmpl.Execute(w, p)
 }
@@ -2234,7 +2263,19 @@ func runCtx(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 }
 
 // runCtxTo is runCtx with the command's output going to w as it is written.
-func runCtxTo(ctx context.Context, cmd *exec.Cmd, w io.Writer) error {
+// A command that fails or takes over slowCommand is logged: these are the
+// clones and fetches that hang on a network.
+func runCtxTo(ctx context.Context, cmd *exec.Cmd, w io.Writer) (err error) {
+	start := time.Now()
+	defer func() {
+		d := time.Since(start)
+		switch {
+		case err != nil:
+			slog.Warn("command failed", "cmd", strings.Join(cmd.Args, " "), "dir", tildePath(cmd.Dir), "ms", d.Milliseconds(), "err", err)
+		case d > slowCommand:
+			slog.Info("command slow", "cmd", strings.Join(cmd.Args, " "), "dir", tildePath(cmd.Dir), "ms", d.Milliseconds())
+		}
+	}()
 	cmd.Stdout, cmd.Stderr = w, w
 	setProcessGroup(cmd)
 	// exec only runs Cancel for a CommandContext command: it is called here.
@@ -2259,6 +2300,9 @@ func runCtxTo(ctx context.Context, cmd *exec.Cmd, w io.Writer) error {
 		return ctx.Err()
 	}
 }
+
+// slowCommand is when runCtxTo logs a command that succeeded.
+const slowCommand = 5 * time.Second
 
 func tildePath(p string) string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {

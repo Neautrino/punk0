@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"px0/internal/applog"
 	"px0/internal/settings"
 	"px0/internal/telemetry"
 	"px0/internal/ui"
@@ -88,6 +90,9 @@ func main() {
 	}
 	if *noGit {
 		gitDisabled = true
+	}
+	if *wbChild {
+		startChildLog()
 	}
 
 	if *showVer || *showVerShort || (flag.NArg() == 1 && flag.Arg(0) == "version") {
@@ -155,6 +160,9 @@ func main() {
 	var initialLine int
 	var targetDur time.Duration
 	if isPR {
+		if !*wbChild {
+			startLog()
+		}
 		sp := ui.NewSpinner(fmt.Sprintf("Preparing PR #%d (%s/%s)...", prTarget.Number, prTarget.Owner, prTarget.Repo), os.Stdout)
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		// Outside a clone of the PR's repository, use one punk0 knows (the
@@ -198,6 +206,9 @@ func main() {
 		fatal(err)
 	}
 	listenDur := time.Since(tListen)
+	if !*wbChild {
+		slog.Info("punk0 started", startupAttrs(addr)...)
+	}
 
 	tInit := time.Now()
 	ix := NewIndex(root)
@@ -407,6 +418,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		handOff(u, initial, port, open)
 		return
 	}
+	startLog()
 	exe, err := os.Executable()
 	if err != nil {
 		fatal(err)
@@ -429,6 +441,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	if err != nil {
 		fatal(err)
 	}
+	slog.Info("punk0 started", startupAttrs(addr)...)
 	wb, err := newWorkbench(basePath, cwd, exe, append(childArgs, "-workbench-host", host))
 	if err != nil {
 		fatal(err)
@@ -515,6 +528,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	go func() {
 		<-stop
 		interrupted = true
+		slog.Info("punk0 stopped", "reason", "interrupted")
 		fmt.Print("\r")
 		ui.Status("info", "punk0 stopped", "", 0, os.Stderr)
 		go func() {
@@ -540,6 +554,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		restoreEcho()
 		fatal(err)
 	}
+	slog.Info("punk0 stopped")
 }
 
 // handOff gives a folder to the punk0 that is already running, so
@@ -935,6 +950,9 @@ func isWSL() bool {
 }
 
 func fatal(err error) {
+	if applog.Enabled() {
+		slog.Error("fatal", "err", err)
+	}
 	fmt.Fprintln(os.Stderr, "punk0:", err)
 	os.Exit(1)
 }
