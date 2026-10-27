@@ -25,6 +25,8 @@ flowchart LR
 
 On load the page selects `?ws=<id>` when present, saves it as `punk0.ws` and drops the parameter with `history.replaceState` (`initialWs`, `web/src/orch/store.js`); otherwise it restores `punk0.ws`. A `select` event reloads the list, since the folder was just registered, then selects the workspace (`web/src/workbench.js`). `Close` ends the event streams first so they do not hold up `Shutdown`.
 
+Terminal output after the startup block is `ui.Event` lines (`HH:MM  glyph what where  note`). Names come from `Records.TabLabel` and `Records.WorkspaceLabel` (`workspaceLabel`: "project / workspace", the project alone when its folder's workspace has the same name, a scratch chat's title). `handleTerm` prints `▶` when `Satellite.Shell` reports it started a shell, and waits on `Shell.exitedByItself` to print `■ … exited`; `Shell.Close` sets `closed`, so stops by punk0 (idle, tab removed, shutdown) print nothing there. `reapTabs` and `reapChildren` print their own `■ … idle N min`, and `handlePageShow` prints `+ opened`. The printed agents URL omits `?ws=` unless no browser opens. `ui.NoEcho` clears `ECHO` on stdin's terminal (`ENABLE_ECHO_INPUT` on a Windows console) after the startup block; `runWorkbench` restores it on return and before every `os.Exit` and `fatal`. Signals are untouched, so Ctrl-C still works; a punk0 killed with SIGKILL leaves echo off until `stty sane` or the shell resets it.
+
 The page sets `window.name = 'punk0-agents'`; `openEditor` opens editors in `punk0-w-<id>`, and the editor's back link (`web/src/main.js`) targets `punk0-agents`, so each page reuses its own browser tab.
 
 ## Records (`records.go`)

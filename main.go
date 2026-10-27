@@ -446,8 +446,10 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	wb.serveFrom(self)
 
 	// `punk0 <dir>` opens the agents page on that folder's workspace; the
-	// editor only opens for a file, since only it can show one.
-	editor := ""
+	// editor only opens for a file, since only it can show one. The page
+	// is opened at ?ws=<id>, which is not printed unless no browser opens:
+	// the project line says where it lands.
+	editor, target, project := "", u, ""
 	if initial != "" {
 		root, file, line, err := resolveTarget(initial)
 		if err != nil {
@@ -460,11 +462,19 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		if file != "" {
 			editor = editorURL(u, wb.childHref(wbItemID("dir", ws.Dir)), file, line)
 		}
-		u = agentsURL(u, ws.ID)
+		target = agentsURL(u, ws.ID)
+		project = wb.records.WorkspaceLabel(ws.ID) + "  " + ui.Dim(tildePath(ws.Dir), os.Stdout)
+	}
+	shown := u
+	if !open {
+		shown = target
 	}
 
 	ui.Heading("punk0 "+version, nil, os.Stdout)
-	ui.KV("agents", ui.Accent(u, os.Stdout), 11, os.Stdout)
+	ui.KV("agents", ui.Accent(shown, os.Stdout), 11, os.Stdout)
+	if project != "" {
+		ui.KV("project", project, 11, os.Stdout)
+	}
 	if editor != "" {
 		ui.KV("editor", ui.Accent(editor, os.Stdout), 11, os.Stdout)
 	}
@@ -477,12 +487,19 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		ui.Status("warn", "anyone who can reach this address can browse and open any directory on this machine", "", 0, os.Stdout)
 	}
 	ui.Hint("ctrl-c to stop", os.Stdout)
+	if !ui.Quiet {
+		fmt.Println() // the event lines start below
+	}
+	// Nothing reads this terminal: keys typed into it would only echo
+	// between the event lines. Every way out puts echo back.
+	restoreEcho := ui.NoEcho(os.Stdin)
+	defer restoreEcho()
 	if open {
 		// general.openBrowser skips only a bare start's agents page: the
 		// folder or file `punk0 <target>` asked for still opens, as a
 		// hand-off's does.
 		if initial != "" || settings.SettingOr[bool]("general.openBrowser") {
-			go openBrowser(u)
+			go openBrowser(target)
 		}
 		if editor != "" {
 			go openBrowser(editor)
@@ -502,6 +519,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		ui.Status("info", "punk0 stopped", "", 0, os.Stderr)
 		go func() {
 			<-stop
+			restoreEcho()
 			os.Exit(130)
 		}()
 		// Children first: their open event streams would hold Shutdown up.
@@ -514,10 +532,12 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	wb.Close()
 	if interrupted {
 		removeWorkbenchLock()
+		restoreEcho()
 		os.Exit(130)
 	}
 	if err != nil && err != http.ErrServerClosed {
 		removeWorkbenchLock()
+		restoreEcho()
 		fatal(err)
 	}
 }
@@ -557,13 +577,14 @@ func handOff(base, initial string, port int, open bool) {
 	}
 	_ = postWorkbench(base, "api/wb/show", map[string]string{"workspace": added.Workspace}, &shown)
 	agents := agentsURL(base, added.Workspace)
-	if shown.Pages > 0 {
-		ui.Status("ok", "punk0 already running", "switched the open agents page to "+root, 0, os.Stdout)
-	} else {
+	switch {
+	case shown.Pages > 0:
+		ui.Status("ok", "punk0 already running", "switched the open agents page to "+tildePath(root), 0, os.Stdout)
+	case open:
+		ui.Status("ok", "punk0 already running", "opening "+tildePath(root)+" in a new browser tab", 0, os.Stdout)
+		openBrowser(agents)
+	default:
 		ui.Status("ok", "punk0 already running", agents, 0, os.Stdout)
-		if open {
-			openBrowser(agents)
-		}
 	}
 	if file != "" {
 		editor := editorURL(base, added.Href, file, line)

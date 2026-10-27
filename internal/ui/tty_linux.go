@@ -2,13 +2,9 @@
 
 package ui
 
-import (
-	"syscall"
-	"unsafe"
-)
+import "syscall"
 
-func checkTerminalFD(fd uintptr) bool {
-	var termios syscall.Termios
-	_, _, err := syscall.Syscall6(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&termios)), 0, 0, 0)
-	return err == 0
-}
+const (
+	ioctlGetTermios = syscall.TCGETS
+	ioctlSetTermios = syscall.TCSETS
+)

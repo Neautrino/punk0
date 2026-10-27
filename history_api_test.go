@@ -422,7 +422,7 @@ func TestHistoryDeleteClosesTheTabAndRemovesTheTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The shell finds no claude on PATH; what matters is that the tab runs.
-	if _, err := tab.Shell(); err != nil {
+	if _, _, err := tab.Shell(); err != nil {
 		t.Skipf("no shell to run: %v", err)
 	}
 	if w := reqJSON(t, wb, "DELETE", "/api/history/claude/"+id, ""); w.Code != http.StatusOK {

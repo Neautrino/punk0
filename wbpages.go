@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
+
+	"px0/internal/ui"
 )
 
 // pageHub holds the agents pages open in browsers, each listening on
@@ -114,5 +117,11 @@ func (wb *workbench) handlePageShow(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "no such workspace")
 		return
 	}
-	writeJSON(w, map[string]any{"pages": wb.pages.show(body.Workspace)})
+	n := wb.pages.show(body.Workspace)
+	note := "from another terminal"
+	if n == 0 {
+		note += ", no agents page open"
+	}
+	ui.Event("add", "opened", wb.records.WorkspaceLabel(body.Workspace), note, os.Stdout)
+	writeJSON(w, map[string]any{"pages": n})
 }

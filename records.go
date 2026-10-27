@@ -113,11 +113,13 @@ type Satellite struct {
 }
 
 // Shell returns the tab's running shell, starting one if there is none or the
-// last one exited. An agent tab's shell runs the agent first: a new session
-// on the tab's first start, else a resume (agentCommand).
-func (s *Satellite) Shell() (*Shell, error) {
+// last one exited; started says it did. An agent tab's shell runs the agent
+// first: a new session on the tab's first start, else a resume
+// (agentCommand).
+func (s *Satellite) Shell() (*Shell, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	started := false
 	if s.sh == nil || s.sh.Exited() {
 		var env []string
 		if s.hook != "" {
@@ -126,11 +128,12 @@ func (s *Satellite) Shell() (*Shell, error) {
 		shell := terminalShell()
 		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell)), env)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		s.sh, s.newChat = sh, false
+		started = true
 	}
-	return s.sh, nil
+	return s.sh, started, nil
 }
 
 // command is the line the tab's next start runs, in a shell of syntax sx.
@@ -931,6 +934,52 @@ func (r *Records) Tab(id string) *Satellite {
 		return w.Tabs[i]
 	}
 	return nil
+}
+
+// workspaceLabel names a workspace as the agents page heads it: "project /
+// workspace", just "project" for a project's own folder named alike, or a
+// scratch chat's title.
+func workspaceLabel(p *Project, w *Workspace) string {
+	if !p.Scratch {
+		if w.Name == p.Name {
+			return p.Name
+		}
+		return p.Name + " / " + w.Name
+	}
+	if w.Title != "" {
+		return w.Title
+	}
+	return w.Name
+}
+
+// WorkspaceLabel names workspace id, or the folder of backend id (as
+// WorkspaceAt), for the terminal punk0 runs in; "" when there is none.
+func (r *Records) WorkspaceLabel(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if w.ID == id || wbItemID("dir", w.Dir) == id {
+				return workspaceLabel(p, w)
+			}
+		}
+	}
+	return ""
+}
+
+// TabLabel names the workspace tab id runs in, for the terminal punk0 runs
+// in; the id itself when the tab is gone.
+func (r *Records) TabLabel(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if slices.ContainsFunc(w.Tabs, func(t *Satellite) bool { return t.ID == id }) {
+				return workspaceLabel(p, w)
+			}
+		}
+	}
+	return id
 }
 
 // RemoveChat takes one of the agents' chats out of Chats mode, or lists it

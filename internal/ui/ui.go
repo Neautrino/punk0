@@ -191,6 +191,37 @@ func Bullet(text string, w io.Writer) {
 	fmt.Fprintf(w, "  %s %s\n", Faint("·", w), text)
 }
 
+// Event prints one timestamped line about something that happened while
+// punk0 runs, naming what and where, with an optional dimmed note:
+//
+//	21:41  ▶ claude   punk0 / ac
+//	22:12  ■ claude   punk0 / ac  idle 30 min
+//
+// role picks the glyph: "start" ▶, "stop" ■, "add" +, "warn" !.
+func Event(role, what, where, note string, w io.Writer) {
+	if Quiet {
+		return
+	}
+	var g string
+	switch role {
+	case "start":
+		g = Paint("▶", ColorOk, false, w)
+	case "stop":
+		g = Dim("■", w)
+	case "add":
+		g = Paint("+", ColorAccent, true, w)
+	case "warn":
+		g = Paint("!", ColorWarn, true, w)
+	default:
+		g = Faint("·", w)
+	}
+	line := fmt.Sprintf("%s  %s %-8s %s", Dim(time.Now().Format("15:04"), w), g, what, where)
+	if note != "" {
+		line += "  " + Dim(note, w)
+	}
+	fmt.Fprintln(w, line)
+}
+
 // Spinner displays an animated spinner on TTY terminals, or clean step messages on non-TTYs.
 type Spinner struct {
 	mu      sync.Mutex

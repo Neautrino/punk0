@@ -823,17 +823,22 @@ func (wb *workbench) reapChildren(limit time.Duration) {
 	if limit == 0 {
 		return
 	}
-	var idle []string
+	type stop struct{ id, title string }
+	var idle []stop
 	wb.mu.Lock()
 	for id, c := range wb.children {
 		if c.state == "running" && c.active == 0 && time.Since(c.lastActive) > limit {
-			idle = append(idle, id)
+			idle = append(idle, stop{id, c.title})
 		}
 	}
 	wb.mu.Unlock()
-	for _, id := range idle {
-		ui.Status("info", "stopped idle workspace", id, 0, os.Stdout)
-		wb.stop(id)
+	for _, s := range idle {
+		where := wb.records.WorkspaceLabel(s.id)
+		if where == "" {
+			where = s.title // a pull request's
+		}
+		ui.Event("stop", "editor", where, idleNote(limit), os.Stdout)
+		wb.stop(s.id)
 	}
 }
 
@@ -847,10 +852,18 @@ func (wb *workbench) reapTabs(limit time.Duration) {
 			continue
 		}
 		if stopIdleTab(t.Kind, t.Status(), sh.Foreground(), sh.IdleFor(), limit) {
-			ui.Status("info", "stopped idle terminal", t.ID, 0, os.Stdout)
+			ui.Event("stop", t.Kind, wb.records.TabLabel(t.ID), idleNote(limit), os.Stdout)
 			t.close()
 		}
 	}
+}
+
+// idleNote says why an idle stop happened: "idle 30 min".
+func idleNote(limit time.Duration) string {
+	if limit%time.Minute == 0 {
+		return fmt.Sprintf("idle %d min", int(limit/time.Minute))
+	}
+	return "idle " + limit.String()
 }
 
 // stopIdleTab decides whether a terminal nothing has used for idleFor may be

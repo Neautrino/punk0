@@ -15,6 +15,20 @@ Running `punk0` with no arguments opens the **agents page** at `/`: your project
 
 Only one punk0 runs per machine. A second `punk0 <dir>` hands its folder to the running one and exits: an agents page already open in a browser switches to the folder, and only when none is open does a new browser tab open on it. A bare second `punk0` opens the page. `-host` and `-port` only apply to the first.
 
+### In the terminal
+
+At start punk0 prints its version, the agents page URL, and for `punk0 <dir>` the project it opened (`project  portfolio  ~/Code/projects/portfolio`). The browser is opened at `?ws=<id>` so the page lands on that project; the printed URL leaves it out unless no browser opens (`-no-open`). A file adds an `editor` line. Then, one timestamped line per event, always naming the project and workspace:
+
+```
+21:40  + opened   punk0  from another terminal
+21:41  ▶ claude   punk0 / ac
+22:12  ■ claude   punk0 / ac  idle 30 min
+22:15  ■ editor   portfolio  idle 5 min
+22:20  ■ shell    portfolio  exited
+```
+
+`+` is a folder handed over by a second `punk0 <dir>`, `▶` a tab started, `■` a tab or an editor process stopped for being idle, or a tab whose shell exited on its own. Problems are marked `!`. Editor processes starting and stopping as you browse, and tabs you close yourself, are not printed; `-v` adds one line per HTTP request. Keys typed into that terminal are not echoed while punk0 runs; echo comes back when it stops.
+
 ## Layout
 
 Three panes: projects on the left, the selected workspace's tabs in the middle, its files on the right. Drag either border to resize its side pane: the projects pane from 200 to 400 px, the files pane from 200 px up to whatever leaves the middle 360 px. The status bar's left and right sections stay 260 px wide, the panes' opening width, whatever the panes' widths; the editor's status bar and side panels use the same 260 px. Double-click a border, or focus it and press Enter, to go back to 260 px; with a border focused, the arrow keys move it 16 px (64 px with Shift) and Home / End jump to its limits. Widths are remembered in this browser, and a narrower window shrinks the files pane first. While you drag, a terminal keeps its size and refits once the pointer rests, so an agent's screen is not redrawn at every pixel.

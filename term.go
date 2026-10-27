@@ -69,6 +69,9 @@ type Shell struct {
 	// lastIO is when the terminal last carried anything, in unix
 	// nanoseconds; the idle reaper stops a tab nobody and nothing has used.
 	lastIO atomic.Int64
+	// closed is set by Close: punk0 stopped the shell, it did not exit on
+	// its own.
+	closed atomic.Bool
 
 	mu      sync.Mutex // guards out, viewers, sizes, exited
 	out     ring
@@ -252,8 +255,16 @@ func (s *Shell) Exited() bool {
 
 // Close hangs up the shell and waits until it is reaped.
 func (s *Shell) Close() {
+	s.closed.Store(true)
 	s.tty.Hangup()
 	<-s.done
+}
+
+// exitedByItself waits until the shell ends and reports whether it ended on
+// its own (exit typed, the process killed) rather than through Close.
+func (s *Shell) exitedByItself() bool {
+	<-s.done
+	return !s.closed.Load()
 }
 
 func (s *Shell) touch() { s.lastIO.Store(time.Now().UnixNano()) }
@@ -424,11 +435,21 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.CloseNow()
-	sh, err := tab.Shell()
+	sh, started, err := tab.Shell()
 	if err != nil {
-		ui.Status("warn", "terminal "+tab.ID, err.Error(), 0, os.Stderr)
+		ui.Event("warn", tab.Kind, wb.records.TabLabel(tab.ID), "could not start: "+err.Error(), os.Stderr)
 		conn.Close(websocket.StatusInternalError, err.Error())
 		return
+	}
+	if started {
+		// Named now: the tab may be gone by the time its shell exits.
+		label := wb.records.TabLabel(tab.ID)
+		ui.Event("start", tab.Kind, label, "", os.Stdout)
+		go func() {
+			if sh.exitedByItself() {
+				ui.Event("stop", tab.Kind, label, "exited", os.Stdout)
+			}
+		}()
 	}
 	sh.Attach(r.Context(), conn)
 }
