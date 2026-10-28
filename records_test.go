@@ -1172,6 +1172,129 @@ func TestRemoveWorkspaceKeepsDetachedCommits(t *testing.T) {
 	runGit(t, repo, "rev-parse", "--verify", "refs/heads/"+onBranch.Branch)
 }
 
+// Moving a worktree into the Workspaces Folder keeps the row it is: same id,
+// tabs, parent and branch, now punk0's own folder, with git's registration
+// and the language-server flag following it.
+func TestMoveWorktreeIntoCodeRoot(t *testing.T) {
+	root := useCodeRoot(t)
+	repo := cleanRepo(t)
+	rec := openRecords(t, t.TempDir())
+	p, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := p.Workspaces[0]
+	elsewhere := filepath.Join(tempDir(t), "elsewhere")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "x", elsewhere)
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{From: elsewhere, Worktree: true, Parent: main.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := rec.AddTab(w.ID, tabShell, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.SetLSP(elsewhere, true); err != nil {
+		t.Fatal(err)
+	}
+
+	old, err := rec.MoveWorktree(w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "workspaces", p.ID, "elsewhere")
+	got := rec.Workspace(w.ID)
+	if old != elsewhere || got == nil || got.Dir != want {
+		t.Fatalf("moved %s to %+v, want %s", old, got, want)
+	}
+	if got.Adopted || got.Parent != main.ID || got.Branch != "x" || len(got.Tabs) != 1 || got.Tabs[0].ID != tab.ID {
+		t.Fatalf("the moved row: %+v", got)
+	}
+	if tab.dir != want {
+		t.Fatalf("the tab still runs in %s", tab.dir)
+	}
+	if !rec.LSPOn(want) || rec.LSPOn(elsewhere) {
+		t.Fatalf("language servers on %s: %v, on %s: %v", want, rec.LSPOn(want), elsewhere, rec.LSPOn(elsewhere))
+	}
+	if isDir(elsewhere) {
+		t.Fatal("the old folder is still there")
+	}
+	if out := runGit(t, repo, "worktree", "list"); !strings.Contains(out, want) {
+		t.Fatalf("git lists:\n%s\nwant %s", out, want)
+	}
+	// It is punk0's own folder now, so removing the workspace offers it.
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{Files: true}); err != nil {
+		t.Fatalf("remove the moved worktree: %v", err)
+	}
+}
+
+// Everything MoveWorktree refuses is refused before anything moves.
+func TestMoveWorktreeRefusals(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	rec := wb.records
+	p, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := p.Workspaces[0]
+	inside, err := addWorkspace(rec, p.ID, "inside", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(tempDir(t), "locked")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "locked", locked)
+	runGit(t, repo, "worktree", "lock", locked)
+	lockedWS, err := rec.AdoptWorktree(p.ID, locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	busy := filepath.Join(tempDir(t), "busy")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "busy", busy)
+	busyWS, err := rec.AdoptWorktree(p.ID, busy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := rec.AddTab(busyWS.ID, tabShell, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A machine with no usable shell still checks every other refusal.
+	busyRuns := false
+	if _, _, err := tab.Shell(); err == nil {
+		busyRuns = tab.running()
+	}
+	gone := filepath.Join(tempDir(t), "gone")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "gone", gone)
+	goneWS, err := rec.AdoptWorktree(p.ID, gone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	type refusal struct{ what, id, want string }
+	cases := []refusal{
+		{"a local workspace", local.ID, "worktree"},
+		{"one already inside", inside.ID, "already"},
+		{"a locked worktree", lockedWS.ID, "locked"},
+		{"a worktree whose folder is gone", goneWS.ID, "gone"},
+		{"an unknown workspace", "nope", "not found"},
+	}
+	if busyRuns {
+		cases = append(cases, refusal{"a worktree with a running tab", busyWS.ID, "stop its tabs"})
+	}
+	for _, c := range cases {
+		_, err := rec.MoveWorktree(c.id)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("move %s: %v, want an error naming %q", c.what, err, c.want)
+		}
+	}
+	if got := rec.Workspace(lockedWS.ID).Dir; got != locked {
+		t.Fatalf("the locked worktree moved to %s", got)
+	}
+}
+
 // tempDir is t.TempDir with symlinks resolved, the way git reports worktree
 // folders.
 func tempDir(t *testing.T) string {

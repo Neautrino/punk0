@@ -728,12 +728,13 @@ function openChatMenu(w, at) {
     <button type="button" role="menuitem" data-menu="archive">Archive</button>`, at);
 }
 
-// The workspace actions menu: copy its path, open its folder, rename,
-// delete.
+// The workspace actions menu: copy its path, open its folder, move a
+// worktree that sits outside the Workspaces Folder into it, rename, delete.
 function openWorkspaceMenu(w, at) {
   showChatMenu({ mode: 'ws', id: w.id }, `
     <button type="button" role="menuitem" data-menu="ws-copy">Copy path</button>
     <button type="button" role="menuitem" data-menu="ws-open">Open folder</button>
+    ${w.outside ? '<button type="button" role="menuitem" data-menu="ws-move">Move into punk0…</button>' : ''}
     <div class="o-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" data-menu="ws-rename">Rename…</button>
     <div class="o-menu-sep" role="separator"></div>
@@ -745,6 +746,21 @@ function openWorkspaceMenu(w, at) {
 async function openWorkspaceFolder(w) {
   const res = await call('POST', `api/workspaces/${encodeURIComponent(w.id)}/open`);
   if (!res.ok) failed(res);
+}
+
+// moveWorkspace moves a worktree made outside punk0 into the Workspaces
+// Folder, keeping the row, its tabs and its branch. The agents file their
+// chats by folder, so the ones started in the old folder do not resume there.
+async function moveWorkspace(w) {
+  const root = getSetting('workspace.dir') || '~/punk0';
+  const ok = confirm(`Move "${w.name}" into punk0's workspaces folder?\n\n`
+    + `${tildify(w.dir)} moves under ${root}/workspaces/. Its tabs must be stopped. `
+    + `Agent chats started in the old folder won't resume in the new one (agents file chats by folder).`);
+  if (!ok) return;
+  const res = await call('POST', `api/workspaces/${encodeURIComponent(w.id)}/move`);
+  if (!res.ok) failed(res);
+  else showToast('✓', `Moved to ${tildify(res.data.dir)}`, 6000);
+  reload();
 }
 
 // renameWorkspace asks for a new label; the folder and branch stay.
@@ -774,6 +790,7 @@ async function onChatMenu(e) {
   if (act === 'ws-copy') return copyToClipboard(w.dir, 'Path copied');
   if (act === 'ws-open') return openWorkspaceFolder(w);
   if (what.mode === 'ws') {
+    if (act === 'ws-move') return moveWorkspace(w);
     if (act === 'ws-rename') return renameWorkspace(w);
     // The ⋯ that opened the menu hides with the row's hover: the dialog
     // points at the row.

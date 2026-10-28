@@ -937,6 +937,86 @@ func linkedWorktree(repo, dir string) error {
 	return nil
 }
 
+// MoveWorktree moves a worktree workspace's folder into the Workspaces
+// Folder, to <root>/workspaces/<project>/<folder>, and returns where it was.
+// git moves the folder with its registration, so the row keeps its id, name,
+// tabs, chats and parent and stops being adopted. Everything that can refuse
+// -- another kind of workspace, one already in there, a folder that is gone,
+// a running tab, a locked or stale registration -- answers before anything
+// moves. The agents' chats do not follow: they are filed by folder, so a
+// chat started in the old folder does not resume in the new one.
+func (r *Records) MoveWorktree(id string) (old string, err error) {
+	root, err := codeRoot()
+	if err != nil {
+		return "", err
+	}
+	r.mu.Lock()
+	p, i := r.workspaceLocked(id)
+	if p == nil {
+		r.mu.Unlock()
+		return "", fmt.Errorf("workspace %q: %w", id, errNotFound)
+	}
+	w := p.Workspaces[i]
+	repo, old := p.Dir, w.Dir
+	var target string
+	switch {
+	case w.Kind != kindWorktree:
+		err = errors.New("only a worktree has a folder of its own to move")
+	case r.ownWorktree(old, root):
+		err = fmt.Errorf("%s is in the Workspaces Folder already", tildePath(old))
+	case !isDir(old):
+		err = fmt.Errorf("%s is gone: there is nothing to move", tildePath(old))
+	case slices.ContainsFunc(w.Tabs, func(t *Satellite) bool { return t.running() }):
+		err = errors.New("stop its tabs first: they run in the folder being moved")
+	}
+	if err == nil {
+		// Reserved like AddWorkspace's folder, so git runs off the lock.
+		dirs, folder := filepath.Join(root, "workspaces", p.ID), filepath.Base(old)
+		target = filepath.Join(dirs, folder)
+		for n := 2; r.creating[target] || exists(target); n++ {
+			target = filepath.Join(dirs, folder+"-"+strconv.Itoa(n))
+		}
+		r.creating[target] = true
+	}
+	r.mu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		r.mu.Lock()
+		delete(r.creating, target)
+		r.mu.Unlock()
+	}()
+
+	if err := linkedWorktree(repo, old); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return "", err
+	}
+	// git refuses a worktree with submodules, and says so.
+	if out, err := exec.Command("git", "-C", repo, "worktree", "move", old, target).CombinedOutput(); err != nil {
+		return "", gitError(out, err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, i = r.workspaceLocked(id)
+	if p == nil {
+		// Deleted while git moved it. The folder stays at its new place,
+		// which the New workspace panel offers to adopt.
+		return "", fmt.Errorf("workspace %q was deleted while its worktree moved to %s", id, tildePath(target))
+	}
+	w = p.Workspaces[i]
+	w.Dir, w.Adopted = target, false
+	if r.lsp[old] {
+		delete(r.lsp, old)
+		r.lsp[target] = true
+	}
+	r.adoptLocked(w)
+	return old, r.saveLocked()
+}
+
 // moveToTrash moves path into <state>/trash, stamped with the time and, if
 // that name is taken, numbered, and returns where it went. A project folder
 // punk0 deletes for the user is never removed outright: a rename can be

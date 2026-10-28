@@ -453,6 +453,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceUpdate)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/open"), wb.handleWorkspaceOpen)
+	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/move"), wb.handleWorkspaceMove)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
 	wb.mux.HandleFunc("GET "+wb.route("/api/workspaces/{id}/tabs"), wb.handleWorkspaceTabs)
 	wb.mux.HandleFunc("POST "+wb.route("/api/chats"), wb.handleChatAdd)
@@ -1554,6 +1555,38 @@ func (wb *workbench) handleWorkspaceOpen(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "dir": ws.Dir})
+}
+
+// handleWorkspaceMove serves POST /api/workspaces/{id}/move: the worktree
+// goes into the Workspaces Folder (Records.MoveWorktree). The child serving
+// the old folder is stopped first: it holds the folder as its working
+// directory, which Windows refuses to move. A refusal is 409, so the page can
+// show why without treating it as a broken request.
+func (wb *workbench) handleWorkspaceMove(w http.ResponseWriter, r *http.Request) {
+	if !wb.localOnly {
+		fail(w, http.StatusForbidden, "a worktree moves only when punk0 listens on this machine")
+		return
+	}
+	if !localPost(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	ws := wb.records.Workspace(id)
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	wb.stop(wbItemID("dir", ws.Dir))
+	old, err := wb.records.MoveWorktree(id)
+	if err != nil {
+		if errors.Is(err, errNotFound) {
+			fail(w, http.StatusNotFound, err.Error())
+			return
+		}
+		fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "dir": wb.records.Workspace(id).Dir, "from": old})
 }
 
 /* ---------- scratch chats (scratch.go) ---------- */

@@ -1084,6 +1084,49 @@ func TestWorkspaceOpenFolderLoopbackOnly(t *testing.T) {
 	}
 }
 
+// POST /api/workspaces/{id}/move moves a foreign worktree into the
+// Workspaces Folder; a workspace that cannot move says why with a 409.
+func TestWorkbenchMoveWorktree(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	wb.localOnly = true
+	root, err := codeRootPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+p.Workspaces[0].ID+"/move", ""); w.Code != http.StatusConflict {
+		t.Fatalf("move a local workspace: %d %s, want 409", w.Code, w.Body.String())
+	}
+	elsewhere := filepath.Join(tempDir(t), "elsewhere")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "x", elsewhere)
+	ws, err := wb.records.AdoptWorktree(p.ID, elsewhere)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := reqJSON(t, wb, "POST", "/api/workspaces/"+ws.ID+"/move", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("move: %d %s", w.Code, w.Body.String())
+	}
+	var moved struct{ Dir, From string }
+	decode(t, w.Body, &moved)
+	want := filepath.Join(root, "workspaces", p.ID, "elsewhere")
+	if moved.Dir != want || moved.From != elsewhere {
+		t.Fatalf("moved %+v, want %s from %s", moved, want, elsewhere)
+	}
+	if got := wb.records.Workspace(ws.ID); got.Dir != want || got.Adopted {
+		t.Fatalf("the row after the move: %+v", got)
+	}
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+ws.ID+"/move", ""); w.Code != http.StatusConflict {
+		t.Fatalf("move it again: %d %s, want 409", w.Code, w.Body.String())
+	}
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/nope/move", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown workspace: %d, want 404", w.Code)
+	}
+}
+
 func waitFor(t *testing.T, ok func() bool) {
 	t.Helper()
 	for deadline := time.Now().Add(10 * time.Second); !ok(); {
