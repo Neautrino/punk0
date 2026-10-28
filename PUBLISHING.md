@@ -24,6 +24,15 @@ make build
 ./punk0 -version
 ```
 
+### Update the changelog
+
+Before tagging, finish the release's entry in [CHANGELOG.md](CHANGELOG.md):
+
+1. Change the heading `## [x.y.z] - Unreleased` to the release date, e.g. `## [0.2.0] - 2026-11-15`.
+1. Fix the reference link at the bottom so it points at the tag instead of `HEAD`: `[0.2.0]: https://github.com/Neautrino/punk0/releases/tag/v0.2.0`. When you start the next version, add its `## [x.y.z] - Unreleased` heading and a compare link such as `[0.2.1]: https://github.com/Neautrino/punk0/compare/v0.2.0...HEAD`.
+
+The site's changelog page ([punk0-web](https://github.com/Neautrino/punk0-web)) is built from `CHANGELOG.md` on `main`. Pushing a change to it runs the Site workflow, which calls the site's deploy hook (secret `SITE_DEPLOY_HOOK`); the site build fails on a malformed changelog, so keep the Keep a Changelog format.
+
 ## 3. Release Methods
 ### Method 1: Automated Release via Makefile (Recommended)
 

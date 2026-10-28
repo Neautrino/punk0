@@ -1,0 +1,28 @@
+name: Site
+
+# The landing site lives in Neautrino/punk0-web and renders its changelog page
+# from this repository's CHANGELOG.md at build time. Rebuild it whenever the
+# changelog on main changes.
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    name: Rebuild the site
+    runs-on: ubuntu-latest
+
+    steps:
+      # SITE_DEPLOY_HOOK is the Cloudflare Workers Builds deploy hook URL of
+      # the punk0-web worker (Settings > Builds > Deploy Hooks).
+      - name: Call the deploy hook
+        env:
+          SITE_DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$SITE_DEPLOY_HOOK" ]; then
+            echo "::error::secret SITE_DEPLOY_HOOK is not set"
+            exit 1
+          fi
+          curl -fsS -X POST "$SITE_DEPLOY_HOOK"
