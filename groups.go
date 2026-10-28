@@ -170,6 +170,7 @@ type wsRef struct {
 	Branch      string `json:"branch,omitempty"`
 	Parent      string `json:"parent,omitempty"`
 	Adopted     bool   `json:"-"`
+	Auto        bool   `json:"-"`
 	Project     string `json:"-"`
 	ProjectName string `json:"-"`
 	Scratch     bool   `json:"-"`
@@ -182,7 +183,7 @@ func (r *Records) WorkspaceRefs() []wsRef {
 	var out []wsRef
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			out = append(out, wsRef{ID: w.ID, Name: cmp.Or(w.Title, w.Name), Kind: w.Kind, Dir: w.Dir, Branch: w.Branch, Parent: w.Parent, Adopted: w.Adopted, Project: p.ID, ProjectName: p.Name, Scratch: p.Scratch})
+			out = append(out, wsRef{ID: w.ID, Name: cmp.Or(w.Title, w.Name), Kind: w.Kind, Dir: w.Dir, Branch: w.Branch, Parent: w.Parent, Adopted: w.Adopted, Auto: w.Auto, Project: p.ID, ProjectName: p.Name, Scratch: p.Scratch})
 		}
 	}
 	return out

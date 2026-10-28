@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -93,6 +94,7 @@ type Workspace struct {
 	Active   int64        `json:"active,omitempty"`   // unix ms of the last prompt, else of creation
 	Created  int64        `json:"created,omitempty"`  // unix ms the chat was made
 	Adopted  bool         `json:"adopted,omitempty"`  // worktree kind: a folder punk0 did not make, used where it is
+	Auto     bool         `json:"auto,omitempty"`     // worktree kind: an agent made it, not the user, so it is forgotten once its folder is gone
 	Owned    bool         `json:"owned,omitempty"`    // folder kind: punk0 made this folder, so it goes with the chat
 	Parent   string       `json:"parent,omitempty"`   // worktree kind: the workspace it is listed under, "" at the top
 	Tabs     []*Satellite `json:"tabs"`
@@ -317,6 +319,9 @@ func OpenRecords(home string) (*Records, error) {
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
 			r.adoptLocked(w)
+			// Before Auto, an agent's worktree was the one listed under
+			// another and adopted: every agent-made folder was outside punk0's.
+			w.Auto = w.Auto || (w.Parent != "" && w.Adopted)
 			// Chats opened before membership was kept belong where their tab is.
 			for _, t := range w.Tabs {
 				if k := chatKey(t.Kind, t.Session); t.Session != "" && r.chatWorkspaces[k] == "" {
@@ -398,8 +403,9 @@ type workspaceView struct {
 	*Workspace
 	Branch  string    `json:"branch"`
 	Missing bool      `json:"missing"`
-	Href    string    `json:"href"`    // the editor view for this folder
-	Backend string    `json:"backend"` // state of the child serving the folder
+	Outside bool      `json:"outside,omitempty"` // worktree kind: it sits outside the Workspaces Folder, so the row says where
+	Href    string    `json:"href"`              // the editor view for this folder
+	Backend string    `json:"backend"`           // state of the child serving the folder
 	LSP     bool      `json:"lsp"`
 	Tabs    []tabView `json:"tabs"`
 }
@@ -421,9 +427,12 @@ type tabView struct {
 }
 
 // List returns the tree with live state: current branches, worktree folders
-// deleted outside punk0, and which tabs have a running shell. Backend and
-// Href are filled in by the workbench, which owns the children.
+// deleted outside punk0, which worktrees sit outside the Workspaces Folder,
+// and which tabs have a running shell. Backend and Href are filled in by the
+// workbench, which owns the children.
 func (r *Records) List() []projectView {
+	// The code root is resolved once per listing, off the lock: it stats.
+	root, _ := codeRootPath()
 	r.mu.Lock()
 	// Slices start non-nil so an empty project or workspace encodes as [].
 	views := make([]projectView, len(r.projects))
@@ -457,6 +466,7 @@ func (r *Records) List() []projectView {
 		}
 		for j := range pv.Workspaces {
 			wv := &pv.Workspaces[j]
+			wv.Outside = wv.Kind == kindWorktree && !r.ownWorktree(wv.Dir, root)
 			switch {
 			case wv.Kind == kindLocal:
 				wv.Branch = pv.Branch
@@ -477,9 +487,11 @@ func (r *Records) List() []projectView {
 // View returns one workspace the way List does, for the answer to the request
 // that made it. The workbench fills in Href and Backend.
 func (r *Records) View(ws *Workspace) workspaceView {
+	root, _ := codeRootPath()
 	r.mu.Lock()
 	wc := *ws
 	v := workspaceView{Workspace: &wc, Branch: ws.Branch, LSP: r.lsp[ws.Dir]}
+	v.Outside = ws.Kind == kindWorktree && !r.ownWorktree(ws.Dir, root)
 	tabs := slices.Clone(ws.Tabs)
 	r.mu.Unlock()
 	if !isDir(ws.Dir) {
@@ -759,13 +771,41 @@ func (r *Records) Removed() []removedView {
 }
 
 // RemoveOptions is what a removal dialog answers with: Force deletes a
-// worktree that has uncommitted changes, Files deletes folders as well as
-// records, and Confirm is the project name typed back before its folder is
-// moved to the trash.
+// worktree that has uncommitted changes, Lose deletes one whose commits are
+// on no branch, Files deletes folders as well as records, and Confirm is the
+// project name typed back before its folder is moved to the trash.
 type RemoveOptions struct {
 	Force   bool
+	Lose    bool
 	Files   bool
 	Confirm string
+}
+
+// lostCommitsError says how many commits a removal would leave on no ref;
+// only RemoveOptions.Lose goes ahead with it.
+type lostCommitsError struct{ n int }
+
+func (e *lostCommitsError) Error() string {
+	what := "commits are"
+	if e.n == 1 {
+		what = "commit is"
+	}
+	return fmt.Sprintf("%d %s on no branch", e.n, what)
+}
+
+// lostCommits counts the commits only dir's detached HEAD reaches. Removing
+// a worktree keeps its branch, so a branch loses nothing; a detached HEAD
+// (OpenCode and Codex make worktrees that way) leaves its commits on no ref,
+// for git gc to delete.
+func lostCommits(dir string) (int, error) {
+	if exec.Command("git", "-C", dir, "symbolic-ref", "-q", "HEAD").Run() == nil {
+		return 0, nil
+	}
+	out, err := exec.Command("git", "-C", dir, "rev-list", "--count", "HEAD", "--not", "--branches", "--remotes", "--tags").Output()
+	if err != nil {
+		return 0, fmt.Errorf("git rev-list: %w", err)
+	}
+	return strconv.Atoi(strings.TrimSpace(string(out)))
 }
 
 // RemoveWorkspace stops the workspace's tabs and forgets it; the worktrees
@@ -777,7 +817,8 @@ type RemoveOptions struct {
 // listWorktrees agrees the folder is a linked worktree of this project,
 // which is what makes an adopted folder safe to remove and the project's own
 // checkout impossible to; it answers errDirty while the worktree has
-// uncommitted changes unless o.Force is set. The branch is kept unless
+// uncommitted changes unless o.Force is set, and a lostCommitsError while a
+// detached HEAD holds commits no ref keeps unless o.Lose is. The branch is kept unless
 // workspace.deleteMergedBranch is on; then git deletes it if merged, and
 // note says why when it did not. A local workspace never touches the project
 // folder, and a scratch chat's folder goes with it exactly when punk0 made
@@ -805,6 +846,17 @@ func (r *Records) RemoveWorkspace(id string, o RemoveOptions) (note string, err 
 	if worktree && exists {
 		if err := linkedWorktree(p.Dir, w.Dir); err != nil {
 			return "", err
+		}
+		// Independent of Force: a page that confirmed uncommitted changes has
+		// not been asked about commits yet.
+		if !o.Lose {
+			n, err := lostCommits(w.Dir)
+			if err != nil {
+				return "", err
+			}
+			if n > 0 {
+				return "", &lostCommitsError{n}
+			}
 		}
 		if !o.Force {
 			out, err := exec.Command("git", "-C", w.Dir, "status", "--porcelain").Output()

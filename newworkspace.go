@@ -40,6 +40,7 @@ type WorkspaceOptions struct {
 	Agent    string `json:"agent"`    // the first tab: a tabAgents key or "shell"; "" opens no tab
 	LSP      bool   `json:"lsp"`      // language servers on in the new folder
 	Parent   string `json:"-"`        // a worktree an agent made: its agent's workspace, which it is listed under
+	Auto     bool   `json:"-"`        // an agent made this worktree, not the user (Workspace.Auto)
 
 	fetched bool // Base was just fetched (a pull request's head)
 }
@@ -424,7 +425,7 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 		root, _ := codeRootPath()
 		w = newWorkspace(pl.Name, kindWorktree, pl.Dir, pl.Branch)
 		// A folder punk0 made is punk0's even when adopted back.
-		w.Adopted = pl.Action == planAdopt && !r.ownWorktree(pl.Dir, root)
+		w.Adopted, w.Auto = pl.Action == planAdopt && !r.ownWorktree(pl.Dir, root), o.Auto
 		// Checked before git ran; a parent removed meanwhile leaves it on top.
 		if slices.ContainsFunc(p.Workspaces, func(x *Workspace) bool { return x.ID == o.Parent }) {
 			w.Parent = o.Parent

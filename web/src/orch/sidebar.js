@@ -12,7 +12,7 @@
 // change labels only. New groups and group names are edited in place.
 import { $, esc } from '../state.js';
 import { emit } from '../bus.js';
-import { showToast } from '../ui.js';
+import { showToast, copyToClipboard } from '../ui.js';
 import { call, failed, openEditor } from './api.js';
 import { state, subscribe, reload, selectWorkspace, workspace, tildify, wsLabel } from './store.js';
 import { getSetting } from './settings.js';
@@ -477,8 +477,9 @@ const BACKEND_TITLE = {
 
 // whereLine is a workspace row's second line: the branch it is on and where
 // -- ⌂ the project folder, whose branch every workspace there shares and
-// follows as it changes, or ⑂ a worktree of its own -- and whether it was
-// adopted or its folder is gone. A chat's folder has neither.
+// follows as it changes, or ⑂ a worktree of its own -- plus the path of a
+// worktree outside the Workspaces Folder and whether its folder is gone. A
+// chat's folder has neither.
 function whereLine(w) {
   const branch = w.branch === 'HEAD' ? 'detached' : w.branch;
   let text;
@@ -489,13 +490,14 @@ function whereLine(w) {
   } else if (w.kind === 'worktree') {
     text = `⑂ ${branch || 'detached'}`;
     title = `${w.adopted ? 'Adopted worktree' : 'Own worktree'} on ${branch ? 'branch ' + branch : 'a detached HEAD'}`;
-    if (w.adopted) {
-      text += ' · adopted';
-      title += ': made outside punk0 and used where it is, so deleting the workspace leaves its folder';
-    }
+    if (w.adopted) title += ': made outside punk0 and used where it is, so deleting the workspace leaves its folder';
   } else return '';
+  // One inside the Workspaces Folder is where punk0 puts them: no path.
+  const where = w.outside
+    ? ` · <span class="o-ws-where" title="${esc(w.dir)}">${esc(tildify(w.dir))}</span>`
+    : '';
   const missing = w.missing ? ' · <span class="o-ws-gone" title="Folder deleted outside punk0">missing</span>' : '';
-  return `<span class="o-ws-sub" title="${esc(title)}">${esc(text)}${missing}</span>`;
+  return `<span class="o-ws-sub" title="${esc(title)}">${esc(text)}${where}${missing}</span>`;
 }
 
 // renderWorkspace is a project's workspace row; outside its project's
@@ -707,10 +709,14 @@ function showChatMenu(what, html, at) {
   chatMenuEl.querySelector('button')?.focus();
 }
 
-// The chat actions menu: rename, pin, file under a group, archive.
+// The chat actions menu: copy its path, open its folder, rename, pin, file
+// under a group, archive.
 function openChatMenu(w, at) {
   const item = (g, name) => `<button type="button" role="menuitemradio" aria-checked="${(w.group || '') === g}" data-menu="move" data-group="${esc(g)}">${esc(name)}</button>`;
   showChatMenu({ mode: 'chat', id: w.id }, `
+    <button type="button" role="menuitem" data-menu="ws-copy">Copy path</button>
+    <button type="button" role="menuitem" data-menu="ws-open">Open folder</button>
+    <div class="o-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" data-menu="rename">Rename…</button>
     <button type="button" role="menuitem" data-menu="pin">${w.pinned ? 'Unpin' : 'Pin to the top'}</button>
     <div class="o-menu-sep" role="separator"></div>
@@ -722,12 +728,23 @@ function openChatMenu(w, at) {
     <button type="button" role="menuitem" data-menu="archive">Archive</button>`, at);
 }
 
-// The workspace actions menu: rename, delete.
+// The workspace actions menu: copy its path, open its folder, rename,
+// delete.
 function openWorkspaceMenu(w, at) {
   showChatMenu({ mode: 'ws', id: w.id }, `
+    <button type="button" role="menuitem" data-menu="ws-copy">Copy path</button>
+    <button type="button" role="menuitem" data-menu="ws-open">Open folder</button>
+    <div class="o-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" data-menu="ws-rename">Rename…</button>
     <div class="o-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" data-menu="ws-delete">Delete…</button>`, at);
+}
+
+// openWorkspaceFolder shows the workspace's folder in the system's file
+// manager; when none starts, the server's error names the folder.
+async function openWorkspaceFolder(w) {
+  const res = await call('POST', `api/workspaces/${encodeURIComponent(w.id)}/open`);
+  if (!res.ok) failed(res);
 }
 
 // renameWorkspace asks for a new label; the folder and branch stay.
@@ -753,6 +770,9 @@ async function onChatMenu(e) {
   const act = b.dataset.menu;
   const w = workspace(what.id);
   if (!w) return;
+  // Both menus offer the folder itself.
+  if (act === 'ws-copy') return copyToClipboard(w.dir, 'Path copied');
+  if (act === 'ws-open') return openWorkspaceFolder(w);
   if (what.mode === 'ws') {
     if (act === 'ws-rename') return renameWorkspace(w);
     // The ⋯ that opened the menu hides with the row's hover: the dialog
@@ -815,8 +835,9 @@ async function removeProject(p, from) {
 // removeWorkspace asks what to delete with the workspace: a worktree offers
 // its folder, ticked for the worktrees punk0 made and clear for ones it
 // adopted in place. The agents' chats are never touched; a removed
-// workspace's chats stay listed in Chats mode. Uncommitted changes come back
-// as 409 dirty, which asks once more and deletes them.
+// workspace's chats stay listed in Chats mode. Commits on no branch and
+// uncommitted changes come back as a 409 each, one guard at a time, and each
+// asks once more before the delete is repeated.
 async function removeWorkspace(w, from) {
   const branchNote = getSetting('workspace.deleteMergedBranch')
     ? `Branch ${w.branch} is deleted if merged, else kept.`
@@ -852,9 +873,18 @@ async function removeWorkspace(w, from) {
   if (answers.files) q.set('files', '1');
   const path = `api/workspaces/${encodeURIComponent(w.id)}`;
   let res = await call('DELETE', path + query(q));
-  if (res.status === 409 && res.data?.dirty) {
-    if (!confirm(`"${w.name}" has uncommitted changes. Delete them with the worktree?`)) return;
-    q.set('force', '1');
+  // The server answers one guard at a time: commits on no branch first, then
+  // uncommitted changes.
+  for (let i = 0; i < 2 && res.status === 409; i++) {
+    if (res.data?.lost) {
+      const n = res.data.lost;
+      const one = n === 1;
+      if (!confirm(`${n} commit${one ? '' : 's'} in "${w.name}" ${one ? 'is' : 'are'} on no branch. Deleting it loses ${one ? 'it' : 'them'}. Delete anyway?`)) return;
+      q.set('lose', '1');
+    } else if (res.data?.dirty) {
+      if (!confirm(`"${w.name}" has uncommitted changes. Delete them with the worktree?`)) return;
+      q.set('force', '1');
+    } else break;
     res = await call('DELETE', path + query(q));
   }
   if (!res.ok) failed(res);

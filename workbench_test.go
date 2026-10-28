@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1042,6 +1043,44 @@ func TestTabAddWithSession(t *testing.T) {
 	}
 	if w := reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"opencode","session":"$(id)"}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("unsafe session: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// The folder of a workspace opens in the system's file manager only for a
+// punk0 that listens on this machine, and only for a workspace that exists.
+func TestWorkspaceOpenFolderLoopbackOnly(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := p.Workspaces[0]
+	var opened []string
+	real := openFolder
+	openFolder = func(dir string) error {
+		opened = append(opened, dir)
+		return nil
+	}
+	t.Cleanup(func() { openFolder = real })
+
+	path := "/api/workspaces/" + ws.ID + "/open"
+	if w := reqJSON(t, wb, "POST", path, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("reachable from elsewhere: %d, want 403", w.Code)
+	}
+	wb.localOnly = true
+	if w := reqJSON(t, wb, "POST", "/api/workspaces/nope/open", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown workspace: %d, want 404", w.Code)
+	}
+	if w := reqJSON(t, wb, "POST", path, ""); w.Code != http.StatusOK {
+		t.Fatalf("open: %d %s", w.Code, w.Body.String())
+	}
+	if len(opened) != 1 || opened[0] != ws.Dir {
+		t.Fatalf("opened %v, want %s once", opened, ws.Dir)
+	}
+	openFolder = func(string) error { return errors.New("no file manager would start") }
+	w := reqJSON(t, wb, "POST", path, "")
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), ws.Dir) {
+		t.Fatalf("no file manager: %d %s, want 500 naming the folder", w.Code, w.Body.String())
 	}
 }
 

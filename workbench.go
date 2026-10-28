@@ -452,6 +452,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceRemove)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/workspaces/{id}"), wb.handleWorkspaceUpdate)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/lsp"), wb.handleLSP)
+	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/open"), wb.handleWorkspaceOpen)
 	wb.mux.HandleFunc("POST "+wb.route("/api/workspaces/{id}/tabs"), wb.handleTabAdd)
 	wb.mux.HandleFunc("GET "+wb.route("/api/workspaces/{id}/tabs"), wb.handleWorkspaceTabs)
 	wb.mux.HandleFunc("POST "+wb.route("/api/chats"), wb.handleChatAdd)
@@ -1312,6 +1313,7 @@ func removeOptions(r *http.Request) RemoveOptions {
 	q := r.URL.Query()
 	return RemoveOptions{
 		Force:   q.Get("force") == "1",
+		Lose:    q.Get("lose") == "1",
 		Files:   q.Get("files") == "1",
 		Confirm: q.Get("confirm"),
 	}
@@ -1488,8 +1490,9 @@ func (wb *workbench) handleWorkspaceUpdate(w http.ResponseWriter, r *http.Reques
 
 // handleWorkspaceRemove takes the Delete workspace dialog's answers:
 // ?files=1 removes the worktree folder. It answers 409 while the worktree has
-// uncommitted changes; ?force=1 deletes them. note says why a merged-branch
-// delete did not happen.
+// uncommitted changes; ?force=1 deletes them, and 409 with a lost count while
+// its commits are on no branch; ?lose=1 drops them. note says why a
+// merged-branch delete did not happen.
 func (wb *workbench) handleWorkspaceRemove(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
@@ -1528,6 +1531,29 @@ func (wb *workbench) handleLSP(w http.ResponseWriter, r *http.Request) {
 	}
 	wb.stop(wbItemID("dir", ws.Dir))
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleWorkspaceOpen serves POST /api/workspaces/{id}/open: the workspace's
+// folder in the system's file manager. The folder's path comes back either
+// way, for the page to show when no file manager would start.
+func (wb *workbench) handleWorkspaceOpen(w http.ResponseWriter, r *http.Request) {
+	if !wb.localOnly {
+		fail(w, http.StatusForbidden, "a workspace's folder opens only when punk0 listens on this machine")
+		return
+	}
+	if !localPost(w, r) {
+		return
+	}
+	ws := wb.records.Workspace(r.PathValue("id"))
+	if ws == nil {
+		fail(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+	if err := openFolder(ws.Dir); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error()+": the folder is "+ws.Dir)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "dir": ws.Dir})
 }
 
 /* ---------- scratch chats (scratch.go) ---------- */
@@ -1708,18 +1734,28 @@ func (wb *workbench) handleTabRemove(w http.ResponseWriter, r *http.Request) {
 
 // failRecord answers a records error: 404 for an unknown id, 409 for a
 // worktree with uncommitted changes, which the page may repeat with force,
-// 400 for the rest.
+// 409 with the count for one whose commits are on no branch, which it may
+// repeat with lose, 400 for the rest.
 func failRecord(w http.ResponseWriter, err error) {
+	var lost *lostCommitsError
 	switch {
 	case errors.Is(err, errNotFound):
 		fail(w, http.StatusNotFound, err.Error())
+	case errors.As(err, &lost):
+		writeConflict(w, map[string]any{"error": err.Error(), "lost": lost.n})
 	case errors.Is(err, errDirty):
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "dirty": true})
+		writeConflict(w, map[string]any{"error": err.Error(), "dirty": true})
 	default:
 		fail(w, http.StatusBadRequest, err.Error())
 	}
+}
+
+// writeConflict is a 409 the page answers by asking the user and repeating
+// the request with one flag more.
+func writeConflict(w http.ResponseWriter, body map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	json.NewEncoder(w).Encode(body)
 }
 
 // stopOrphans stops the children of folders records no longer holds, after a

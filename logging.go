@@ -182,8 +182,9 @@ func (wb *workbench) handleLogsOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "dir": dir})
 }
 
-// openFolder shows dir in the system's file manager.
-func openFolder(dir string) error {
+// openFolder shows dir in the system's file manager. A variable so tests of
+// the routes that call it start no file manager.
+var openFolder = func(dir string) error {
 	var cmds []*exec.Cmd
 	switch runtime.GOOS {
 	case "windows":

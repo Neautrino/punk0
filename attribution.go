@@ -139,7 +139,7 @@ func (wb *workbench) attributeDir(tabID, dir string) {
 	if wt == nil || wt.Main || wt.Prunable {
 		return
 	}
-	ws, _, err := wb.records.AddWorkspace(projectID, WorkspaceOptions{From: wt.Path, Worktree: true, Parent: place.workspaceID})
+	ws, _, err := wb.records.AddWorkspace(projectID, WorkspaceOptions{From: wt.Path, Worktree: true, Parent: place.workspaceID, Auto: true})
 	if err != nil {
 		log.Printf("worktree %s of tab %s: %v", tildePath(wt.Path), tabID, err)
 		return
@@ -178,18 +178,18 @@ func (wb *workbench) reapWorktrees() {
 	}
 }
 
-// reapGoneWorktrees forgets each worktree workspace punk0 adopted under
-// another (Parent and Adopted: an agent's, or one moved there) whose folder
-// is gone and that git no longer lists as live, two passes in a row: a folder
-// can be missing for a moment while it is recreated. A project folder git
-// cannot read says nothing, so its worktrees wait. Worktrees punk0 made
-// itself, and ones at the top, keep their missing row as before.
+// reapGoneWorktrees forgets each agent-made worktree workspace (Workspace.Auto:
+// a hook's, an attributed one) whose folder is gone and that git no longer
+// lists as live, two passes in a row: a folder can be missing for a moment
+// while it is recreated. A project folder git cannot read says nothing, so
+// its worktrees wait. Worktrees the user made or adopted keep their missing
+// row as before.
 func (wb *workbench) reapGoneWorktrees() {
 	lists := map[string][]worktreeInfo{}
 	unreadable := map[string]bool{}
 	gone := map[string]wsRef{}
 	for _, x := range wb.records.WorkspaceRefs() {
-		if x.Parent == "" || !x.Adopted || x.Kind != kindWorktree || isDir(x.Dir) {
+		if !x.Auto || x.Kind != kindWorktree || isDir(x.Dir) {
 			continue
 		}
 		repo := wb.records.ProjectDir(x.Project)

@@ -382,6 +382,10 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-ws-text { flex: 1 1 auto; min-width: 48px; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
 .o-ws-text .o-ws-name { flex: none; min-width: 0; line-height: 16px; }
 .o-ws-sub { overflow: hidden; text-overflow: ellipsis; font: 10.5px/14px var(--mono); color: var(--faint); }
+/* The folder of a worktree outside the Workspaces Folder, cut from the left:
+   the end of a path says more than its start. plaintext keeps it readable
+   left to right while rtl moves the ellipsis to the front. */
+.o-ws-where { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; direction: rtl; unicode-bidi: plaintext; }
 .o-ws-gone { color: var(--err); }
 /* A child workspace (an agent-made worktree) steps in under its parent. */
 .o-ws-row[style*="--depth"] { padding-left: calc(16px + var(--depth) * 14px); }

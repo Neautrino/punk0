@@ -1078,6 +1078,100 @@ func TestRemoveWorkspaceDeletesMergedBranch(t *testing.T) {
 	runGit(t, repo, "rev-parse", "--verify", "refs/heads/open")
 }
 
+// A worktree adopted from outside the Workspaces Folder tells the page where
+// it is; one punk0 made in there does not, so no row carries a path it does
+// not need.
+func TestAdoptedForeignWorktreeIsOutside(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(tempDir(t), "elsewhere")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "x", elsewhere)
+	foreign, err := wb.records.AdoptWorktree(p.ID, elsewhere)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !foreign.Adopted {
+		t.Fatalf("adopted %s: %+v", elsewhere, foreign)
+	}
+	ours, _, err := wb.records.AddWorkspace(p.ID, WorkspaceOptions{Name: "ours", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projects []struct {
+		ID         string `json:"id"`
+		Workspaces []struct {
+			ID      string `json:"id"`
+			Kind    string `json:"kind"`
+			Outside bool   `json:"outside"`
+		} `json:"workspaces"`
+	}
+	getJSON(t, wb, "/api/projects", &projects)
+	outside := map[string]bool{}
+	for _, pv := range projects {
+		for _, wv := range pv.Workspaces {
+			outside[wv.ID] = wv.Outside
+		}
+	}
+	if !outside[foreign.ID] {
+		t.Errorf("the adopted worktree %s is not marked outside", elsewhere)
+	}
+	if outside[ours.ID] {
+		t.Errorf("a worktree punk0 made in the Workspaces Folder is marked outside")
+	}
+	if outside[p.Workspaces[0].ID] {
+		t.Errorf("the local workspace is marked outside")
+	}
+}
+
+// Removing a worktree keeps its branch, so commits on a branch are never
+// lost; commits only a detached HEAD reaches would be, and only Lose agrees
+// to that -- Force, which the page sends for uncommitted changes, must not.
+func TestRemoveWorkspaceKeepsDetachedCommits(t *testing.T) {
+	repo := cleanRepo(t)
+	rec := openRecords(t, t.TempDir())
+	p, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detached := filepath.Join(tempDir(t), "detached")
+	runGit(t, repo, "worktree", "add", "-q", "--detach", detached)
+	commit(t, detached, "work.txt")
+	w, err := rec.AdoptWorktree(p.ID, detached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lost *lostCommitsError
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{Files: true}); !errors.As(err, &lost) || lost.n != 1 {
+		t.Fatalf("remove: %v, want 1 lost commit", err)
+	}
+	if !isDir(detached) || rec.Workspace(w.ID) == nil {
+		t.Fatal("a refused delete removed the folder or the row")
+	}
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{Files: true, Force: true}); !errors.As(err, &lost) {
+		t.Fatalf("remove with Force: %v, want the same refusal", err)
+	}
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{Files: true, Force: true, Lose: true}); err != nil {
+		t.Fatalf("remove with Lose: %v", err)
+	}
+	if isDir(detached) {
+		t.Fatal("the worktree folder is still there")
+	}
+
+	// A branch keeps its commits, so neither flag is needed.
+	onBranch, err := addWorkspace(rec, p.ID, "feature", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit(t, onBranch.Dir, "more.txt")
+	if _, err := rec.RemoveWorkspace(onBranch.ID, RemoveOptions{Files: true}); err != nil {
+		t.Fatalf("remove a worktree on a branch: %v", err)
+	}
+	runGit(t, repo, "rev-parse", "--verify", "refs/heads/"+onBranch.Branch)
+}
+
 // tempDir is t.TempDir with symlinks resolved, the way git reports worktree
 // folders.
 func tempDir(t *testing.T) string {
