@@ -28,7 +28,6 @@ import (
 
 	"px0/internal/applog"
 	"px0/internal/settings"
-	"px0/internal/telemetry"
 	"px0/internal/ui"
 	"px0/internal/update"
 )
@@ -37,9 +36,6 @@ import (
 var rawVersion string
 
 var version = strings.TrimSpace(rawVersion)
-
-// posthogKey can be injected at build time: go build -ldflags="-X main.posthogKey=phc_..."
-var posthogKey string
 
 func main() {
 	// `punk0 hook` is what Claude Code runs for a tab's hook events: it has
@@ -68,7 +64,7 @@ func main() {
 		noColor      = flag.Bool("no-color", false, "disable colour output")
 		quiet        = flag.Bool("quiet", false, "suppress narration")
 		verbose      = flag.Bool("verbose", false, "log startup steps, requests, searches, symbols, and agent prompts to terminal")
-		noTelemetry  = flag.Bool("no-telemetry", false, "disable anonymous usage telemetry")
+		_            = flag.Bool("no-telemetry", false, "no effect (punk0 has no telemetry; kept so existing scripts still run)")
 		agentCmd     = flag.String("agent", "", "pin the coding harness used for edits (claude, gemini, cursor-agent, agy, opencode, codex, aider, goose, or a command template containing {prompt}); detected and chosen in the UI when omitted")
 		noAgent      = flag.Bool("no-agent", false, "do not offer editing through a coding harness")
 		_            = flag.Bool("y", false, "answer yes to prompts (deprecated; PRs are always opened without prompt)")
@@ -145,7 +141,7 @@ func main() {
 		for _, f := range []struct {
 			on   bool
 			flag string
-		}{{*noLSP, "-no-lsp"}, {*noGit, "-no-git"}, {*noAgent, "-no-agent"}, {*noTelemetry, "-no-telemetry"}} {
+		}{{*noLSP, "-no-lsp"}, {*noGit, "-no-git"}, {*noAgent, "-no-agent"}} {
 			if f.on {
 				childArgs = append(childArgs, f.flag)
 			}
@@ -219,10 +215,6 @@ func main() {
 	tInit := time.Now()
 	ix := NewIndex(root)
 	lsp := newLSPManager(root, !*noLSP)
-	// telemetry.enabled: false in the settings file opts out like -no-telemetry.
-	cfgTel := settings.Read().TelemetryEnabled
-	tel := telemetry.New(posthogKey, version, *noTelemetry || (cfgTel != nil && !*cfgTel))
-	defer tel.Close("normal")
 
 	configuredBasePath := "/"
 	if *basePathFlag != "" {
@@ -232,7 +224,6 @@ func main() {
 	}
 
 	pxSrv := NewServer(ix, lsp, configuredBasePath)
-	pxSrv.tel = tel
 	// A workbench child always listens on 127.0.0.1 behind the workbench's
 	// proxy, which keeps the browser's Host: what counts is where the
 	// workbench itself listens.
@@ -348,13 +339,6 @@ func main() {
 				}
 			}
 		}
-
-		tel.Track("session_started", map[string]any{
-			"files_bucket": telemetry.FilesBucket(n),
-			"index_ms":     ms,
-			"has_git":      gitAvailable(root),
-			"has_lsp":      len(lsp.Available()) > 0,
-		})
 	}()
 
 	// Check for updates in the background once the server is already up, so
@@ -403,11 +387,8 @@ func main() {
 	pr.Close()
 
 	if interrupted {
-		tel.Close("interrupted")
 		os.Exit(130)
 	}
-
-	tel.Close("normal")
 	if err != nil && err != http.ErrServerClosed {
 		fatal(err)
 	}

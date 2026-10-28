@@ -63,7 +63,6 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
   - [`internal/settings/`](internal/settings/): Persistent user settings (`settings.json`), schema definitions, and merging
   - [`internal/symbols/`](internal/symbols/): Regex-based symbol outline extraction and definition classification
   - [`internal/table/`](internal/table/): Tabular formatting and delimiter sniffing (CSV/TSV)
-  - [`internal/telemetry/`](internal/telemetry/): Anonymous PostHog telemetry client and persistence
   - [`internal/ui/`](internal/ui/): Terminal styling, ANSI status logging, spinners, and OS-specific TTY detection
   - [`internal/update/`](internal/update/): Self-update version checking, binary download, and atomic replacement
   Assets are statically embedded via `//go:embed` in `server.go`.

@@ -39,7 +39,6 @@ import (
 	"px0/internal/settings"
 	"px0/internal/symbols"
 	"px0/internal/table"
-	"px0/internal/telemetry"
 	"px0/internal/ui"
 )
 
@@ -71,7 +70,6 @@ func cleanBasePath(p string) string {
 type Server struct {
 	ix        *Index
 	lsp       *lspManager
-	tel       *telemetry.Service // nil in tests; Track is nil-safe
 	agent     *agentManager      // nil unless main wires editing for this session
 	pr        *prSession         // nil unless main launched this process as `px0 pr ...`
 	diffBase  string             // ref /api/diff and /api/gutter diff against; "HEAD" unless in PR mode
@@ -1972,7 +1970,6 @@ func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 	if s.gitWatcher != nil {
 		s.gitWatcher.Trigger()
 	}
-	s.tel.Track("git_commit", map[string]any{"amend": body.Amend})
 	hash, subject := gitHeadSummary(root)
 	writeJSON(w, map[string]any{"ok": true, "hash": hash, "subject": subject})
 }
@@ -2012,7 +2009,6 @@ func (s *Server) handleGitUndoCommit(w http.ResponseWriter, r *http.Request) {
 	if s.gitWatcher != nil {
 		s.gitWatcher.Trigger()
 	}
-	s.tel.Track("git_undo_commit", nil)
 	writeJSON(w, map[string]any{"ok": true, "message": msg})
 }
 

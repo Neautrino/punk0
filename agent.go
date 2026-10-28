@@ -78,7 +78,7 @@ type agentJob struct {
 	Stderr     string           `json:"stderr,omitempty"`     // Stderr log output tail
 	Changed    []string         `json:"changed"`              // Files detected as modified after job execution
 	Ms         int64            `json:"ms"`                   // Elapsed runtime in milliseconds
-	Tracked    bool             `json:"tracked"`              // Whether telemetry tracking has been recorded
+	Tracked    bool             `json:"tracked"`              // Whether the folder is in git, so Changed means something
 
 	cancel context.CancelFunc
 	items  []agentBatchItem // the anchored edits this job carries, for the overlap guard

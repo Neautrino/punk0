@@ -265,7 +265,7 @@ func TestWorkbenchRunsChildThroughProxy(t *testing.T) {
 	ws := t.TempDir()
 	os.WriteFile(filepath.Join(ws, "hello.go"), []byte("package hello\n"), 0o644)
 
-	wb := testWorkbench(t, "/base/", ws, exe, []string{"-no-lsp", "-no-agent", "-no-telemetry"})
+	wb := testWorkbench(t, "/base/", ws, exe, []string{"-no-lsp", "-no-agent"})
 	srv := httptest.NewServer(wb)
 	defer srv.Close()
 	defer wb.Close()

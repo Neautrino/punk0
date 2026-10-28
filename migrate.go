@@ -17,7 +17,7 @@ import (
 // legacyState is what moves out of ~/.punk0, records.json **last**: it is the
 // marker paths.State() follows, so a failure part-way leaves punk0 on the
 // legacy folder with all of its files.
-var legacyState = []string{"workbench.json", "update_check.json", "anonymous_id", "logs", "sessions", "records.json"}
+var legacyState = []string{"workbench.json", "update_check.json", "logs", "sessions", "records.json"}
 
 // folderInfo tells the page where punk0 keeps its files and whether it still
 // runs out of the legacy ~/.punk0, which `punk0 migrate` ends.
@@ -62,6 +62,7 @@ func migrate(w io.Writer) int {
 		}
 		os.Remove(filepath.Join(state, "claude-hooks.json")) // rewritten on every start
 		os.RemoveAll(filepath.Join(state, "cache"))          // downloads punk0 fetches again
+		os.Remove(filepath.Join(state, "anonymous_id"))      // left by telemetry, which is gone
 		fmt.Fprintf(w, "state is now in %s\n", tildePath(stdState))
 	}
 

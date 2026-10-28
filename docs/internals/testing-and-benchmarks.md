@@ -27,7 +27,6 @@ All 11 packages in the Go module `px0` achieve **100% Package Test and Benchmark
 | **`internal/table`**  | **100.0%** | `table_test.go`  | CSV/TSV table rendering, ragged rows, quoted cell line wrapping, delimiter sniffing (`SniffDelim`). |
 | **`internal/render`** | **80.9%** | `render_test.go` | Chroma syntax highlighting, windowed viewport lexing, unified diff coloration, GitHub-Flavored Markdown transformation. |
 | **`internal/ignore`** | **98.4%** | `ignore_test.go` | Gitignore pattern compilation, fast-path segment shortcuts matching regex references, directory-only rule filtering. |
-| **`internal/telemetry`** | **87.4%** | `telemetry_test.go` | PostHog telemetry event dispatch, session lifecycle, anonymous device ID management, file bucket categorization. |
 | **`internal/settings`**| **67.0%** | `settings_test.go`| Persistent settings schema, atomic file saving, deep map merging, raw JSON round-trip validation. |
 | **`internal/ui`**     | **66.9%** | `ui_test.go`      | ANSI color painting, TTY detection, spinner animation, status headers, byte/duration formatting helpers. |
 | **`internal/metrics`**| **63.4%** | `metrics_test.go` | Process resident set size (RSS), peak memory tracking, CPU usage sampling across platforms. |
@@ -58,7 +57,6 @@ Several core algorithms are tested to guarantee zero heap allocations (`0 B/op`,
 - `BenchmarkIgnoreSetMatch`: Path filtering through compiled ignore trees.
 - `BenchmarkFamilyFor`: Extension-to-language family mapping.
 - `BenchmarkPaint`: Terminal styling when outputting ANSI color sequences.
-- `BenchmarkFilesBucket`: Telemetry path count categorization.
 
 ---
 

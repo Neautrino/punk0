@@ -243,7 +243,6 @@ punk0 keeps settings, its own bookkeeping and your code apart, each in the folde
 | `claude-hooks.json` | The hook settings Claude tabs start with |
 | `workbench.lock` | The running punk0's address |
 | `logs/` | `punk0.log` and its older parts, `crash.log` (see [Logs and diagnostics](#logs-and-diagnostics)) |
-| `anonymous_id` | The anonymous telemetry id, written only while telemetry is on |
 
 **Your code** — `~/punk0`, the **Workspaces Folder** (the `workspace.dir` setting; point it anywhere you like):
 
@@ -260,4 +259,4 @@ Nothing is written inside your repositories, apart from worktree registrations (
 
 ## Flags
 
-`-no-lsp`, `-no-git`, `-no-agent`, `-no-telemetry` and `-agent` are passed on to every editor punk0 starts. `-host`, `-port`, `-base-path` and `-no-open` apply to punk0 itself.
+`-no-lsp`, `-no-git`, `-no-agent` and `-agent` are passed on to every editor punk0 starts. `-host`, `-port`, `-base-path` and `-no-open` apply to punk0 itself. punk0 has no telemetry; `-no-telemetry` is still accepted and does nothing.

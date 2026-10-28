@@ -40,7 +40,6 @@ type Settings struct {
 	DiffEditorRenderSideBySide  *bool    `json:"diffEditor.renderSideBySide,omitempty"`
 	MarkdownPreviewOpen         *bool    `json:"markdown.preview.open,omitempty"`
 	TablePreviewOpen            *bool    `json:"table.preview.open,omitempty"`
-	TelemetryEnabled            *bool    `json:"telemetry.enabled,omitempty"`
 	GitHubToken                 *string  `json:"github.token,omitempty"`
 	GitLabToken                 *string  `json:"gitlab.token,omitempty"`
 	GitLabHost                  *string  `json:"gitlab.host,omitempty"`
