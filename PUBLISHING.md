@@ -24,14 +24,9 @@ make build
 ./punk0 -version
 ```
 
-### Update the changelog
+### Write the release notes
 
-Before tagging, finish the release's entry in [CHANGELOG.md](CHANGELOG.md):
-
-1. Change the heading `## [x.y.z] - Unreleased` to the release date, e.g. `## [0.2.0] - 2026-11-15`.
-1. Fix the reference link at the bottom so it points at the tag instead of `HEAD`: `[0.2.0]: https://github.com/Neautrino/punk0/releases/tag/v0.2.0`. When you start the next version, add its `## [x.y.z] - Unreleased` heading and a compare link such as `[0.2.1]: https://github.com/Neautrino/punk0/compare/v0.2.0...HEAD`.
-
-The site's changelog page ([punk0-web](https://github.com/Neautrino/punk0-web)) is built from `CHANGELOG.md` on `main`. Pushing a change to it runs the Site workflow, which calls the site's deploy hook (secret `SITE_DEPLOY_HOOK`); the site build fails on a malformed changelog, so keep the Keep a Changelog format.
+Release notes live in [punk0-web](https://github.com/Neautrino/punk0-web), one file per release: `src/data/changelog/v<version>.md` (front matter `version` and `date`, then `### Added` / `### Changed` / `### Removed` / `### Fixed` groups; see its README). Write the file before tagging, and push it to punk0-web once the release is published: the push rebuilds the site's changelog page. The same notes go into the GitHub release (section 4).
 
 ## 3. Release Methods
 ### Method 1: Automated Release via Makefile (Recommended)
@@ -89,6 +84,11 @@ git push origin v0.2.0
 
 1. Verify GitHub Actions workflow completion on the Actions tab.
 1. Confirm artifacts on the [Releases](https://github.com/Neautrino/punk0/releases) page (cross-platform binaries and `checksums.txt`). The self-updater requires this file and verifies the selected binary against it before execution.
+1. Replace the generated release notes with the release's notes from punk0-web (paste from a file, not from terminal output: GitHub keeps hard line breaks):
+  ```bash
+  gh release edit v<version> -R Neautrino/punk0 --notes-file notes.md
+  ```
+1. Push the release notes file to punk0-web and check https://punk0.neautrino.dev/changelog/.
 1. Verify the installer script:
   ```bash
   curl -fsSL https://raw.githubusercontent.com/Neautrino/punk0/main/install.sh | sh
