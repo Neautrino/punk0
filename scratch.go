@@ -113,7 +113,7 @@ func (r *Records) NewChat(o ChatOptions) (*Workspace, error) {
 	t := newTab(o.Agent, dir, "")
 	w.Tabs = append(w.Tabs, t)
 	r.fileTabLocked(w, t)
-	r.adoptLocked(w)
+	r.adoptLocked(p, w)
 	p.Workspaces = append(p.Workspaces, w)
 	return w, r.saveLocked()
 }

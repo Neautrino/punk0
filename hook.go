@@ -35,7 +35,10 @@ const (
 var claudeHookEvents = []string{
 	"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
 	"PostToolUseFailure", "PermissionRequest", "Notification", "Stop",
-	"StopFailure", "SessionEnd",
+	"StopFailure", "SessionEnd", "SubagentStop",
+	// Claude hands worktree creation and removal to punk0 entirely
+	// (worktreehook.go), so these two answer with a path.
+	"WorktreeCreate", "WorktreeRemove",
 }
 
 func claudeHooksPath() string { return filepath.Join(workbenchStateDir(), "claude-hooks.json") }
@@ -74,26 +77,31 @@ const hookBodyMax = 1 << 20
 // runHook is `punk0 hook`: Claude Code runs it with the event on stdin. It
 // posts the event to the tab it came from and says nothing either way -- a
 // hook that writes to stderr or fails would show up in the agent's chat. A
-// report that fails or is slow goes in the log file instead (hookSlow).
+// report that fails or is slow goes in the log file instead (hookSlow). The
+// two worktree events are the exception: Claude waits for an answer, so
+// worktreeHook writes one (worktreehook.go).
 func runHook() {
 	start := time.Now()
-	target := os.Getenv("PUNK0_HOOK_URL")
-	if target == "" {
-		return
-	}
 	body, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<20))
 	if err != nil || len(body) == 0 {
 		return
 	}
+	body = slimHookEvent(body)
+	var ev hookEvent
+	json.Unmarshal(body, &ev)
+	target := os.Getenv("PUNK0_HOOK_URL")
+	// The worktree events are answered, not reported: Claude waits for the
+	// folder they name, and makes it here when punk0 cannot be reached.
+	if ev.Name == worktreeCreateEvent || ev.Name == worktreeRemoveEvent {
+		os.Exit(worktreeHook(ev, body, target, os.Stdout, os.Stderr))
+	}
+	if target == "" {
+		return
+	}
 	report := func(level slog.Level, msg string, args ...any) {
-		var ev struct {
-			Name string `json:"hook_event_name"`
-		}
-		json.Unmarshal(body, &ev)
 		args = append([]any{"event", ev.Name, "ms", time.Since(start).Milliseconds()}, args...)
 		applog.Append(workbenchStateDir(), level, msg, args...)
 	}
-	body = slimHookEvent(body)
 	u, err := url.Parse(target)
 	if err != nil {
 		report(slog.LevelWarn, "hook has a bad PUNK0_HOOK_URL", "err", err)
@@ -161,7 +169,10 @@ type hookEvent struct {
 	Prompt       string          `json:"prompt"` // UserPromptSubmit
 	Session      string          `json:"session_id"`
 	Cwd          string          `json:"cwd"`
-	ToolInput    json.RawMessage `json:"tool_input"` // file_path or notebook_path for the edit tools
+	ToolInput    json.RawMessage `json:"tool_input"`    // file_path or notebook_path for the edit tools
+	WorktreeName string          `json:"name"`          // WorktreeCreate: the worktree Claude asks for
+	WorktreePath string          `json:"worktree_path"` // WorktreeRemove: the folder to remove
+	AgentID      string          `json:"agent_id"`      // SubagentStop: the subagent whose worktree Cwd is
 }
 
 // hookStatus maps one hook event to the status its tab shows. The second
@@ -223,6 +234,25 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
+	// The worktree events are requests, not reports: they answer with the
+	// folder Claude is to use, and say nothing about the tab's status.
+	switch ev.Name {
+	case worktreeCreateEvent:
+		dir, err := wb.agentWorktree(tab.ID, ev.WorktreeName)
+		if err != nil {
+			failRecord(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "path": dir})
+		return
+	case worktreeRemoveEvent:
+		if err := wb.agentWorktreeGone(ev.WorktreePath); err != nil {
+			failRecord(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+		return
+	}
 	status, ok := hookStatus(ev)
 	if ok {
 		tab.setStatus(status)
@@ -241,6 +271,11 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wb.noteAgentDirs(tab.ID, ev)
+	// Claude never removes a subagent's worktree itself, so punk0 does when
+	// the subagent left nothing in it.
+	if ev.Name == subagentStopEvent {
+		wb.subagentWorktreeGone(tab.ID, ev)
+	}
 	if ev.Name == "UserPromptSubmit" {
 		if err := wb.records.ChatPrompt(tab.ID, ev.Prompt); err != nil {
 			fail(w, http.StatusInternalServerError, err.Error())

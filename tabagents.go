@@ -27,12 +27,12 @@ type tabAgent struct {
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
-var tabAgentOrder = []string{tabClaude, "codex", "opencode", "agy", "cursor-agent"}
+var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "agy", "cursor-agent"}
 
 var tabAgents = map[string]tabAgent{
 	tabClaude:      {Label: "Claude Code", bin: "claude"},
 	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}},
-	"opencode":     {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}},
+	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 }

@@ -41,6 +41,7 @@ type WorkspaceOptions struct {
 	LSP      bool   `json:"lsp"`      // language servers on in the new folder
 	Parent   string `json:"-"`        // a worktree an agent made: its agent's workspace, which it is listed under
 	Auto     bool   `json:"-"`        // an agent made this worktree, not the user (Workspace.Auto)
+	Folder   string `json:"-"`        // the worktree's folder name, over the one the branch gives (Claude names folder and branch apart)
 
 	fetched bool // Base was just fetched (a pull request's head)
 }
@@ -303,7 +304,12 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 		}
 	}
 
-	if folder == "" {
+	switch {
+	case o.Folder != "":
+		// A caller's folder name still goes through folderName: it ends up
+		// as one path segment, whatever the agent asked for.
+		folder = folderName(o.Folder)
+	case folder == "":
 		folder = folderName(branch)
 	}
 	root, err := codeRoot()
@@ -441,7 +447,7 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 	if o.LSP {
 		r.lsp[w.Dir] = true
 	}
-	r.adoptLocked(w)
+	r.adoptLocked(p, w)
 	p.Workspaces = append(p.Workspaces, w)
 	return w, warning, r.saveLocked()
 }

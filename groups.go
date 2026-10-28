@@ -183,10 +183,26 @@ func (r *Records) WorkspaceRefs() []wsRef {
 	var out []wsRef
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			out = append(out, wsRef{ID: w.ID, Name: cmp.Or(w.Title, w.Name), Kind: w.Kind, Dir: w.Dir, Branch: w.Branch, Parent: w.Parent, Adopted: w.Adopted, Auto: w.Auto, Project: p.ID, ProjectName: p.Name, Scratch: p.Scratch})
+			out = append(out, ref(p, w))
 		}
 	}
 	return out
+}
+
+// WorkspaceRef is workspace id as a listing names it; ok is false for an
+// unknown one. It copies under the lock, so a caller reads no live record.
+func (r *Records) WorkspaceRef(id string) (wsRef, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, i := r.workspaceLocked(id)
+	if p == nil {
+		return wsRef{}, false
+	}
+	return ref(p, p.Workspaces[i]), true
+}
+
+func ref(p *Project, w *Workspace) wsRef {
+	return wsRef{ID: w.ID, Name: cmp.Or(w.Title, w.Name), Kind: w.Kind, Dir: w.Dir, Branch: w.Branch, Parent: w.Parent, Adopted: w.Adopted, Auto: w.Auto, Project: p.ID, ProjectName: p.Name, Scratch: p.Scratch}
 }
 
 // TabsAt lists the tabs of workspace id, or, for an editor's folder backend

@@ -48,8 +48,9 @@ const (
 
 // Tab kinds.
 const (
-	tabShell  = "shell"
-	tabClaude = "claude"
+	tabShell    = "shell"
+	tabClaude   = "claude"
+	tabOpenCode = "opencode"
 )
 
 // dirName is a folder name punk0 makes under its state directory. The
@@ -110,6 +111,7 @@ type Satellite struct {
 	Session string `json:"session,omitempty"` // the agent's chat id the tab resumes (agentCommand); claude's is its --session-id
 
 	dir     string
+	project string // the project the tab's workspace is in, "" for a scratch chat
 	hook    string // PUNK0_HOOK_URL the agent's hooks report to
 	newChat bool   // an agent tab made this run whose session does not exist yet
 	mu      sync.Mutex
@@ -130,6 +132,9 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 		if s.hook != "" {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
+		if e := opencodeEnv(s.Kind, s.project); e != "" {
+			env = append(env, e)
+		}
 		shell := terminalShell()
 		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell)), env)
 		if err != nil {
@@ -139,6 +144,61 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 		started = true
 	}
 	return s.sh, started, nil
+}
+
+// opencodeEnv is the OPENCODE_CONFIG_CONTENT an opencode tab of project
+// starts with, "" for any other tab: OpenCode makes its worktrees in the
+// folder its config names, so punk0's tabs point it at the Workspaces
+// Folder. An unusable Workspaces Folder leaves OpenCode's own choice alone.
+func opencodeEnv(kind, project string) string {
+	const key = "OPENCODE_CONFIG_CONTENT"
+	if kind != tabOpenCode || project == "" {
+		return ""
+	}
+	root, err := codeRoot()
+	if err != nil {
+		slog.Warn("opencode worktrees stay where opencode puts them", "err", err)
+		return ""
+	}
+	// terminal.env is what the user set for every tab; punk0's own
+	// environment is the fallback, as it is for the shell itself.
+	user := os.Getenv(key)
+	if lines, err := settings.ParseEnvLines(settings.SettingOr[string]("terminal.env")); err == nil {
+		for _, line := range lines {
+			if v, ok := strings.CutPrefix(line, key+"="); ok {
+				user = v
+			}
+		}
+	}
+	return key + "=" + opencodeConfig(user, filepath.Join(root, "workspaces", project))
+}
+
+// opencodeConfig is the user's inline OpenCode config with
+// worktree.directory pointing at dir: OpenCode puts every worktree it makes
+// straight in there, one folder per worktree. A config of the user's that
+// chooses a directory itself, or that does not parse, comes back untouched.
+func opencodeConfig(user, dir string) string {
+	cfg, worktree := map[string]json.RawMessage{}, map[string]json.RawMessage{}
+	if user = strings.TrimSpace(user); user != "" {
+		if json.Unmarshal([]byte(user), &cfg) != nil {
+			return user
+		}
+		if raw, ok := cfg["worktree"]; ok {
+			if json.Unmarshal(raw, &worktree) != nil {
+				return user
+			}
+			if d, ok := worktree["directory"]; ok && len(d) > 0 && string(d) != "null" {
+				return user
+			}
+		}
+	}
+	worktree["directory"], _ = json.Marshal(dir)
+	cfg["worktree"], _ = json.Marshal(worktree)
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		return user
+	}
+	return string(out)
 }
 
 // command is the line the tab's next start runs, in a shell of syntax sx.
@@ -318,7 +378,7 @@ func OpenRecords(home string) (*Records, error) {
 	}
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			r.adoptLocked(w)
+			r.adoptLocked(p, w)
 			// Before Auto, an agent's worktree was the one listed under
 			// another and adopted: every agent-made folder was outside punk0's.
 			w.Auto = w.Auto || (w.Parent != "" && w.Adopted)
@@ -372,16 +432,20 @@ func (r *Records) SetHookBase(base string) {
 	r.hookBase = base
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			r.adoptLocked(w)
+			r.adoptLocked(p, w)
 		}
 	}
 }
 
 // adoptLocked fills in what a workspace's tabs need but records.json does not
-// hold: where they run and where their hooks report to.
-func (r *Records) adoptLocked(w *Workspace) {
+// hold: where they run, which project they are in and where their hooks
+// report to.
+func (r *Records) adoptLocked(p *Project, w *Workspace) {
 	for _, t := range w.Tabs {
 		t.dir = w.Dir
+		if !p.Scratch {
+			t.project = p.ID
+		}
 		if r.hookBase != "" {
 			t.hook = r.hookBase + "api/tabs/" + t.ID + "/hook"
 		}
@@ -599,7 +663,7 @@ func (r *Records) AddProject(dir string) (*Project, error) {
 		p.Workspaces = append(p.Workspaces, r.ownWorktrees(dir)...)
 	}
 	for _, w := range p.Workspaces {
-		r.adoptLocked(w)
+		r.adoptLocked(p, w)
 	}
 	r.projects = append(r.projects, p)
 	r.forgetRemovedLocked(dir)
@@ -1013,7 +1077,7 @@ func (r *Records) MoveWorktree(id string) (old string, err error) {
 		delete(r.lsp, old)
 		r.lsp[target] = true
 	}
-	r.adoptLocked(w)
+	r.adoptLocked(p, w)
 	return old, r.saveLocked()
 }
 
@@ -1068,7 +1132,7 @@ func (r *Records) AddTab(workspaceID, kind, session string) (*Satellite, error) 
 	w := p.Workspaces[i]
 	t := newTab(kind, w.Dir, session)
 	w.Tabs = append(w.Tabs, t)
-	r.adoptLocked(w)
+	r.adoptLocked(p, w)
 	r.fileTabLocked(w, t)
 	return t, r.saveLocked()
 }
@@ -1390,6 +1454,23 @@ func (r *Records) Place(id string) (place tabPlace, ok bool) {
 		return tabPlace{}, false
 	}
 	return tabPlace{workspaceID: w.ID, kind: w.Kind, dir: w.Dir}, true
+}
+
+// ChildWorktree is the folder of the worktree workspace named name listed
+// under workspace parent, when its folder is still there: what lets
+// `claude --worktree <name>` re-enter the worktree it made before instead of
+// making another.
+func (r *Records) ChildWorktree(parent, name string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, p := range r.projects {
+		for _, w := range p.Workspaces {
+			if w.Kind == kindWorktree && w.Parent == parent && w.Name == name && isDir(w.Dir) {
+				return w.Dir, true
+			}
+		}
+	}
+	return "", false
 }
 
 // workspaceDir is a workspace's id and the folder it runs in.
