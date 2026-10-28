@@ -60,7 +60,7 @@ Vim mode can be enabled in Settings:
 2. Locate **Editor: Vim Mode** (`editor.vimMode`).
 3. Click the `[true]` pill button to activate it immediately.
 
-Alternatively, set `"editor.vimMode": true` in `settings.json` (`$XDG_CONFIG_HOME/punk0/settings.json`, else `~/.punk0/settings.json`).
+Alternatively, set `"editor.vimMode": true` in `settings.json` (`~/.config/punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json` when that is set).
 
 ---
 

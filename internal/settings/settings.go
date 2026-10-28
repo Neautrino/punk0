@@ -12,13 +12,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"px0/internal/paths"
 )
 
 // punk0 keeps no state inside a workspace. The user's preferences and choices
-// are stored with the other per-user files punk0 writes (~/.punk0/settings.json),
-// never in the working tree.
+// are stored in punk0's config folder (see internal/paths), never in the
+// working tree.
 
-// Settings stores user configuration written to ~/.punk0/settings.json (or XDG_CONFIG_HOME/punk0/settings.json).
+// Settings stores user configuration written to settings.json in punk0's
+// config folder.
 // All settings are optional pointers so omitted values fall back to application defaults.
 type Settings struct {
 	Agent  string            `json:"agent,omitempty"`
@@ -88,18 +91,8 @@ var LSPServerNames = func() []string { return nil }
 
 var settingsMu sync.Mutex
 
-// Path mirrors stateFilePath in internal/update: honour the XDG location when
-// it is set, otherwise fall back to ~/.punk0.
-func Path() string {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "punk0", "settings.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".punk0", "settings.json")
-}
+// Path is settings.json in the config folder.
+func Path() string { return filepath.Join(paths.Config(), "settings.json") }
 
 // SchemaItem describes a configurable setting for dynamic rendering in the settings modal.
 type SchemaItem struct {
@@ -347,6 +340,15 @@ var Schema = []SchemaItem{
 		Min:         numPtr(0),
 		Max:         numPtr(1440.0),
 		Step:        numPtr(1.0),
+	},
+	{
+		Key:         "workspace.dir",
+		Title:       "Workspaces Folder",
+		Description: "Where new worktrees and scratch chats are created: workspaces/<project>/<name> and scratch/<name> inside it. Existing ones stay where they are.",
+		Category:    "Workspaces",
+		Type:        "string",
+		Default:     "~/punk0",
+		Exec:        true, // punk0 creates folders and runs git there: loopback only
 	},
 	{
 		Key:         "workspace.branchPrefix",

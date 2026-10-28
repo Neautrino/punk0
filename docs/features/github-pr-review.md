@@ -97,7 +97,7 @@ A PR URL can name any host, so punk0 never sends a token to a host it wasn't con
 
 Connecting through the dialog saves the host along with the token. If a token for a *different* host of the same forge is already saved, the new one is used for the current session only and the saved one is left alone.
 
-Tokens are stored in your punk0 settings file (`$XDG_CONFIG_HOME/punk0/settings.json`, else `~/.punk0/settings.json`) on the machine running punk0. Git receives them through environment variables scoped to the forge's URL, never on the command line, in remote config, or in URLs, and punk0 strips them from any error text it shows.
+Tokens are stored in your punk0 settings file (`~/.config/punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json` when that is set) on the machine running punk0. Git receives them through environment variables scoped to the forge's URL, never on the command line, in remote config, or in URLs, and punk0 strips them from any error text it shows.
 
 ### Without a token
 - Public repositories still check out, diff, and navigate.

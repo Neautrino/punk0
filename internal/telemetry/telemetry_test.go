@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -186,12 +187,10 @@ func TestTelemetryDisabledWithoutKey(t *testing.T) {
 }
 
 func TestGetOrGenerateDistinctID(t *testing.T) {
-	tempHome := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", origHome)
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
 
-	// First call generates new ID and saves to tempHome/.punk0/anonymous_id
+	// First call generates a new ID and saves it in the state folder.
 	id1 := getOrGenerateDistinctID()
 	if len(id1) < 16 {
 		t.Fatalf("expected >= 16 byte id, got %q", id1)
@@ -204,8 +203,8 @@ func TestGetOrGenerateDistinctID(t *testing.T) {
 	}
 
 	// Corrupt file (too short) -> regenerates
-	idPath := tempHome + "/.punk0/anonymous_id"
-	_ = os.WriteFile(idPath, []byte("short"), 0644)
+	idPath := filepath.Join(state, "punk0", "anonymous_id")
+	_ = os.WriteFile(idPath, []byte("short"), 0o600)
 	id3 := getOrGenerateDistinctID()
 	if id3 == "short" || len(id3) < 16 || id3 == id1 {
 		t.Errorf("expected a regenerated id, got %q (first was %q)", id3, id1)
@@ -215,6 +214,20 @@ func TestGetOrGenerateDistinctID(t *testing.T) {
 	u := generateUUID()
 	if len(u) != 36 {
 		t.Errorf("expected 36 char UUID, got %q", u)
+	}
+}
+
+// TestOptedOutWritesNoID: an opted-out punk0 leaves no identifier on disk.
+func TestOptedOutWritesNoID(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	tel := New("key", "v", true)
+	defer tel.Close("test")
+	if tel.distinctID != "" {
+		t.Errorf("distinctID = %q while opted out", tel.distinctID)
+	}
+	if _, err := os.Stat(filepath.Join(state, "punk0", "anonymous_id")); !os.IsNotExist(err) {
+		t.Errorf("anonymous_id written while opted out: %v", err)
 	}
 }
 

@@ -225,6 +225,15 @@ const BUILTIN_SCHEMA = [
     step: 1
   },
   {
+    key: "workspace.dir",
+    title: "Workspaces Folder",
+    description: "Where new worktrees and scratch chats are created: workspaces/<project>/<name> and scratch/<name> inside it. Existing ones stay where they are.",
+    category: "Workspaces",
+    type: "string",
+    default: "~/punk0",
+    exec: true
+  },
+  {
     key: "workspace.branchPrefix",
     title: "Branch Prefix",
     description: "Put in front of the branch a new worktree workspace makes from its name (e.g. you/ turns login into you/login). The folder keeps the plain name. Existing branches and pull requests are left as they are.",

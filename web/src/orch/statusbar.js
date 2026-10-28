@@ -6,7 +6,7 @@
 // open file's details are viewer.js's. Right: the resource button and panel
 // (resources.js, respanel.js).
 import { $, esc, keyCaps } from '../state.js';
-import { showToast } from '../ui.js';
+import { showToast, copyToClipboard } from '../ui.js';
 import { call, failed } from './api.js';
 import { drawAgentStates } from '../statusparts.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
@@ -35,13 +35,27 @@ function showHelp() {
   helpSheet.innerHTML = '<div class="help-card"><div class="help-header"><h2>Keyboard Shortcuts</h2>' + ver +
     '</div><dl class="help-grid">' +
     SHORTCUTS.map(([combos, v]) => '<dt>' + combos.map(keyCaps).join('<span class="key-or">/</span>') + '</dt>' +
-      '<dd>' + esc(v) + '</dd>').join('') + '</dl>' +
+      '<dd>' + esc(v) + '</dd>').join('') + '</dl>' + legacyNotice() +
     '<div class="help-foot"><button type="button" class="wb-btn" id="help-logs">Open logs folder</button>' +
     '<button type="button" class="wb-btn" id="help-diag">Copy diagnostics</button>' +
     '<span class="help-foot-note">The log never holds terminal output or prompts.</span></div></div>';
   $('#help-logs').addEventListener('click', openLogs);
   $('#help-diag').addEventListener('click', copyDiagnostics);
+  $('#help-migrate')?.addEventListener('click', e =>
+    copyToClipboard(MIGRATE_CMD, 'Command copied', e.currentTarget));
   helpSheet.hidden = false;
+}
+
+const MIGRATE_CMD = 'punk0 migrate';
+
+// legacyNotice offers the move to the standard folders to installs still
+// running out of ~/.punk0; migrating needs punk0 stopped, so it is a command
+// to copy, not a button.
+function legacyNotice() {
+  if (!state.wb.folders?.legacy) return '';
+  return '<p class="help-note">punk0 keeps its files in <code>~/.punk0</code>. To use the standard folders, ' +
+    'stop punk0 and run <code>' + MIGRATE_CMD + '</code>.' +
+    '<button type="button" class="wb-btn" id="help-migrate">Copy command</button></p>';
 }
 
 async function openLogs() {

@@ -92,7 +92,7 @@ Repositories contain documentation, architecture notes, and graphical assets alo
 
 punk0 adapts to developer habits and viewing environments without requiring manual config file tinkering:
 
-- **[Settings & Preferences System](settings-and-configuration.md)**: Comprehensive settings manager accessible via `Cmd/Ctrl+,`. Offers a VS Code-style graphical UI with interactive attribute pills alongside a raw JSON editor (`$XDG_CONFIG_HOME/punk0/settings.json`, else `~/.punk0/settings.json`) that updates themes, typography, diff layouts, and search behavior in real time without refreshing the browser.
+- **[Settings & Preferences System](settings-and-configuration.md)**: Comprehensive settings manager accessible via `Cmd/Ctrl+,`. Offers a VS Code-style graphical UI with interactive attribute pills alongside a raw JSON editor (`~/.config/punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json` when that is set) that updates themes, typography, diff layouts, and search behavior in real time without refreshing the browser.
 - **[Themes & Styling](themes-and-styling.md)**: 14 built-in dark and light themes crafted for high readability and visual consistency across all panels, diffs, and markdown documents.
 - **[Tips & Tricks System](tips-system.md)**: Interactive discoverability system featuring a gentle floating tip widget, Tips tab in the help card, `#btn-help` status bar trigger, and offline fallbacks.
 - **[Vim Keybindings & Modal Navigation](vim-mode.md)**: Full modal navigation emulation supporting Normal, Visual, and Motion modes for developers accustomed to Vim, Neovim, or Helix.

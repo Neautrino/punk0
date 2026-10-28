@@ -314,7 +314,6 @@ function renderScratch(p) {
       <p class="wb-faint">An agent chat in a folder of its own, outside any project: research, one-off scripts, prototypes.</p>
       <button type="button" class="wb-btn wb-primary" data-act="new-chat">New chat</button>
     </div>`;
-  scratchDir = p.dir;
   const groupName = w => groups.find(g => g.id === w.group)?.name;
   const match = w => textMatch(wsLabel(w), w.name, groupName(w));
   const keep = w => w.id === state.ws || searching ||
@@ -432,9 +431,9 @@ function when(ms) {
 }
 
 // A chat in a folder of yours, rather than one punk0 made, shows the
-// folder's name: deleting the chat leaves that folder alone.
-let scratchDir = '';
-const ownFolder = w => w.dir.startsWith(scratchDir + state.wb.sep);
+// folder's name: deleting the chat leaves that folder alone. The server
+// decides it (Workspace.Owned): the scratch folder moves, chats do not.
+const ownFolder = w => !!w.owned;
 const folderChip = w => ownFolder(w) || wsLabel(w) === w.name ? ''
   : `<span class="o-chip" title="Runs in your folder ${esc(tildify(w.dir))}">${esc(w.name)}</span>`;
 

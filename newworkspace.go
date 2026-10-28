@@ -305,9 +305,14 @@ func (r *Records) plan(projectID string, o WorkspaceOptions) (WorkspacePlan, err
 	if folder == "" {
 		folder = folderName(branch)
 	}
-	pl.Dir = filepath.Join(r.worktrees, pid, folder)
+	root, err := codeRoot()
+	if err != nil {
+		return pl, err
+	}
+	dirs := filepath.Join(root, "workspaces", pid)
+	pl.Dir = filepath.Join(dirs, folder)
 	for n := 2; taken[pl.Dir] || exists(pl.Dir); n++ {
-		pl.Dir = filepath.Join(r.worktrees, pid, folder+"-"+strconv.Itoa(n))
+		pl.Dir = filepath.Join(dirs, folder+"-"+strconv.Itoa(n))
 	}
 	return pl, nil
 }
@@ -416,9 +421,10 @@ func (r *Records) AddWorkspace(projectID string, o WorkspaceOptions) (w *Workspa
 		return nil, "", fmt.Errorf("%s is a workspace already", tildePath(pl.Dir))
 	}
 	if pl.Worktree {
+		root, _ := codeRootPath()
 		w = newWorkspace(pl.Name, kindWorktree, pl.Dir, pl.Branch)
-		// A folder under <state>/worktrees is punk0's even when adopted back.
-		w.Adopted = pl.Action == planAdopt && !strings.HasPrefix(pl.Dir, r.worktrees+string(filepath.Separator))
+		// A folder punk0 made is punk0's even when adopted back.
+		w.Adopted = pl.Action == planAdopt && !r.ownWorktree(pl.Dir, root)
 		// Checked before git ran; a parent removed meanwhile leaves it on top.
 		if slices.ContainsFunc(p.Workspaces, func(x *Workspace) bool { return x.ID == o.Parent }) {
 			w.Parent = o.Parent

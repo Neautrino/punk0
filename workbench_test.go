@@ -26,12 +26,40 @@ func newTestStore(t *testing.T) *wbStore {
 // newTestStore set up, and stops whatever it started when the test ends.
 func testWorkbench(t *testing.T, basePath, cwd, exe string, childArgs []string) *workbench {
 	t.Helper()
+	isolateCodeRoot(t)
 	wb, err := newWorkbench(basePath, cwd, exe, childArgs)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(wb.Close)
 	return wb
+}
+
+// TestStateFollowsLegacyInstall: an install that still has ~/.punk0/records.json
+// keeps using it; once it is gone, the standard state folder wins.
+func TestStateFollowsLegacyInstall(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix layout")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", "")
+	legacy := filepath.Join(home, ".punk0")
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "records.json"), []byte(`{"projects":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := workbenchStateDir(); got != legacy {
+		t.Fatalf("workbenchStateDir = %s, want the legacy %s", got, legacy)
+	}
+	if err := os.RemoveAll(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := workbenchStateDir(), filepath.Join(home, ".local", "state", "punk0"); got != want {
+		t.Fatalf("workbenchStateDir = %s, want %s", got, want)
+	}
 }
 
 func TestWorkbenchItemIDsAreStable(t *testing.T) {

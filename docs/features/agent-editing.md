@@ -35,7 +35,7 @@ The model list for each harness comes from the harness itself. With no model pic
 
 ## Choosing a Harness
 
-Detection alone never runs anything: nothing is sent to a harness until you pick one. The harness and model selects appear where an AI action is offered, for example in the git panel's notice card for Rebase / Merge with AI and in the PR merge dialog; Settings (`Cmd/Ctrl+,`) has the harness too, as **Coding Harness** (`agent.harness`). Changing it in one place changes it everywhere, and the choice is saved in `$XDG_CONFIG_HOME/punk0/settings.json` (else `~/.punk0/settings.json`), never in your repository.
+Detection alone never runs anything: nothing is sent to a harness until you pick one. The harness and model selects appear where an AI action is offered, for example in the git panel's notice card for Rebase / Merge with AI and in the PR merge dialog; Settings (`Cmd/Ctrl+,`) has the harness too, as **Coding Harness** (`agent.harness`). Changing it in one place changes it everywhere, and the choice is saved in `~/.config/punk0/settings.json` (`$XDG_CONFIG_HOME/punk0/settings.json` when that is set), never in your repository.
 
 Until a harness is picked, the selects read **pick a harness** and AI actions are refused with an error.
 

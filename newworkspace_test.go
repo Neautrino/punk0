@@ -723,3 +723,130 @@ func TestRefsCurrentHeadAndMainCheckout(t *testing.T) {
 		t.Fatalf("refs of a folder outside git %+v, want current and head empty", plain)
 	}
 }
+
+// New worktrees go in the Workspaces Folder, where punk0 keeps owning them:
+// adding the project again finds them, and they are not adopted folders.
+func TestNewWorktreeGoesToCodeRoot(t *testing.T) {
+	root := useCodeRoot(t)
+	repo := cleanRepo(t)
+	rec := openRecords(t, t.TempDir())
+	p, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "login", Worktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "workspaces", p.ID, "login"); w.Dir != want {
+		t.Fatalf("worktree at %q, want %q", w.Dir, want)
+	}
+	if w.Adopted {
+		t.Error("a worktree punk0 made is adopted")
+	}
+
+	if _, err := rec.RemoveProject(p.ID, RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	back, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slicesContainsDir(back.Workspaces, w.Dir) {
+		t.Fatalf("adding the project back lost its worktree: %+v", back.Workspaces)
+	}
+}
+
+func slicesContainsDir(ws []*Workspace, dir string) bool {
+	for _, w := range ws {
+		if w.Dir == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// ~/punk0 may be a clone of punk0 itself; worktrees must not be made inside
+// a repository, and punk0 still starts when the setting points at one.
+func TestCodeRootRefusesRepository(t *testing.T) {
+	useSettings(t, map[string]any{"workspace.dir": cleanRepo(t)})
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	p, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl := rec.Plan(p.ID, WorkspaceOptions{Name: "login", Worktree: true})
+	if !strings.Contains(pl.Error, "workspace.dir") {
+		t.Fatalf("plan error %q, want one naming workspace.dir", pl.Error)
+	}
+	if _, _, err := rec.AddWorkspace(p.ID, WorkspaceOptions{Name: "login", Worktree: true}); err == nil {
+		t.Fatal("made a worktree inside a git repository")
+	}
+	var scratch projectView
+	for _, v := range rec.List() {
+		if v.Scratch {
+			scratch = v
+		}
+	}
+	if want := filepath.Join(home, "scratch"); scratch.Dir != want {
+		t.Fatalf("scratch folder %q, want the recorded %q while the code root is refused", scratch.Dir, want)
+	}
+}
+
+// An install from before the Workspaces Folder keeps its worktrees under
+// <state>/worktrees: punk0 made them, so it still owns and removes them.
+func TestLegacyWorktreesStayOwned(t *testing.T) {
+	useCodeRoot(t)
+	repo := cleanRepo(t)
+	home := tempDir(t)
+	legacy := filepath.Join(home, "worktrees", "repo")
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(legacy, "old")
+	runGit(t, repo, "worktree", "add", "-q", dir, "-b", "old")
+
+	rec := openRecords(t, home)
+	p, err := rec.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w *Workspace
+	for _, x := range p.Workspaces {
+		if x.Dir == dir {
+			w = x
+		}
+	}
+	if w == nil {
+		t.Fatalf("the legacy worktree is not listed: %+v", p.Workspaces)
+	}
+	if w.Adopted {
+		t.Error("a worktree under <state>/worktrees is adopted")
+	}
+	if _, err := rec.RemoveWorkspace(w.ID, RemoveOptions{Files: true}); err != nil {
+		t.Fatal(err)
+	}
+	if isDir(dir) {
+		t.Error("the legacy worktree's folder survived its workspace")
+	}
+}
+
+// A new install has no <state>/worktrees, which must not make every folder
+// look like punk0's own worktree.
+func TestOpenAcceptsAnyFolderWithoutLegacyWorktrees(t *testing.T) {
+	useCodeRoot(t)
+	repo := cleanRepo(t)
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	if rec.worktrees != "" {
+		t.Fatalf("a new install has a legacy worktrees folder: %q", rec.worktrees)
+	}
+	p, w, err := rec.Open(repo)
+	if err != nil {
+		t.Fatalf("opening a plain repository: %v", err)
+	}
+	if p.Dir != repo || w.Kind != kindLocal || w.Dir != repo {
+		t.Fatalf("Open(%s) = project %+v workspace %+v", repo, p, w)
+	}
+}

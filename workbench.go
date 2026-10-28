@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"px0/internal/applog"
+	"px0/internal/paths"
 	"px0/internal/settings"
 	"px0/internal/ui"
 )
@@ -80,17 +81,8 @@ type wbFile struct {
 	Clones map[string]string `json:"clones,omitempty"`
 }
 
-// workbenchStateDir is where workbench.json and the instance lock live:
-// $XDG_STATE_HOME/punk0 when set, otherwise ~/.punk0, like the session files.
-func workbenchStateDir() string {
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "punk0")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".punk0")
-	}
-	return filepath.Join(os.TempDir(), "punk0")
-}
+// workbenchStateDir is where workbench.json and the instance lock live.
+func workbenchStateDir() string { return paths.State() }
 
 func workbenchStorePath() string { return filepath.Join(workbenchStateDir(), "workbench.json") }
 func workbenchLockPath() string  { return filepath.Join(workbenchStateDir(), "workbench.lock") }
@@ -991,6 +983,7 @@ func (wb *workbench) handleState(w http.ResponseWriter, r *http.Request) {
 		"home":    home,
 		"sep":     string(filepath.Separator),
 		"version": version,
+		"folders": folderInfo(),
 		"items":   views,
 	})
 }

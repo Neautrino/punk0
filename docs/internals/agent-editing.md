@@ -60,8 +60,10 @@ Discovery alone never enables a harness. Finding `claude` on PATH is not consent
 The choice is written to:
 
 ```
+~/.config/punk0/settings.json            # Unix (macOS included)
 $XDG_CONFIG_HOME/punk0/settings.json     # when XDG_CONFIG_HOME is set
-~/.punk0/settings.json                   # otherwise
+%APPDATA%\punk0\settings.json            # Windows
+~/.punk0/settings.json                   # an install from before `punk0 migrate`
 ```
 
 ```json

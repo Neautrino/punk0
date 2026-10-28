@@ -6,8 +6,9 @@ package main
 // A project is a folder the user registered; its workspaces are the ways to
 // work in it. Local workspaces share the project folder, so they also share
 // the one punk0 child that serves its files (see workbench.go); a worktree
-// workspace owns exactly one git worktree under <state>/worktrees, so deleting
-// it can never pull files from under another.
+// workspace owns exactly one git worktree in the Workspaces Folder
+// (workspace.dir, codeRoot), so deleting it can never pull files from under
+// another.
 //
 // Running shells are never saved: after a restart every tab is listed stopped
 // and starts again on attach, a claude tab resuming its session.
@@ -20,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
@@ -91,6 +93,7 @@ type Workspace struct {
 	Active   int64        `json:"active,omitempty"`   // unix ms of the last prompt, else of creation
 	Created  int64        `json:"created,omitempty"`  // unix ms the chat was made
 	Adopted  bool         `json:"adopted,omitempty"`  // worktree kind: a folder punk0 did not make, used where it is
+	Owned    bool         `json:"owned,omitempty"`    // folder kind: punk0 made this folder, so it goes with the chat
 	Parent   string       `json:"parent,omitempty"`   // worktree kind: the workspace it is listed under, "" at the top
 	Tabs     []*Satellite `json:"tabs"`
 }
@@ -192,8 +195,8 @@ func (s *Satellite) close() {
 
 // Records holds the tree and the folders language servers are allowed in.
 type Records struct {
-	home      string // <state>: XDG_STATE_HOME/punk0 or ~/.punk0
-	worktrees string // home/worktrees, symlinks resolved to match git's paths
+	home      string // punk0's state folder (internal/paths)
+	worktrees string // an older install's <state>/worktrees, "" when it has none
 
 	// mu guards projects, lsp, creating and the file. git never runs under
 	// it (newworkspace.go).
@@ -234,18 +237,61 @@ type recordsFile struct {
 	ChatWorkspaces map[string]string `json:"chatWorkspaces,omitempty"`
 }
 
+// codeRootPath is the workspace.dir setting as a clean absolute path, with
+// symlinks resolved when it exists (git reports resolved paths), creating
+// nothing: what ownership checks compare against.
+func codeRootPath() (string, error) {
+	dir := settings.SettingOr[string]("workspace.dir")
+	if dir == "" {
+		dir = "~/punk0"
+	}
+	dir, err := expandPath(dir, "")
+	if err != nil {
+		return "", err
+	}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return real, nil
+	}
+	return dir, nil
+}
+
+// codeRoot is the folder new worktrees and scratch chats go in, created if
+// missing, symlinks resolved because git reports resolved paths. A git
+// repository is refused: ~/punk0 may be a clone of punk0 itself.
+func codeRoot() (string, error) {
+	dir, err := codeRootPath()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		return "", fmt.Errorf("%s is a git repository: set Workspaces Folder (workspace.dir) to another folder", tildePath(dir))
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(dir)
+}
+
+// ownWorktree reports whether dir is a worktree punk0 made: one under the
+// code root's workspaces folder, or under an old install's <state>/worktrees.
+// root comes from codeRootPath, resolved once by the caller.
+func (r *Records) ownWorktree(dir, root string) bool {
+	dir = filepath.Clean(filepath.FromSlash(dir)) // git prints C:/... on Windows
+	if root != "" && strings.HasPrefix(dir, filepath.Join(root, "workspaces")+string(filepath.Separator)) {
+		return true
+	}
+	return r.worktrees != "" && strings.HasPrefix(dir, r.worktrees+string(filepath.Separator))
+}
+
 // OpenRecords loads <state>/records.json; a missing file is an empty list. A
 // file that does not parse is an error rather than an empty list, so a later
 // save cannot overwrite it.
 func OpenRecords(home string) (*Records, error) {
-	for _, dir := range []string{"worktrees", "scratch"} {
-		if err := os.MkdirAll(filepath.Join(home, dir), 0o700); err != nil {
-			return nil, err
-		}
-	}
-	wt, err := filepath.EvalSymlinks(filepath.Join(home, "worktrees"))
-	if err != nil {
-		return nil, err
+	// <state>/worktrees is an old install's: punk0 creates none, but keeps
+	// owning what is already in there.
+	wt := ""
+	if resolved, err := filepath.EvalSymlinks(filepath.Join(home, "worktrees")); err == nil {
+		wt = resolved
 	}
 	r := &Records{home: home, worktrees: wt, lsp: map[string]bool{}, creating: map[string]bool{}, chats: newChatHistory()}
 	// OpenCode lists the folder its CLI runs in, so it needs punk0's folders.
@@ -282,7 +328,29 @@ func OpenRecords(home string) (*Records, error) {
 	if !slices.ContainsFunc(r.projects, func(p *Project) bool { return p.Scratch }) {
 		r.projects = append(r.projects, &Project{ID: r.projectIDLocked("scratch"), Name: "Scratch", Dir: filepath.Join(home, "scratch"), Scratch: true})
 	}
+	r.placeScratchLocked()
 	return r, nil
+}
+
+// placeScratchLocked marks the chats punk0 made, then points the Scratch
+// project at <code root>/scratch. Ownership is decided first, on the folder
+// as recorded: chats made under an older scratch folder keep going with their
+// chat once the folder moves. A code root punk0 cannot have leaves the chats
+// where they are rather than keeping punk0 from starting.
+func (r *Records) placeScratchLocked() {
+	p := r.scratchLocked()
+	sep := string(filepath.Separator)
+	for _, w := range p.Workspaces {
+		if w.Kind == kindFolder {
+			w.Owned = w.Owned || strings.HasPrefix(w.Dir, p.Dir+sep)
+		}
+	}
+	root, err := codeRoot()
+	if err != nil {
+		slog.Warn("workspaces folder unavailable: new chats and worktrees need it", "err", err)
+		return
+	}
+	p.Dir = filepath.Join(root, "scratch")
 }
 
 func (r *Records) file() string { return filepath.Join(r.home, "records.json") }
@@ -438,7 +506,8 @@ func (r *Records) Open(dir string) (*Project, *Workspace, error) {
 	if p, w := r.byDir(dir); w != nil {
 		return p, w, nil
 	}
-	if strings.HasPrefix(dir, r.worktrees+string(filepath.Separator)) {
+	root, _ := codeRootPath()
+	if r.ownWorktree(dir, root) {
 		main := gitMainTree(dir)
 		if main == "" {
 			return nil, nil, fmt.Errorf("%s is not a punk0 worktree", dir)
@@ -765,7 +834,7 @@ func (r *Records) RemoveWorkspace(id string, o RemoveOptions) (note string, err 
 	}
 	// A chat's folder goes with it only when punk0 made it; a chat started
 	// in a folder of yours leaves that folder alone.
-	if w.Kind == kindFolder && strings.HasPrefix(w.Dir, p.Dir+string(filepath.Separator)) {
+	if w.Kind == kindFolder && w.Owned {
 		if err := os.RemoveAll(w.Dir); err != nil {
 			return "", err
 		}
@@ -1465,13 +1534,13 @@ func worktreeAt(wts []worktreeInfo, dir string) *worktreeInfo {
 }
 
 // ownWorktrees returns a workspace for every worktree of the repository at
-// dir that lives under <state>/worktrees.
+// dir that punk0 made (ownWorktree).
 func (r *Records) ownWorktrees(dir string) []*Workspace {
 	wts, _ := listWorktrees(dir)
-	prefix := r.worktrees + string(filepath.Separator)
+	root, _ := codeRootPath()
 	var ws []*Workspace
 	for _, wt := range wts {
-		if strings.HasPrefix(wt.Path, prefix) {
+		if r.ownWorktree(wt.Path, root) {
 			ws = append(ws, newWorkspace(filepath.Base(wt.Path), kindWorktree, wt.Path, wt.Branch))
 		}
 	}

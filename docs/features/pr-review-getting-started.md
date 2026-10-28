@@ -77,7 +77,7 @@ A **repository, project or workspace access token** (created in the repository's
 Environment variables: `BITBUCKET_TOKEN`, plus `BITBUCKET_EMAIL` for an API token.
 
 ### Where the token lives
-Tokens are saved in your punk0 settings file (`~/.punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json`) on the machine running punk0, and can be changed under Settings (`Cmd/Ctrl+,`) → the forge's section. punk0 sends a token only to the host it was set up for. Git gets the token through environment variables, never on the command line or in a URL.
+Tokens are saved in your punk0 settings file (`~/.config/punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json` when that is set) on the machine running punk0, and can be changed under Settings (`Cmd/Ctrl+,`) → the forge's section. punk0 sends a token only to the host it was set up for. Git gets the token through environment variables, never on the command line or in a URL.
 
 ---
 

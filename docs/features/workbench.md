@@ -118,7 +118,7 @@ The panel opens on a short menu: a **Folder** field, **Browse folder**, **Clone 
 
 - **Name.** What the workspace is called in the sidebar. Required for a workspace in the project folder; with a new worktree it may be left empty and becomes the branch's name (a pull request's `#123 Title`), with `-2`, `-3`… when the project has that name already.
 - **Branch.** What to work on. It opens on the project folder's current branch (tagged `current`; `detached at <commit>` when it has none). Clicking it, pressing **↓** or typing drops down a list over the form: the current branch, the project's worktrees (branch, or `detached` and its commit, tagged `open`, `adopt` or `deleted`, then the folder), then up to 50 of its other branches that match what you type. **↑/↓** choose, **Enter** or a click fills it in, **Esc** dismisses. A branch checked out in a worktree is only listed as that worktree. Any tag or commit can be typed, and so can `#123` or a pull request URL of the project's repository, which hides the list.
-- **Create a new worktree.** Only the current branch can run in the project folder itself: unticked, the workspace runs there, beside the project's other workspaces in it. Ticked, it gets its own folder (`<state>/worktrees/<project>/<branch>`, `/` in the branch becoming `-`). Git checks a branch out in one folder at a time, so for any other branch, tag, commit or pull request the box is ticked and locked ("not checked out here"). For a worktree it is hidden: **Open** selects the workspace already running there (also when its folder was deleted; its ✕ cleans up), **Adopt** makes a worktree punk0 does not know (made with `git worktree add` or another tool) a workspace where it is, nothing moved or checked out, and a deleted one offers **Prune**, which has git forget the repository's deleted worktrees.
+- **Create a new worktree.** Only the current branch can run in the project folder itself: unticked, the workspace runs there, beside the project's other workspaces in it. Ticked, it gets its own folder in the Workspaces Folder (`~/punk0/workspaces/<project>/<branch>` by default, `/` in the branch becoming `-`). Git checks a branch out in one folder at a time, so for any other branch, tag, commit or pull request the box is ticked and locked ("not checked out here"). For a worktree it is hidden: **Open** selects the workspace already running there (also when its folder was deleted; its ✕ cleans up), **Adopt** makes a worktree punk0 does not know (made with `git worktree add` or another tool) a workspace where it is, nothing moved or checked out, and a deleted one offers **Prune**, which has git forget the repository's deleted worktrees.
 - **New branch name.** Under the ticked box. Typed, the worktree is on a new branch of that name, exactly as typed, starting from Branch. Left empty, it works on Branch itself when that is a branch (a remote one, `origin/feature`, gets a local `feature` tracking it), and otherwise (the current branch, a tag, a commit) on a new branch named after Name (`Fix login bug` → `fix-login-bug`, with `workspace.branchPrefix` in front). A name that exists as a branch already is checked out as it is, and one that exists only on `origin` tracks it; the line under the box then says Branch is not used. For a pull request, **Review** opens it in the editor's review view and **Work on it** checks it out in a worktree, on its head branch or on `pr-123` for a fork's, or on the new branch name you typed.
 - **Start point.** A new branch starts from exactly what Branch holds, usually your local current branch. A remote branch is fetched first (30 s at most; if that fails the workspace starts from your copy and punk0 says so). New branches do not track their start point, so a push goes to their own name.
 - **The line under it** says what Create will do (new branch from where, existing branch, tracking, adopting or opening an existing worktree, the folder) or why it cannot, before anything is made. The Create button reads **Adopt** or **Open** to match.
@@ -129,7 +129,7 @@ Each workspace row shows its editor's state (stopped, starting, running, failed)
 
 ### Scratch chats
 
-Scratch is for agent work that has no repository yet: research, one-off scripts, prototypes. Each chat is a coding agent in a terminal tab, in a folder of its own under the state directory or in a folder of yours, so it can write and run files without touching a project.
+Scratch is for agent work that has no repository yet: research, one-off scripts, prototypes. Each chat is a coding agent in a terminal tab, in a folder of its own under the Workspaces Folder (`~/punk0/scratch` by default) or in a folder of yours, so it can write and run files without touching a project.
 
 - **Starting.** **+** in the header, **New chat**, or **+** on a group's row opens the **New chat** flyout just right of the sidebar, pointing at the button you pressed. **Enter** starts the chat; **Esc**, ✕ or a click elsewhere closes it.
   - **Title.** Optional. Left empty, a Claude chat is named after the first prompt you send (not a `/command`, cut to about 60 characters), any other after its folder.
@@ -204,7 +204,7 @@ While a file is shown (in its panel, or in front among the tabs), its details si
 
 ## Logs and diagnostics
 
-punk0 writes a log file, `logs/punk0.log` in the state directory (on Windows `C:\Users\<you>\.punk0\logs\punk0.log`), so a problem can be looked into after the terminal that ran punk0 is closed. It holds one line per event, in time order:
+punk0 writes a log file, `logs/punk0.log` in its state folder (`~/.local/state/punk0/logs/punk0.log`, on Windows `%LOCALAPPDATA%\punk0\state\logs\punk0.log`), so a problem can be looked into after the terminal that ran punk0 is closed. It holds one line per event, in time order:
 
 - punk0 starting (version, OS and its version, Go, the shell tabs use, where `claude` and `git` were found, the flags) and stopping.
 - Each editor process: starting (folder, pid), ready and how long it took, failing (with the reason), exiting, stopped for being idle, and everything it printed, panics included.
@@ -214,26 +214,45 @@ punk0 writes a log file, `logs/punk0.log` in the state directory (on Windows `C:
 
 Terminal output, prompts, file contents and environment variables are never written. The home folder is written as `~`, and tokens with a known prefix (GitHub, GitLab, `sk-` keys, Slack), `Bearer` / `Basic` values and passwords in URLs as `[redacted]`. The file starts over at 5 MiB, keeping two older parts (`punk0.log.1`, `punk0.log.2`). If Go itself crashes, the stack also goes to `logs/crash.log`.
 
-The help sheet (**?** in the status bar) ends with **Open logs folder**, which opens the folder in the system's file manager, and **Copy diagnostics**, which copies punk0's version, OS, paths, each editor process's state and the last 200 lines of the log, for pasting into an issue. Both work only while punk0 listens on loopback. An editor that could not start says why, and where the log is, both on its error page and in the files pane.
+The help sheet (**?** in the status bar) ends with **Open logs folder**, which opens the folder in the system's file manager, and **Copy diagnostics**, which copies punk0's version, OS, paths, each editor process's state and the last 200 lines of the log, for pasting into an issue. Both work only while punk0 listens on loopback. An install still keeping its files in `~/.punk0` is told so above them, with the `punk0 migrate` command to copy (see [Where files live](#where-files-live)). An editor that could not start says why, and where the log is, both on its error page and in the files pane.
 
 ## Security
 
 Terminals are shells on your machine, so they are served only while punk0 listens on loopback (the default `-host 127.0.0.1`); otherwise opening one is refused. The page can also list and open **any directory the punk0 process can read**. With `-host 0.0.0.0`, anyone who can reach the address can browse the machine's folders and open any of them for reading and editing, and punk0 prints a warning saying so. Expose it only over networks you trust. The same DNS rebinding and same-origin checks as the rest of punk0 apply, including to the agents' hook reports.
 
-## Where state lives
+## Where files live
 
-Everything is kept in the state directory, `$XDG_STATE_HOME/punk0`, falling back to `~/.punk0`:
+punk0 keeps settings, its own bookkeeping and your code apart, each in the folder its platform uses.
+
+**Settings** — `~/.config/punk0/` (`$XDG_CONFIG_HOME/punk0/` when that is set, `%APPDATA%\punk0\` on Windows):
+
+| Path | Holds |
+| :--- | :--- |
+| `settings.json` | Every setting (see [Settings & Configuration](settings-and-configuration.md)) |
+
+**State** — `~/.local/state/punk0/` (`$XDG_STATE_HOME/punk0/` when that is set, `%LOCALAPPDATA%\punk0\state\` on Windows):
 
 | Path | Holds |
 | :--- | :--- |
 | `records.json` | Projects, workspaces, tabs, and the folders language servers are on in |
-| `worktrees/<project>/<name>` | Worktree workspaces |
-| `scratch/<name>` | Scratch chats, one folder each, deleted only with the chat |
 | `workbench.json` | Pull requests in the Reviews list, and the clone each repository's PRs use |
 | `repos/` | Clones punk0 makes for PRs |
+| `sessions/` | Open files and review drafts per workspace |
 | `claude-hooks.json` | The hook settings Claude tabs start with |
 | `workbench.lock` | The running punk0's address |
 | `logs/` | `punk0.log` and its older parts, `crash.log` (see [Logs and diagnostics](#logs-and-diagnostics)) |
+| `anonymous_id` | The anonymous telemetry id, written only while telemetry is on |
+
+**Your code** — `~/punk0`, the **Workspaces Folder** (the `workspace.dir` setting; point it anywhere you like):
+
+| Path | Holds |
+| :--- | :--- |
+| `workspaces/<project>/<name>` | Worktree workspaces |
+| `scratch/<name>` | Scratch chats, one folder each, deleted only with the chat |
+
+Downloads punk0 can fetch again (the Mermaid runtime) are cached in `~/.cache/punk0/` (`$XDG_CACHE_HOME/punk0/`, `%LOCALAPPDATA%\punk0\cache\` on Windows).
+
+**Upgrading.** Every punk0 before this layout kept all of it in `~/.punk0`. An install that still has one keeps using it, so nothing moves on upgrade and the help sheet offers the move. Stop punk0 and run `punk0 migrate`: settings go to the config folder, records, logs and sessions to the state folder, and worktrees, scratch chats, clones and the trash stay in `~/.punk0`, where records.json already points at them.
 
 Nothing is written inside your repositories, apart from worktree registrations (worktree workspaces, and temporary ones for PRs) and the `refs/px0/*` refs that PR review uses and removes on exit.
 

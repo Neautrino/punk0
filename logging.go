@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"px0/internal/applog"
+	"px0/internal/paths"
 	"px0/internal/ui"
 )
 
@@ -57,6 +58,7 @@ func startupAttrs(addr string) []any {
 		"pid", os.Getpid(),
 		"addr", addr,
 		"state", tildePath(workbenchStateDir()),
+		"config", tildePath(paths.Config()),
 		"shell", terminalShell(),
 		"claude", orNone(tildePath(claude)),
 		"git", orNone(tildePath(git)),
@@ -126,6 +128,9 @@ func (wb *workbench) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 		crash = fmt.Sprintf("%s, %d bytes, written %s", applog.CrashName, st.Size(), st.ModTime().Format(time.RFC3339))
 	}
 	fmt.Fprintf(&b, "%-10s %s\n", "crash", crash)
+	if folderInfo()["legacy"] == true {
+		fmt.Fprintf(&b, "%-10s %s\n", "layout", "legacy ~/.punk0, not migrated")
+	}
 
 	b.WriteString("\nworkspaces\n")
 	wb.mu.Lock()

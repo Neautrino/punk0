@@ -49,6 +49,12 @@ func main() {
 		runHook()
 		return
 	}
+	// `punk0 migrate` moves an old ~/.punk0 install to the standard folders;
+	// it must run while punk0 is stopped, so it comes before anything starts.
+	if len(os.Args) == 2 && os.Args[1] == "migrate" {
+		runMigrate()
+		return
+	}
 	var (
 		port         = flag.Int("port", 7777, "port to listen on (0 picks a free one)")
 		host         = flag.String("host", "127.0.0.1", "address to bind")
@@ -73,7 +79,7 @@ func main() {
 		workspaceIDFlag = flag.String("workspace-id", "", "internal: workspace id when run under workbench")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "punk0 %s - an agent orchestrator and code navigator\n\nusage:\n  punk0 [flags]                      open the agents page\n  punk0 [flags] <file or directory>  open its workspace there\n  punk0 [flags] <pr-url>             review a pull request\n\nflags:\n", version)
+		fmt.Fprintf(os.Stderr, "punk0 %s - an agent orchestrator and code navigator\n\nusage:\n  punk0 [flags]                      open the agents page\n  punk0 [flags] <file or directory>  open its workspace there\n  punk0 [flags] <pr-url>             review a pull request\n  punk0 migrate                      move an old ~/.punk0 install to the standard folders\n\nflags:\n", version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()

@@ -51,12 +51,36 @@ func runGit(t *testing.T, dir string, args ...string) string {
 
 func openRecords(t *testing.T, home string) *Records {
 	t.Helper()
+	isolateCodeRoot(t)
 	rec, err := OpenRecords(home)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(rec.Close)
 	return rec
+}
+
+// isolateCodeRoot keeps a test off the real punk0: a Workspaces Folder in a
+// temp dir and a HOME of its own, unless the test chose its own already.
+func isolateCodeRoot(t *testing.T) {
+	t.Helper()
+	if !strings.HasPrefix(os.Getenv("XDG_CONFIG_HOME"), os.TempDir()) {
+		useSettings(t, nil)
+	}
+	if home, _ := os.UserHomeDir(); !strings.HasPrefix(home, os.TempDir()) {
+		dir := t.TempDir()
+		t.Setenv("HOME", dir)
+		t.Setenv("USERPROFILE", dir)
+	}
+}
+
+// useCodeRoot points workspace.dir at a temp folder and returns it: where
+// new worktrees and scratch chats land.
+func useCodeRoot(t *testing.T) string {
+	t.Helper()
+	root := tempDir(t)
+	useSettings(t, map[string]any{"workspace.dir": root})
+	return root
 }
 
 // addWorkspace adds a local or worktree workspace named name, the rest left
@@ -236,6 +260,7 @@ func TestRecordsLSPIsOffByDefault(t *testing.T) {
 }
 
 func TestWorktreeWorkspace(t *testing.T) {
+	root := useCodeRoot(t)
 	repo, home := cleanRepo(t), t.TempDir()
 	rec := openRecords(t, home)
 	p, err := rec.AddProject(repo)
@@ -247,7 +272,7 @@ func TestWorktreeWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(rec.worktrees, p.ID, "feat-a"); w.Dir != want {
+	if want := filepath.Join(root, "workspaces", p.ID, "feat-a"); w.Dir != want {
 		t.Fatalf("worktree at %q, want %q", w.Dir, want)
 	}
 	if runGit(t, w.Dir, "rev-parse", "--abbrev-ref", "HEAD") != "feat-a" {
@@ -616,6 +641,7 @@ func TestAddWorkspaceRejects(t *testing.T) {
 }
 
 func TestScratchChats(t *testing.T) {
+	root := useCodeRoot(t)
 	home := t.TempDir()
 	rec := openRecords(t, home)
 	views := rec.List()
@@ -628,20 +654,21 @@ func TestScratchChats(t *testing.T) {
 	}
 
 	// A folder left by an older chat of the same minute is never reused.
-	stale := filepath.Join(home, "scratch", "chat-"+time.Now().Format("0102-1504"))
-	os.Mkdir(stale, 0o700)
+	scratchDir := filepath.Join(root, "scratch")
+	stale := filepath.Join(scratchDir, "chat-"+time.Now().Format("0102-1504"))
+	os.MkdirAll(stale, 0o700)
 	os.WriteFile(filepath.Join(stale, "notes.md"), []byte("old"), 0o644)
 	w, err := rec.NewChat(ChatOptions{Agent: tabClaude})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w.Kind != kindFolder || filepath.Dir(w.Dir) != filepath.Join(home, "scratch") || w.Dir == stale || !isDir(w.Dir) {
-		t.Fatalf("chat %+v, want a new folder of its own under <state>/scratch", w)
+	if w.Kind != kindFolder || filepath.Dir(w.Dir) != scratchDir || w.Dir == stale || !isDir(w.Dir) || !w.Owned {
+		t.Fatalf("chat %+v, want a new folder of its own under the code root's scratch", w)
 	}
 	if len(w.Tabs) != 1 || w.Tabs[0].Kind != tabClaude || w.Tabs[0].Session == "" || w.Active == 0 {
 		t.Fatalf("chat should open on a claude tab, active now: %+v", w)
 	}
-	scratchDir := filepath.Join(home, "scratch")
+
 	for _, o := range []ChatOptions{
 		{Agent: tabClaude, Group: "no-such-group"},
 		{Agent: "vim"},
@@ -746,6 +773,56 @@ func TestScratchChats(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("reopened records list %d Scratch projects, want 1", n)
+	}
+}
+
+// Chats punk0 made go with the chat, wherever the scratch folder has moved
+// to since; a chat in a folder of the user's never does.
+func TestScratchChatOwnership(t *testing.T) {
+	root := useCodeRoot(t)
+	home := tempDir(t)
+	oldScratch := filepath.Join(home, "scratch")
+	mine := filepath.Join(tempDir(t), "photos")
+	for _, d := range []string{filepath.Join(oldScratch, "chat-0101-0101"), mine} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fixture := `{"projects":[{"id":"scratch","name":"Scratch","dir":"` + oldScratch + `","scratch":true,"workspaces":[
+		{"id":"old","name":"chat-0101-0101","kind":"folder","dir":"` + filepath.Join(oldScratch, "chat-0101-0101") + `","tabs":[]},
+		{"id":"ext","name":"photos","kind":"folder","dir":"` + mine + `","tabs":[]}]}]}`
+	if err := os.WriteFile(filepath.Join(home, "records.json"), []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := openRecords(t, home)
+	old, ext := rec.Workspace("old"), rec.Workspace("ext")
+	if old == nil || !old.Owned {
+		t.Fatalf("a chat in the old scratch folder is not punk0's: %+v", old)
+	}
+	if ext == nil || ext.Owned {
+		t.Fatalf("a chat in my folder is punk0's: %+v", ext)
+	}
+
+	fresh, err := rec.NewChat(ChatOptions{Agent: tabClaude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "scratch"); filepath.Dir(fresh.Dir) != want {
+		t.Fatalf("new chat in %q, want one under %q", fresh.Dir, want)
+	}
+
+	if _, err := rec.RemoveWorkspace("old", RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if isDir(filepath.Join(oldScratch, "chat-0101-0101")) {
+		t.Error("the folder punk0 made for the chat survived it")
+	}
+	if _, err := rec.RemoveWorkspace("ext", RemoveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if !isDir(mine) {
+		t.Error("deleting a chat deleted my folder")
 	}
 }
 
@@ -880,12 +957,18 @@ func listed(rec *Records, id string) projectView {
 	return projectView{}
 }
 
-// useSettings points the settings file at a temp folder holding m.
+// useSettings points the settings file at a temp folder holding m, with a
+// Workspaces Folder of its own unless m names one: no test may create the
+// real ~/punk0.
 func useSettings(t *testing.T, m map[string]any) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	data, err := json.Marshal(m)
+	all := map[string]any{"workspace.dir": tempDir(t)}
+	for k, v := range m {
+		all[k] = v
+	}
+	data, err := json.Marshal(all)
 	if err != nil {
 		t.Fatal(err)
 	}

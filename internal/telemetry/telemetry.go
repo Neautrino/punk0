@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"px0/internal/paths"
 )
 
 const (
@@ -82,17 +84,15 @@ func FilesBucket(n int) string {
 	}
 }
 
-// getOrGenerateDistinctID retrieves or initializes a persistent anonymous UUID.
-// Saved to ~/.punk0/anonymous_id. If writing fails, an ephemeral ID is returned.
+// getOrGenerateDistinctID retrieves or initializes a persistent anonymous UUID
+// in punk0's state folder. It is only called while telemetry is on: opting out
+// leaves nothing on disk. If writing fails, an ephemeral ID is returned.
 func getOrGenerateDistinctID() string {
-	home, err := os.UserHomeDir()
-	if err == nil && home != "" {
-		idPath := filepath.Join(home, ".punk0", "anonymous_id")
-		if data, err := os.ReadFile(idPath); err == nil {
-			id := strings.TrimSpace(string(data))
-			if len(id) >= 16 {
-				return id
-			}
+	idPath := filepath.Join(paths.State(), "anonymous_id")
+	if data, err := os.ReadFile(idPath); err == nil {
+		id := strings.TrimSpace(string(data))
+		if len(id) >= 16 {
+			return id
 		}
 	}
 
@@ -102,13 +102,9 @@ func getOrGenerateDistinctID() string {
 	}
 	id := hex.EncodeToString(b)
 
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dir := filepath.Join(home, ".punk0")
-		if err := os.MkdirAll(dir, 0755); err == nil {
-			_ = os.WriteFile(filepath.Join(dir, "anonymous_id"), []byte(id), 0644)
-		}
+	if err := os.MkdirAll(filepath.Dir(idPath), 0o700); err == nil {
+		_ = os.WriteFile(idPath, []byte(id), 0o600)
 	}
-
 	return id
 }
 
@@ -139,21 +135,21 @@ func New(defaultKey, version string, flagNoTelemetry bool) *Service {
 	enabled := key != "" && !isOptedOut(flagNoTelemetry)
 
 	t := &Service{
-		enabled:    enabled,
-		apiKey:     key,
-		host:       host,
-		version:    version,
-		distinctID: getOrGenerateDistinctID(),
-		sessionID:  generateUUID(),
-		startTime:  time.Now(),
-		queue:      make(chan telemetryEvent, telemetryQueueSize),
-		quit:       make(chan struct{}),
+		enabled:   enabled,
+		apiKey:    key,
+		host:      host,
+		version:   version,
+		sessionID: generateUUID(),
+		startTime: time.Now(),
+		queue:     make(chan telemetryEvent, telemetryQueueSize),
+		quit:      make(chan struct{}),
 		client: &http.Client{
 			Timeout: 4 * time.Second,
 		},
 	}
 
 	if enabled {
+		t.distinctID = getOrGenerateDistinctID()
 		t.wg.Add(1)
 		go t.worker()
 	}

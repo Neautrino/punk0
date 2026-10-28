@@ -8,7 +8,7 @@ punk0 includes a built-in visual Settings manager modeled after VS Code. Accessi
 
 Developer environments are deeply personal: engineers have strong preferences regarding font sizes, line heights, font families, cursor blink styles, tab spacing, and keybindings. However, managing configuration files manually in text editors or dealing with fragmented config directories can be cumbersome. Furthermore, storing settings inside a workspace repository risks polluting Git commits with personal editor preferences.
 
-punk0 stores all configuration in a single per-user global file (`$XDG_CONFIG_HOME/punk0/settings.json`, else `~/.punk0/settings.json`), completely isolated from your repository files. The visual Settings editor offers a dual-mode experience: an intuitive graphical form with interactive pill buttons for quick toggling, and a synchronized raw JSON editor with schema validation. Changes apply immediately in real time without refreshing the browser.
+punk0 stores all configuration in a single per-user global file (`~/.config/punk0/settings.json`, or `$XDG_CONFIG_HOME/punk0/settings.json` when that is set), completely isolated from your repository files. The visual Settings editor offers a dual-mode experience: an intuitive graphical form with interactive pill buttons for quick toggling, and a synchronized raw JSON editor with schema validation. Changes apply immediately in real time without refreshing the browser.
 
 ---
 
@@ -96,6 +96,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh`; on Windows `pwsh`, else `powershell`, else `cmd` |
 | `terminal.env` ⚿ | Terminal | `""` | `KEY=VALUE` per line | Added to every tab's environment; `~/` expands to the home folder, `#` lines are comments |
 | `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent unless Claude reports it working or waiting. Reopening resumes the chat |
+| `workspace.dir` ⚿ | Workspaces | `"~/punk0"` | folder path | Where new worktrees and scratch chats are created: `workspaces/<project>/<name>` and `scratch/<name>` inside it. Existing ones stay where they are; a git repository is refused |
 | `workspace.branchPrefix` | Workspaces | `""` | branch prefix | Prefix for branches New workspace creates (the folder stays unprefixed) |
 | `workspace.fetchBase` | Workspaces | `true` | `true`, `false` | Fetch the base branch before creating a workspace |
 | `workspace.deleteMergedBranch` | Workspaces | `false` | `true`, `false` | Delete a workspace's branch with it when it is merged; the delete response notes why it was kept otherwise |
@@ -146,5 +147,5 @@ For automated machine setup, dotfile repositories, or scripting, you can directl
 ```
 
 The file is stored at:
-- `$XDG_CONFIG_HOME/punk0/settings.json` (if `XDG_CONFIG_HOME` is set).
-- Otherwise `~/.punk0/settings.json`.
+- `~/.config/punk0/settings.json` (`$XDG_CONFIG_HOME/punk0/settings.json` when that is set, `%APPDATA%\punk0\settings.json` on Windows).
+- An install from before this layout keeps using `~/.punk0/settings.json` until you stop punk0 and run `punk0 migrate`.

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"px0/internal/paths"
 	"px0/internal/ui"
 )
 
@@ -48,17 +49,7 @@ func getRepoName() string {
 	return defaultRepo
 }
 
-func stateFilePath() string {
-	// Respect XDG_STATE_HOME or fall back to ~/.punk0
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "punk0", "update_check.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(os.TempDir(), "punk0_update_check.json")
-	}
-	return filepath.Join(home, ".punk0", "update_check.json")
-}
+func stateFilePath() string { return filepath.Join(paths.State(), "update_check.json") }
 
 func readUpdateState() (*updateState, error) {
 	p := stateFilePath()

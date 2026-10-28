@@ -34,6 +34,7 @@ import (
 
 	"px0/internal/fuzzy"
 	"px0/internal/metrics"
+	"px0/internal/paths"
 	"px0/internal/render"
 	"px0/internal/settings"
 	"px0/internal/symbols"
@@ -670,15 +671,7 @@ var (
 	}
 )
 
-func vendorCacheDir() string {
-	if c := os.Getenv("XDG_CACHE_HOME"); c != "" {
-		return filepath.Join(c, "punk0", "vendor")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".punk0", "cache", "vendor")
-	}
-	return filepath.Join(os.TempDir(), "punk0-cache", "vendor")
-}
+func vendorCacheDir() string { return filepath.Join(paths.Cache(), "vendor") }
 
 type memGzFile struct {
 	*bytes.Reader
@@ -2977,17 +2970,8 @@ type WorkspaceSession struct {
 	Drafts   []prComment  `json:"drafts,omitempty"`
 }
 
-// sessionDir returns the directory holding session files: XDG_STATE_HOME/punk0/sessions
-// if available, falling back to ~/.punk0/sessions or os.TempDir()/punk0-sessions.
-func sessionDir() string {
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "punk0", "sessions")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".punk0", "sessions")
-	}
-	return filepath.Join(os.TempDir(), "punk0-sessions")
-}
+// sessionDir holds one JSON file per workspace session.
+func sessionDir() string { return filepath.Join(paths.State(), "sessions") }
 
 // sessionFilePath returns the path to the JSON file where workspace session state is saved.
 // The file name is derived from the base path or an 8-byte SHA-256 hash of the cleaned

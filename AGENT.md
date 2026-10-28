@@ -77,7 +77,7 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
 
 1. **Reads First, Edits via Harness**: `punk0` is an ultra-fast code reader and reviewer. File modifications are delegated to external coding harnesses (`agent.go`), never authored directly to disk by `punk0` (with the exception of explicit user-initiated Git operations in the sidebar).
 2. **Zero Runtime Dependencies**: The output must remain a single, standalone static binary. No CGO, no Node.js runtime requirement for the user, no external databases.
-3. **No Workspace Litter**: `punk0` never creates `.punk0/` folders or cache files inside a workspace tree. Persistent configuration lives in `$XDG_CONFIG_HOME/punk0/` or `~/.punk0/`; per-workspace session files (PR review drafts) and the agents page store live in `$XDG_STATE_HOME/punk0/` or `~/.punk0/`.
+3. **No Workspace Litter**: `punk0` never creates `.punk0/` folders or cache files inside a workspace tree. Persistent configuration lives in the config folder (`~/.config/punk0/`, `$XDG_CONFIG_HOME/punk0/` when set); per-workspace session files (PR review drafts), the agents page store and the logs live in the state folder (`~/.local/state/punk0/`). One package decides both (`internal/paths`), with a fallback to the legacy `~/.punk0` until `punk0 migrate` moves it. Worktrees and scratch chats go in the Workspaces Folder (`workspace.dir`, `~/punk0` by default).
 4. **Fast & Non-Blocking**: Operations must remain responsive. All background tasks, network calls, and git operations must respect timeouts and set `GIT_TERMINAL_PROMPT=0`.
 
 ---

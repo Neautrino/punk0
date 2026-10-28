@@ -61,7 +61,7 @@ punk0 ships with 14 curated themes ready for immediate use:
 2. Navigate to **Appearance: Color Theme** (`workbench.colorTheme`).
 3. Select your preferred theme from the dropdown or click one of the interactive theme pill buttons.
 
-Your choice is saved in `~/.punk0/settings.json` and remembered across all future sessions.
+Your choice is saved in `~/.config/punk0/settings.json` and remembered across all future sessions.
 
 ---
 

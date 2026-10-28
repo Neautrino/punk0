@@ -1,12 +1,13 @@
 package main
 
 // Scratch chats: agent chats that belong to no project, each in a folder of
-// its own: one punk0 makes under <state>/scratch, deleted with the chat, or
-// one of the user's, never deleted. A chat is a workspace of kind folder in
-// the Scratch project. Its folder never changes once chosen, since agents key
-// a session's history on the folder it ran in; what the page shows is Title,
-// given in the New chat dialog or taken from the first prompt, and changed by
-// renaming. Groups and archiving are labels too: neither moves the folder.
+// its own: one punk0 makes under <workspace.dir>/scratch, deleted with the
+// chat, or one of the user's, never deleted. A chat is a workspace of kind
+// folder in the Scratch project. Its folder never changes once chosen, since
+// agents key a session's history on the folder it ran in; what the page shows
+// is Title, given in the New chat dialog or taken from the first prompt, and
+// changed by renaming. Groups and archiving are labels too: neither moves the
+// folder.
 
 import (
 	"errors"
@@ -40,7 +41,7 @@ const chatTitleMax = 60
 
 // ChatOptions is what the New chat dialog asks for. Agent is a tabAgents key
 // or "shell". Title "" leaves the chat to be named by its first prompt. Dir
-// "" makes a chat-MMDD-HHMM folder under <state>/scratch.
+// "" makes a chat-MMDD-HHMM folder under <workspace.dir>/scratch.
 type ChatOptions struct {
 	Title string `json:"title"`
 	Group string `json:"group"`
@@ -49,9 +50,9 @@ type ChatOptions struct {
 }
 
 // NewChat starts a chat on one tab running the chosen agent, in Dir:
-//   - under <state>/scratch, a new folder punk0 makes there and deletes with
-//     the chat. It must not exist yet, so a chat never takes over another
-//     chat's folder or the files of one made before;
+//   - under <workspace.dir>/scratch, a new folder punk0 makes there and
+//     deletes with the chat. It must not exist yet, so a chat never takes
+//     over another chat's folder or the files of one made before;
 //   - anywhere else, a folder of the user's, made when missing and never
 //     deleted by punk0.
 func (r *Records) NewChat(o ChatOptions) (*Workspace, error) {
@@ -72,10 +73,18 @@ func (r *Records) NewChat(o ChatOptions) (*Workspace, error) {
 		return nil, fmt.Errorf("group %q: %w", o.Group, errNotFound)
 	}
 	now := time.Now()
-	dir := o.Dir
+	// A changed Workspaces Folder applies to the next chat, without a restart.
+	root, err := codeRoot()
+	if err != nil {
+		return nil, err
+	}
+	p.Dir = filepath.Join(root, "scratch")
+	if err := os.MkdirAll(p.Dir, 0o700); err != nil {
+		return nil, err
+	}
+	dir, owned := o.Dir, true
 	switch {
 	case dir == "":
-		var err error
 		if dir, err = newChatFolder(p.Dir, now); err != nil {
 			return nil, err
 		}
@@ -93,11 +102,13 @@ func (r *Records) NewChat(o ChatOptions) (*Workspace, error) {
 			return nil, err
 		}
 	default:
+		owned = false
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
 		}
 	}
 	w := newWorkspace(filepath.Base(dir), kindFolder, dir, "")
+	w.Owned = owned
 	w.Group, w.Active, w.Created, w.Title = o.Group, now.UnixMilli(), now.UnixMilli(), title
 	t := newTab(o.Agent, dir, "")
 	w.Tabs = append(w.Tabs, t)
