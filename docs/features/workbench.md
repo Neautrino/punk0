@@ -13,21 +13,20 @@ Running `punk0` with no arguments opens the **agents page** at `/`: your project
 | `punk0 <file>[:line]` | The same, and also opens the folder's editor view at `/w/<id>/` on that file and line. |
 | `punk0 <pr-url>` | Reviews a pull request on its own, outside the agents page (see [Pull Request Review](github-pr-review.md)). |
 
-Only one punk0 runs per machine. A second `punk0 <dir>` hands its folder to the running one and exits: an agents page already open in a browser switches to the folder, and only when none is open does a new browser tab open on it. A bare second `punk0` opens the page. `-host` and `-port` only apply to the first.
+Only one punk0 runs per machine. A second `punk0 <dir>` hands its folder to the running one and exits: the folder is added as a project unless it is one already, and a new browser tab opens on it (`-no-open` prints its address instead). Pages already open keep what they show. A bare second `punk0` opens the page. `-host` and `-port` only apply to the first.
 
 ### In the terminal
 
 At start punk0 prints its version, the agents page URL, and for `punk0 <dir>` the project it opened (`project  portfolio  ~/Code/projects/portfolio`). The browser is opened at `?ws=<id>` so the page lands on that project; the printed URL leaves it out unless no browser opens (`-no-open`). A file adds an `editor` line. Then, one timestamped line per event, always naming the project and workspace:
 
 ```
-21:40  + opened   punk0  from another terminal
 21:41  ▶ claude   punk0 / ac
 22:12  ■ claude   punk0 / ac  idle 30 min
 22:15  ■ editor   portfolio  idle 5 min
 22:20  ■ shell    portfolio  exited
 ```
 
-`+` is a folder handed over by a second `punk0 <dir>`, `▶` a tab started, `■` a tab or an editor process stopped for being idle, or a tab whose shell exited on its own. Problems are marked `!`. Editor processes starting and stopping as you browse, and tabs you close yourself, are not printed; `-verbose` adds one line per HTTP request. Keys typed into that terminal are not echoed while punk0 runs; echo comes back when it stops. The same events, and more, go to the log file (see [Logs and diagnostics](#logs-and-diagnostics)).
+`▶` is a tab started, `■` a tab or an editor process stopped for being idle, or a tab whose shell exited on its own. Problems are marked `!`. Editor processes starting and stopping as you browse, and tabs you close yourself, are not printed; `-verbose` adds one line per HTTP request. Keys typed into that terminal are not echoed while punk0 runs; echo comes back when it stops. The same events, and more, go to the log file (see [Logs and diagnostics](#logs-and-diagnostics)).
 
 ## Layout
 

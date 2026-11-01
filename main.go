@@ -546,9 +546,9 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 
 // handOff gives a folder to the punk0 that is already running, so
 // `punk0 <dir>` in a second terminal lands in the one orchestrator instead of
-// starting another: an agents page already open switches to the folder, and
-// only with none open does a browser tab open on it. A file also opens in
-// the folder's editor.
+// starting another: the folder is added unless it is a project already, and
+// a new browser tab opens on it. Pages already open keep what they show. A
+// file also opens in the folder's editor.
 func handOff(base, initial string, port int, open bool) {
 	if flagSet("host") || flagSet("port") {
 		if u, err := url.Parse(base); err == nil && u.Port() != strconv.Itoa(port) {
@@ -573,19 +573,11 @@ func handOff(base, initial string, port int, open bool) {
 	if err := postWorkbench(base, "api/projects", map[string]string{"dir": root}, &added); err != nil {
 		fatal(fmt.Errorf("punk0 on %s: %w", base, err))
 	}
-	// A punk0 from before api/wb/show answers 404: as if no page were open.
-	var shown struct {
-		Pages int `json:"pages"`
-	}
-	_ = postWorkbench(base, "api/wb/show", map[string]string{"workspace": added.Workspace}, &shown)
 	agents := agentsURL(base, added.Workspace)
-	switch {
-	case shown.Pages > 0:
-		ui.Status("ok", "punk0 already running", "switched the open agents page to "+tildePath(root), 0, os.Stdout)
-	case open:
+	if open {
 		ui.Status("ok", "punk0 already running", "opening "+tildePath(root)+" in a new browser tab", 0, os.Stdout)
 		openBrowser(agents)
-	default:
+	} else {
 		ui.Status("ok", "punk0 already running", agents, 0, os.Stdout)
 	}
 	if file != "" {
