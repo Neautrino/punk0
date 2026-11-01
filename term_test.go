@@ -9,7 +9,20 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	xterm "github.com/gitpod-io/xterm-go"
 )
+
+// bufferText is every line a terminal holds, scrollback first, as a viewer
+// shows it.
+func bufferText(term *xterm.Terminal) string {
+	b := term.Buffer()
+	lines := make([]string, b.Lines.Length())
+	for i := range lines {
+		lines[i] = b.Lines.Get(i).TranslateToString(true, 0, -1)
+	}
+	return strings.Join(lines, "\n")
+}
 
 func TestTabSend(t *testing.T) {
 	if runtime.GOOS == "windows" {

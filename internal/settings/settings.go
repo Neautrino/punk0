@@ -270,7 +270,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "terminal.scrollback",
 		Title:       "Scrollback",
-		Description: "Lines a terminal tab keeps for scrolling back in the page.",
+		Description: "Lines a terminal tab keeps for scrolling back, in the page and in punk0, which redraws them when the tab is opened again.",
 		Category:    "Terminal",
 		Type:        "number",
 		Default:     10000.0,

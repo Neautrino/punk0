@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/coder/websocket"
+	xterm "github.com/gitpod-io/xterm-go"
 
 	"px0/internal/settings"
 	"px0/internal/ui"
@@ -28,13 +29,12 @@ import (
 // frame and the library default (32 KiB) would drop the connection.
 const maxTermFrame = 8 << 20
 
-// scrollback is how much output a shell keeps for viewers that attach later:
-// switching tabs or reloading the page replays it.
-const scrollback = 256 << 10
+// Every PTY starts at this size; viewers resize it once they attach.
+const ttyCols, ttyRows = 80, 24
 
 // viewerQueue is how many PTY reads a viewer may lag behind. A slower viewer
-// is disconnected with StatusTryAgainLater and reattaches from scrollback,
-// rather than silently missing bytes mid escape sequence.
+// is disconnected with StatusTryAgainLater and reattaches from the screen
+// copy, rather than silently missing bytes mid escape sequence.
 const viewerQueue = 256
 
 // claudeCommand starts Claude Code in a claude tab's new shell, with the
@@ -74,8 +74,12 @@ type Shell struct {
 	// its own.
 	closed atomic.Bool
 
-	mu      sync.Mutex // guards out, viewers, sizes, exited
-	out     ring
+	mu sync.Mutex // guards screen, viewers, sizes, exited
+	// screen is the terminal as a viewer would show it, kept by feeding it
+	// every PTY byte: what attaching draws. Replaying the raw tail of the
+	// output instead cannot: a TUI that redraws in place leaves screens of
+	// cursor moves that only make sense on top of what came before them.
+	screen  *xterm.Terminal
 	viewers map[chan []byte]struct{}
 	// sizes is each viewer's last reported size, least recently reported
 	// first. One PTY has one size, so the viewer that reported last (a client
@@ -194,7 +198,7 @@ func startShell(dir, shell, command string, env []string) (*Shell, error) {
 	s := &Shell{
 		tty:     t,
 		done:    make(chan struct{}),
-		out:     newRing(scrollback),
+		screen:  xterm.New(xterm.WithCols(ttyCols), xterm.WithRows(ttyRows), xterm.WithScrollback(scrollbackLines())),
 		viewers: map[chan []byte]struct{}{},
 	}
 	s.touch()
@@ -202,8 +206,14 @@ func startShell(dir, shell, command string, env []string) (*Shell, error) {
 	return s, nil
 }
 
-// pump copies PTY output into scrollback and every viewer until the shell
-// exits or is closed.
+// scrollbackLines is terminal.scrollback: the screen copy keeps what the
+// page's terminal keeps, so reattaching shows what scrolled by before.
+func scrollbackLines() int {
+	return int(settings.SettingOr[float64]("terminal.scrollback"))
+}
+
+// pump copies PTY output into the screen copy and every viewer until the
+// shell exits or is closed.
 func (s *Shell) pump() {
 	reaped := make(chan struct{})
 	go func() {
@@ -221,7 +231,7 @@ func (s *Shell) pump() {
 			s.touch()
 			p := append([]byte(nil), buf[:n]...) // viewers hold p past the next Read
 			s.mu.Lock()
-			s.out.Write(p)
+			s.screen.Write(p)
 			for v := range s.viewers {
 				select {
 				case v <- p:
@@ -238,6 +248,8 @@ func (s *Shell) pump() {
 
 	s.mu.Lock()
 	s.exited = true
+	s.screen.Dispose()
+	s.screen = nil // a stopped tab keeps its Shell until it restarts
 	for v := range s.viewers {
 		s.dropLocked(v)
 	}
@@ -283,11 +295,14 @@ func (s *Shell) Pid() int { return s.tty.Pid() }
 // Unix knows; elsewhere an idle shell is never stopped.
 func (s *Shell) Foreground() bool { return s.tty.Foreground() }
 
-// Attach streams the shell to one websocket until either side ends. Taking
-// the scrollback and registering as a viewer under one lock means no output
-// is lost or repeated between the replay and the live stream. onUse, if set,
-// runs when the viewer reports the user typing ({"use":true}): the browser
-// tells keys from the terminal's own answers to queries, the PTY bytes do not.
+// Attach streams the shell to one websocket until either side ends. It first
+// sends the size the screen copy is drawn at as {"cols","rows"}, then the
+// copy itself as escape sequences (screen, scrollback, cursor and modes): a
+// viewer draws it at that size before fitting its own. Taking the copy and
+// registering as a viewer under one lock means no output is lost or repeated
+// between it and the live stream. onUse, if set, runs when the viewer reports
+// the user typing ({"use":true}): the browser tells keys from the terminal's
+// own answers to queries, the PTY bytes do not.
 func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn, onUse func()) {
 	conn.SetReadLimit(maxTermFrame)
 	s.mu.Lock()
@@ -296,7 +311,8 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn, onUse func()) 
 		conn.Close(websocket.StatusNormalClosure, "shell exited")
 		return
 	}
-	backlog := s.out.Bytes()
+	size, _ := json.Marshal(map[string]int{"cols": s.screen.Cols(), "rows": s.screen.Rows()})
+	snapshot := xterm.NewSerializeAddon(s.screen).Serialize(nil)
 	v := make(chan []byte, viewerQueue)
 	s.viewers[v] = struct{}{}
 	s.mu.Unlock()
@@ -314,7 +330,7 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn, onUse func()) 
 		s.input(ctx, conn, v, onUse)
 	}()
 
-	if len(backlog) > 0 && conn.Write(ctx, websocket.MessageBinary, backlog) != nil {
+	if conn.Write(ctx, websocket.MessageText, size) != nil || conn.Write(ctx, websocket.MessageBinary, snapshot) != nil {
 		return
 	}
 	for {
@@ -367,7 +383,7 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte, 
 			if _, live := s.viewers[v]; live { // a detached viewer's size must not come back
 				s.sizes = append(slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v }),
 					viewerSize{v, msg.Cols, msg.Rows})
-				s.tty.Resize(msg.Cols, msg.Rows)
+				s.resizeLocked(msg.Cols, msg.Rows)
 			}
 			s.mu.Unlock()
 		}
@@ -386,8 +402,15 @@ func (s *Shell) forgetSizeLocked(v chan []byte) {
 	s.sizes = slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v })
 	if wasCurrent && len(s.sizes) > 0 && !s.exited {
 		z := s.sizes[len(s.sizes)-1]
-		s.tty.Resize(z.cols, z.rows)
+		s.resizeLocked(z.cols, z.rows)
 	}
+}
+
+// resizeLocked sizes the PTY and the screen copy alike, so the copy wraps and
+// scrolls as the viewers do.
+func (s *Shell) resizeLocked(cols, rows uint16) {
+	s.tty.Resize(cols, rows)
+	s.screen.Resize(int(cols), int(rows))
 }
 
 // pasteSettle is how long Send waits between a paste and the Enter that

@@ -88,7 +88,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
 | `terminal.fontFamily` | Terminal | `""` | CSS font stack | Terminal font |
 | `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
-| `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab |
+| `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab, in the page and in punk0 for reopening the tab (applies to tabs started afterwards) |
 | `terminal.cursorStyle` | Terminal | `"block"` | `"block"`, `"bar"`, `"underline"` | Terminal cursor shape |
 | `terminal.cursorBlink` | Terminal | `true` | `true`, `false` | Blink the terminal cursor |
 | `terminal.copyOnSelect` | Terminal | `false` | `true`, `false` | Copy terminal text as soon as it is selected, in both terminals (see [Tabs](workbench.md#tabs)) |

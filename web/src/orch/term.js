@@ -1,9 +1,10 @@
 // web/src/orch/term.js
 // Terminal pane: xterm.js <-> api/tabs/{id}/term websocket <-> that tab's
-// PTY in the parent. The PTY outlives the socket; attaching replays its
-// scrollback, and attaching to a stopped tab starts it again. Binary frames
-// carry PTY bytes both ways; text frames carry {"cols","rows"}, and
-// {"use":true} when the user types, so punk0 knows which tab was used last.
+// PTY in the parent. The PTY outlives the socket; attaching draws the
+// parent's copy of its screen and scrollback, and attaching to a stopped tab
+// starts it again. Binary frames carry PTY bytes both ways; text frames carry
+// {"cols","rows"}, and {"use":true} when the user types, so punk0 knows which
+// tab was used last.
 //
 // xterm.js is loaded from static/vendor on the first attach rather than
 // bundled, so the page itself stays small.
@@ -13,7 +14,7 @@ import { installClipboard, clipboardKey } from '../termclip.js';
 import { termOptions } from '../termoptions.js';
 
 // The server closes a viewer that lags behind the PTY with 1013 (try again
-// later); reattaching replays scrollback, so nothing is lost.
+// later); reattaching draws the screen again, so nothing is lost.
 const FELL_BEHIND = 1013;
 
 let termEl;
@@ -118,7 +119,7 @@ function boot() {
       if (e.type === 'keydown') send(enc.encode('\x1b\r'));
       return false;
     });
-    xterm = { term, sendSize };
+    xterm = { term, sendSize, fitNow };
     return xterm;
   });
   return booting;
@@ -133,16 +134,29 @@ function connect(pick = false) {
     sock = null;
   }
   ended = false;
-  const { term, sendSize } = xterm;
-  term.reset(); // the server replays this tab's scrollback
+  const { term, sendSize, fitNow } = xterm;
+  term.reset(); // the server sends this tab's screen
   if (!termTab) return;
   const id = termTab;
   const ws = new WebSocket(wsURL(`api/tabs/${encodeURIComponent(id)}/term${pick ? '?pick=1' : ''}`));
   sock = ws;
   ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { sendSize(); term.focus(); onTermChange(); };
+  ws.onopen = () => { term.focus(); onTermChange(); };
+  // The server first sends the size its copy of the screen is drawn at, then
+  // that copy (term.go Attach): draw it at that size, then fit this pane,
+  // which reflows it, and report the pane's size.
+  let drawing = false;
   ws.onmessage = e => {
-    if (typeof e.data !== 'string') term.write(new Uint8Array(e.data));
+    if (typeof e.data === 'string') {
+      const { cols, rows } = JSON.parse(e.data);
+      term.resize(cols, rows);
+      drawing = true;
+    } else if (drawing) {
+      drawing = false;
+      term.write(new Uint8Array(e.data), () => { fitNow(); sendSize(); });
+    } else {
+      term.write(new Uint8Array(e.data));
+    }
   };
   ws.onclose = e => {
     if (sock !== ws) return;

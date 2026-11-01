@@ -104,7 +104,7 @@ function boot() {
         return false;
       });
 
-      xtermInstance = { term, fit, sendSize };
+      xtermInstance = { term, fit, sendSize, fitNow };
       return xtermInstance;
     });
   }
@@ -120,7 +120,7 @@ function connect() {
   isEnded = false;
   if (!xtermInstance || !activeTabId) return;
 
-  const { term, sendSize } = xtermInstance;
+  const { term, sendSize, fitNow } = xtermInstance;
   term.reset();
 
   const ws = new WebSocket(wsURL(`api/tabs/${encodeURIComponent(activeTabId)}/term`));
@@ -128,11 +128,23 @@ function connect() {
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
-    sendSize();
     term.focus();
   };
+  // The server first sends the size its copy of the screen is drawn at, then
+  // that copy (term.go Attach): draw it at that size, then fit this pane,
+  // which reflows it, and report the pane's size.
+  let drawing = false;
   ws.onmessage = e => {
-    if (typeof e.data !== 'string') term.write(new Uint8Array(e.data));
+    if (typeof e.data === 'string') {
+      const { cols, rows } = JSON.parse(e.data);
+      term.resize(cols, rows);
+      drawing = true;
+    } else if (drawing) {
+      drawing = false;
+      term.write(new Uint8Array(e.data), () => { fitNow(); sendSize(); });
+    } else {
+      term.write(new Uint8Array(e.data));
+    }
   };
   ws.onclose = e => {
     if (activeSocket !== ws) return;

@@ -13,11 +13,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// screen is everything the shell has printed so far.
+// screen is everything the shell has printed so far, as a viewer shows it.
 func screen(sh *Shell) string {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
-	return string(sh.out.Bytes())
+	return bufferText(sh.screen)
 }
 
 func waitScreen(t *testing.T, sh *Shell, want string) {

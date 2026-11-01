@@ -6,6 +6,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
+	github.com/gitpod-io/xterm-go v0.0.0-20260907130418-dae5128cb6b3
 	github.com/px0-ai/harness v0.0.2
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/sys v0.45.0

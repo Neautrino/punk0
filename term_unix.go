@@ -78,7 +78,7 @@ func (t *unixTTY) Foreground() bool {
 // Close could not interrupt a Read while a stray background job keeps the PTY
 // open. A dup'd non-blocking fd restores that.
 func startPTY(cmd *exec.Cmd) (*os.File, error) {
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: 80, Rows: 24})
+	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: ttyCols, Rows: ttyRows})
 	if err != nil {
 		return nil, err
 	}

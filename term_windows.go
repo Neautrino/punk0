@@ -65,7 +65,7 @@ func startTTY(argv []string, dir string, env []string) (tty, error) {
 		return nil, err
 	}
 	var console windows.Handle
-	err = windows.CreatePseudoConsole(windows.Coord{X: 80, Y: 24}, inRead, outWrite, 0, &console)
+	err = windows.CreatePseudoConsole(windows.Coord{X: ttyCols, Y: ttyRows}, inRead, outWrite, 0, &console)
 	// The console keeps its own copies of its pipe ends. Dropping ours lets
 	// a Read see the console go away.
 	closeHandles(inRead, outWrite)
