@@ -2,9 +2,9 @@ package main
 
 // Agents typed at a tab's prompt report to punk0 as the ones punk0 starts do.
 // Each tab's zsh, bash or fish reads the user's own startup files first and
-// then punk0's agent functions: `claude`, `codex`, `opencode`, `agy` and
-// `cursor-agent` become shell functions that run the real program with
-// punk0's hooks added, and tell the tab when it starts and when it exits
+// then punk0's agent functions: every agent of tabAgents becomes a shell
+// function that runs the real program with punk0's reporting added
+// (reportVia), and tells the tab when it starts and when it exits
 // (`punk0 hook start|exit <agent>`). A function wins over PATH, so the user's
 // rc files may order PATH as they like; nothing of the user's is edited. An
 // alias of the user's still applies: it expands before the function runs.
@@ -29,6 +29,10 @@ import (
 
 // agentShellDir holds the startup files a tab's shell reads (writeAgentShell).
 func agentShellDir() string { return filepath.Join(workbenchStateDir(), "shell") }
+
+// reportDir is where one agent's reporting files go, beside the startup
+// files a tab's shell reads (writeAgentShell).
+func reportDir(kind string) string { return filepath.Join(agentShellDir(), kind) }
 
 // hookLine is the command line that runs this punk0's `hook` with args,
 // quoted for a POSIX shell; a -dev punk0's hook gets its -dev=<dir>.
@@ -157,6 +161,41 @@ func (opencodeVia) setup(exe, kind string) (argv, env []string, err error) {
 
 func (opencodeVia) unhooked(string) (argv, env []string) { return nil, nil }
 
+// qwenHookEvents are the qwen events punk0 registers. Not Notification: qwen
+// 0.26.5 sends idle_prompt just before a permission prompt, and
+// PermissionRequest already says the agent waits for the user.
+var qwenHookEvents = []string{
+	"SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+	"PostToolUse", "PermissionRequest", "Stop", "StopFailure",
+}
+
+// qwenDefaults reports through the lowest of qwen's settings layers, a file
+// QWEN_CODE_SYSTEM_DEFAULTS_PATH names for one run: qwen adds its hooks to
+// the user's and lets every other setting of the user's win. The file is
+// alone in its folder because qwen also loads a system-defaults.json beside a
+// settings file it is pointed at. $version is qwen's settings version: a file
+// without it qwen migrates, rewriting it.
+type qwenDefaults struct{}
+
+func (v qwenDefaults) setup(exe, kind string) (argv, env []string, err error) {
+	h := settingsHook{Type: "command", Command: hookLine(exe, kind), Timeout: 10}
+	hooks := make(map[string][]settingsHooks, len(qwenHookEvents))
+	for _, ev := range qwenHookEvents {
+		hooks[ev] = []settingsHooks{{Matcher: "*", Hooks: []settingsHook{h}}}
+	}
+	if err := writeFileAtomic(qwenDefaultsPath(kind), map[string]any{"$version": 4, "hooks": hooks}); err != nil {
+		return nil, nil, err
+	}
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+func (qwenDefaults) unhooked(kind string) (argv, env []string) {
+	return nil, []string{"QWEN_CODE_SYSTEM_DEFAULTS_PATH=" + qwenDefaultsPath(kind)}
+}
+
+func qwenDefaultsPath(kind string) string { return filepath.Join(reportDir(kind), "defaults.json") }
+
 // writeAgentShell writes the startup files a tab's shell reads (shellHook):
 // agents.sh and agents.fish with one function per agent, zsh's startup files
 // in zsh/, and bash's rcfile, after running each agent's reporting setup
@@ -164,20 +203,21 @@ func (opencodeVia) unhooked(string) (argv, env []string) { return nil, nil }
 func writeAgentShell(exe string) error {
 	dir := agentShellDir()
 	argv := map[string][]string{}
+	envOf := map[string][]string{}
 	off := map[string]bool{}
 	for _, kind := range tabAgentOrder {
 		a := tabAgents[kind]
 		if a.report == nil {
 			continue
 		}
-		args, _, err := a.report.via.setup(exe, kind)
+		args, vars, err := a.report.via.setup(exe, kind)
 		if err != nil {
 			off[kind] = true
 			ui.Status("warn", kind+" reporting", err.Error(), 0, os.Stderr)
 			slog.Warn("agent reports nothing until punk0 restarts", "agent", kind, "err", err)
 			continue
 		}
-		argv[kind] = args
+		argv[kind], envOf[kind] = args, vars
 	}
 	reportOff.mu.Lock()
 	reportOff.kind = off
@@ -225,8 +265,16 @@ end
 			shArgs += " " + shellQuote(a)
 			fishArgs += " " + fishQuote(a)
 		}
-		call := "_punk0_agent " + bin + shArgs + ` "$@"`
-		fcall := "_punk0_agent " + bin + fishArgs + " $argv"
+		// An agent's variables are set on its one command, so the shell
+		// left at the prompt does not carry them.
+		var shEnv, fishEnv string
+		for _, e := range envOf[kind] {
+			k, v, _ := strings.Cut(e, "=")
+			shEnv += k + "=" + shellQuote(v) + " "
+			fishEnv += k + "=" + fishQuote(v) + " "
+		}
+		call := shEnv + "_punk0_agent " + bin + shArgs + ` "$@"`
+		fcall := fishEnv + "_punk0_agent " + bin + fishArgs + " $argv"
 		if kind == tabOpenCode {
 			// The tab's OpenCode configs (opencodeEnv) ride in variables of
 			// their own, so an opencode the user starts some other way keeps

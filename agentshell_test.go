@@ -125,3 +125,96 @@ func TestAgentRunsUnhookedWhenItsSetupFails(t *testing.T) {
 		t.Fatalf("claude with hook settings\n got %s\nwant %s", got, want)
 	}
 }
+
+// A qwen typed at a tab's prompt gets the defaults file punk0 wrote for it in
+// its own environment; the shell left at the prompt does not carry it.
+func TestAgentFunctionsCarryTheirReporting(t *testing.T) {
+	for _, shell := range []string{"zsh", "bash"} {
+		t.Run(shell, func(t *testing.T) {
+			path, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skipf("%s is not installed", shell)
+			}
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ZDOTDIR", "")
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			useSettings(t, map[string]any{})
+
+			bin, log := filepath.Join(home, "bin"), filepath.Join(home, "agent.log")
+			os.MkdirAll(bin, 0o755)
+			for _, name := range []string{"qwen"} {
+				writeExec(t, filepath.Join(bin, name), "#!/bin/sh\necho \""+name+" env=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset} args=$*\" >> "+log+"\n")
+			}
+			rc := "export PATH=" + bin + ":$PATH\nPS1='$ '\n"
+			for _, f := range []string{".zshrc", ".bashrc"} {
+				os.WriteFile(filepath.Join(home, f), []byte(rc), 0o644)
+			}
+			exe := filepath.Join(home, "punk0")
+			writeExec(t, exe, "#!/bin/sh\n")
+			if err := writeAgentShell(exe); err != nil {
+				t.Fatal(err)
+			}
+
+			sh, err := startShell(home, path, "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(sh.Close)
+			waitShown(t, sh, "$ ")
+			sh.tty.Write([]byte("qwen x; echo \"left=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset}\"\r"))
+			waitShown(t, sh, "left=unset")
+
+			defaults := filepath.Join(reportDir("qwen"), "defaults.json")
+			got, _ := os.ReadFile(log)
+			if want := "qwen env=" + defaults + " args=x\n"; string(got) != want {
+				t.Fatalf("log:\n%s\nwant:\n%s", got, want)
+			}
+			for _, f := range []string{defaults} {
+				if _, err := os.Stat(f); err != nil {
+					t.Fatalf("an agent is pointed at %s, which punk0 did not write: %v", f, err)
+				}
+			}
+		})
+	}
+}
+
+// Where punk0 cannot hook the shell (sh here, PowerShell on Windows), a qwen
+// tab carries the variable its function would set in the tab's environment
+// instead; a tab of an agent that reports another way does not.
+func TestUnhookedTabCarriesItsAgentsReportingEnv(t *testing.T) {
+	wb, _, repo := historyWorkbench(t) // SHELL=/bin/sh
+	if err := writeAgentShell(filepath.Join(t.TempDir(), "punk0")); err != nil {
+		t.Fatal(err)
+	}
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "agent.log")
+	for _, name := range []string{"qwen", "codex"} {
+		writeExec(t, filepath.Join(bin, name), "#!/bin/sh\necho \""+name+" env=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset}\" >> "+log+"\n")
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"qwen", "codex"} {
+		tab, err := wb.records.AddTab(p.Workspaces[0].ID, kind, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := tab.Shell(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(tab.close)
+		waitFor(t, func() bool {
+			b, _ := os.ReadFile(log)
+			return strings.Contains(string(b), kind+" env=")
+		})
+	}
+	defaults := filepath.Join(reportDir("qwen"), "defaults.json")
+	if got, _ := os.ReadFile(log); string(got) != "qwen env="+defaults+"\ncodex env=unset\n" {
+		t.Fatalf("log:\n%s", got)
+	}
+	if _, err := os.Stat(defaults); err != nil {
+		t.Fatalf("the qwen tab is pointed at %s, which punk0 did not write: %v", defaults, err)
+	}
+}

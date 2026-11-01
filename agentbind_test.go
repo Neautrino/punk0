@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"slices"
 	"testing"
 )
 
@@ -77,4 +79,129 @@ func TestTabBindsTheAgentRunningInIt(t *testing.T) {
 	tab.close()
 	post(map[string]any{"hook_event_name": agentExitEvent, "punk0_agent": "codex"})
 	check("shell stopped by punk0", "codex", "019a-y", "")
+}
+
+// A qwen turn with a permission prompt, as qwen 0.26.5 delivered it, shows
+// working, needs-you, working, idle in its tab, and /clear moves the tab to
+// the new chat. Only what punk0's defaults file registers reaches the tab:
+// qwen also sends Notification idle_prompt just before a permission prompt,
+// which would flash the tab idle while it waits for the user.
+func TestQwenTurnShowsInItsTab(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	exe := "/x/punk0"
+	_, env, err := agentReportOf("qwen").via.setup(exe, "qwen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := lastEnv(env, "QWEN_CODE_SYSTEM_DEFAULTS_PATH")
+	// qwen migrates a settings file that lacks its version by rewriting it.
+	var file struct {
+		Version int `json:"$version"`
+	}
+	if b, err := os.ReadFile(path); err != nil || json.Unmarshal(b, &file) != nil || file.Version != 4 {
+		t.Fatalf("defaults file %s: version %d (%v)", path, file.Version, err)
+	}
+
+	statuses, sessions := agentTurn(t, wb, repo, "qwen", reportedEvents(t, path, exe, "qwen"), qwenTurn)
+	if want := []string{statusIdle, statusWorking, statusWaiting, statusWorking, statusIdle, "", statusIdle}; !slices.Equal(statuses, want) {
+		t.Errorf("statuses %q, want %q", statuses, want)
+	}
+	if want := []string{"2bc902cf-d0df-4eb6-8c53-34b8f9812772", "b73a38b8-eabf-4a34-8e28-b7e1b17408af"}; !slices.Equal(sessions, want) {
+		t.Errorf("chats %q, want %q", sessions, want)
+	}
+}
+
+// qwenTurn is qwen 0.26.5's every hook event for one turn with a permission
+// prompt, then /clear, in order (hookspike-2026-11-01/out/qwen.jsonl,
+// sessions 2bc902cf and b73a38b8), trimmed of fields punk0 does not read.
+var qwenTurn = []string{
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"InstructionsLoaded","file_path":"/home/u/.qwen/output-language.md","memory_type":"extension","load_reason":"session_start"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"SessionStart","permission_mode":"default","source":"startup","model":"stub-model"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"UserPromptSubmit","prompt":"Run the shell command: echo hi > hello.txt  — then reply with just DONE."}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"PreToolUse","tool_name":"run_shell_command","tool_input":{"command":"echo hi > hello.txt","description":"write hi to hello.txt","is_background":false},"tool_call_id":"call_fe3d782e"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Qwen Code is waiting for your input"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"PermissionRequest","tool_name":"run_shell_command","tool_input":{"command":"echo hi > hello.txt","description":"write hi to hello.txt","is_background":false}}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"permission_prompt","title":"Permission needed","message":"Qwen Code needs your permission to use run_shell_command"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"PostToolUse","tool_name":"run_shell_command","tool_input":{"command":"echo hi > hello.txt","description":"write hi to hello.txt","is_background":false},"tool_response":{"llmContent":"Command: echo hi > hello.txt\nExit Code: 0"}}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"PostToolBatch","tool_calls":[{"tool_name":"run_shell_command"}]}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"UserPromptSubmit","prompt":""}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"DONE","background_tasks":[],"crons":[]}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"idle_prompt","title":"Waiting for input"}`,
+	`{"session_id":"2bc902cf-d0df-4eb6-8c53-34b8f9812772","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/2bc902cf-d0df-4eb6-8c53-34b8f9812772.jsonl","cwd":"/tmp/w","hook_event_name":"SessionEnd","reason":"clear"}`,
+	`{"session_id":"b73a38b8-eabf-4a34-8e28-b7e1b17408af","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/b73a38b8-eabf-4a34-8e28-b7e1b17408af.jsonl","cwd":"/tmp/w","hook_event_name":"SessionStart","source":"clear","model":"stub-model"}`,
+	`{"session_id":"b73a38b8-eabf-4a34-8e28-b7e1b17408af","transcript_path":"/home/u/.qwen/projects/-tmp-w/chats/b73a38b8-eabf-4a34-8e28-b7e1b17408af.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"idle_prompt"}`,
+}
+
+// reportedEvents are the events the hook settings file at path registers;
+// every one runs this punk0's hook for kind and nothing else.
+func reportedEvents(t *testing.T, path, exe, kind string) map[string]bool {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		Hooks map[string][]struct {
+			Hooks []struct{ Type, Command string }
+		}
+	}
+	if err := json.Unmarshal(b, &file); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	events := map[string]bool{}
+	for ev, matchers := range file.Hooks {
+		for _, m := range matchers {
+			for _, h := range m.Hooks {
+				if h.Type != "command" || h.Command != hookLine(exe, kind) {
+					t.Fatalf("%s runs %+v, not punk0's hook for %s", ev, h, kind)
+				}
+			}
+		}
+		events[ev] = true
+	}
+	return events
+}
+
+// agentTurn plays an agent's hook events into a shell tab running kind, as
+// that agent delivers them with the reporting punk0 wrote for it: an event
+// the file does not register never runs punk0's hook, and one that does
+// reaches the tab slimmed by runHook. It returns the statuses the tab
+// showed and the chats it was bound to, each without repeats.
+func agentTurn(t *testing.T, wb *workbench, repo, kind string, registered map[string]bool, events []string) (statuses, sessions []string) {
+	t.Helper()
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := wb.records.AddTab(p.Workspaces[0].ID, tabShell, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := tab.Shell(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tab.close)
+	post := func(body []byte) {
+		t.Helper()
+		if w := reqJSON(t, wb, "POST", "/api/tabs/"+tab.ID+"/hook", string(body)); w.Code != 200 {
+			t.Fatalf("%s: %d %s", body, w.Code, w.Body.String())
+		}
+	}
+	start, _ := json.Marshal(map[string]any{"hook_event_name": agentStartEvent, "punk0_agent": kind})
+	post(start)
+	for _, raw := range events {
+		var ev hookEvent
+		if err := json.Unmarshal([]byte(raw), &ev); err != nil {
+			t.Fatalf("fixture %s: %v", raw, err)
+		}
+		if !registered[ev.Name] {
+			continue
+		}
+		post(slimHookEvent([]byte(raw), kind))
+		statuses = append(statuses, tab.Status())
+		if tab.Session != "" {
+			sessions = append(sessions, tab.Session)
+		}
+	}
+	return slices.Compact(statuses), slices.Compact(sessions)
 }

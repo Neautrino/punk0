@@ -141,6 +141,12 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
 		env = append(env, opencodeEnv(s.Kind, s.project, hooked)...)
+		if !hooked {
+			if r := agentReportOf(s.Kind); r != nil {
+				_, e := r.via.unhooked(s.Kind)
+				env = append(env, e...)
+			}
+		}
 		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env)
 		if err != nil {
 			return nil, false, err

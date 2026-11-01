@@ -49,38 +49,46 @@ var claudeHookEvents = []string{
 
 func claudeHooksPath() string { return filepath.Join(workbenchStateDir(), "claude-hooks.json") }
 
+// settingsHook is one command hook in the settings-file format Claude Code
+// reads, which droid reads as is and qwen with a matcher and a timeout (s).
+type settingsHook struct {
+	Type    string   `json:"type"`
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
+	Timeout int      `json:"timeout,omitempty"`
+}
+
+// settingsHooks is one event's entry in that format: the hooks to run for
+// tools Matcher names, every tool where it is "".
+type settingsHooks struct {
+	Matcher string         `json:"matcher,omitempty"`
+	Hooks   []settingsHook `json:"hooks"`
+}
+
 // writeClaudeHooks writes the --settings file claude starts with in a tab.
 // exe is this punk0, so a hook keeps reporting to the version that started
 // it; a -dev punk0's hook gets its -dev=<dir>, so it logs and makes worktrees
 // there. The hook names its agent, so the tab can tell Claude's events from
 // another agent's.
 func writeClaudeHooks(exe string) error {
-	type hookCmd struct {
-		Type    string   `json:"type"`
-		Command string   `json:"command"`
-		Args    []string `json:"args,omitempty"`
-	}
-	type hookMatcher struct {
-		Hooks []hookCmd `json:"hooks"`
-	}
 	args := []string{"hook"}
 	if a := devArg(); a != "" {
 		args = append(args, a)
 	}
 	args = append(args, tabClaude)
 	line := hookLine(exe, tabClaude)
-	h := hookCmd{Type: "command", Command: line}
+	h := settingsHook{Type: "command", Command: line}
 	if runtime.GOOS == "windows" {
 		// Claude runs a hook's command line through Git Bash there, or
 		// PowerShell without it, and they quote differently. With args
 		// (exec form, Claude Code 2.1.139+) it starts punk0 with no shell.
 		// Unix keeps the command line: an older Claude would ignore args
 		// and start a whole punk0.
-		h = hookCmd{Type: "command", Command: exe, Args: args}
+		h = settingsHook{Type: "command", Command: exe, Args: args}
 	}
-	hooks := make(map[string][]hookMatcher, len(claudeHookEvents))
+	hooks := make(map[string][]settingsHooks, len(claudeHookEvents))
 	for _, ev := range claudeHookEvents {
-		hooks[ev] = []hookMatcher{{Hooks: []hookCmd{h}}}
+		hooks[ev] = []settingsHooks{{Hooks: []settingsHook{h}}}
 	}
 	return writeFileAtomic(claudeHooksPath(), map[string]any{"hooks": hooks})
 }
