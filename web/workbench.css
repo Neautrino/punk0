@@ -434,8 +434,11 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-tab-dot.on { background: var(--gi); border-color: var(--gi); }
 .o-tab-dot.on.working { background: var(--accent-fg); border-color: var(--accent-fg); }
 .o-tab-dot.on.waiting { background: var(--mark-active); border-color: var(--mark-active); }
-.o-tab-kind { font-family: var(--mono); color: var(--faint); }
+.o-tab-kind { color: var(--faint); }
 .tab.active .o-tab-kind { color: var(--accent); }
+/* An agent's mark (agenticons.js), drawn in the text colour. */
+.agent-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.agent-ic svg { width: 13px; height: 13px; }
 /* File kind, drawn as in the app's tree (.tr .ic). */
 .o-tab-ic { width: 7px; height: 7px; flex: none; border-radius: 2px; background: var(--faint); opacity: .75; }
 .o-tab-ic[data-t="code"] { background: var(--nf); }
@@ -455,7 +458,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-agent-list { display: contents; }
 .o-menu button:hover, .o-menu button:focus-visible { background: var(--bg4); outline: none; }
 .o-menu-kind { width: 14px; text-align: center; font-family: var(--mono); color: var(--dim); }
-.o-menu-kind.claude { color: var(--accent); }
 /* A small page outline: the file entry. */
 .o-menu-kind.file::before {
   content: ""; display: inline-block; width: 8px; height: 10px; vertical-align: -1px;

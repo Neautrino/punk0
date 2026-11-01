@@ -11,10 +11,10 @@ const KIND_LABELS = {
   'cursor-agent': 'Cursor Agent',
 };
 
-/** A tab's chip label: its own name once renamed, else its kind's. */
+/** A tab's label: the user's name for it, else its chat's title, else what
+ *  runs in it (records.go tabLabel does the same). */
 export function getTabLabel(t) {
-  if (t.name && t.name !== t.kind) return t.name;
-  return KIND_LABELS[t.kind] || t.name || t.kind;
+  return t.name || t.title || KIND_LABELS[t.kind] || t.kind;
 }
 
 /** text without the leading spaces every non-blank line shares; lines keep

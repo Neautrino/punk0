@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -351,8 +352,10 @@ func TestOpenCodeTabGetsWorktreeRoot(t *testing.T) {
 		})
 	}
 
-	// A tab knows its project, so its environment names the project's
-	// folder; any other tab is left alone.
+	// A tab knows its project, so the config it gives opencode names the
+	// project's folder, and every opencode loads punk0's plugin. In a shell
+	// punk0 hooks, every tab carries both for the opencode function; in one
+	// it cannot, an opencode tab gets OpenCode's own variables.
 	wb, _, repo := historyWorkbench(t)
 	p, err := wb.records.AddProject(repo)
 	if err != nil {
@@ -366,18 +369,44 @@ func TestOpenCodeTabGetsWorktreeRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "OPENCODE_CONFIG_CONTENT=" + opencodeConfig("", filepath.Join(root, "workspaces", p.ID))
-	if got := opencodeEnv(tab.Kind, tab.project); got != want {
+	worktrees := opencodeConfig("", filepath.Join(root, "workspaces", p.ID))
+	plugins := opencodeCLIConfig("", opencodeCLIFile(), opencodePluginDir())
+	if got, want := opencodeEnv(tab.Kind, tab.project, false), []string{"OPENCODE_CONFIG_CONTENT=" + worktrees, "OPENCODE_CLI_CONFIG_CONTENT=" + plugins}; !slices.Equal(got, want) {
 		t.Errorf("opencode tab env = %q, want %q", got, want)
 	}
-	if got := opencodeEnv(tabClaude, tab.project); got != "" {
-		t.Errorf("claude tab env = %q", got)
+	if got := opencodeEnv(tabClaude, tab.project, false); got != nil {
+		t.Errorf("claude tab env in an unhooked shell = %q", got)
+	}
+	if got, want := opencodeEnv(tabClaude, tab.project, true), []string{"PUNK0_OPENCODE_CONFIG=" + worktrees, "PUNK0_OPENCODE_CLI_CONFIG=" + plugins}; !slices.Equal(got, want) {
+		t.Errorf("hooked tab env = %q, want %q", got, want)
 	}
 	chat, err := wb.records.NewChat(ChatOptions{Agent: tabOpenCode, Title: "notes"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := opencodeEnv(chat.Tabs[0].Kind, chat.Tabs[0].project); got != "" {
-		t.Errorf("scratch chat env = %q: it belongs to no project", got)
+	if got, want := opencodeEnv(chat.Tabs[0].Kind, chat.Tabs[0].project, true), []string{"PUNK0_OPENCODE_CLI_CONFIG=" + plugins}; !slices.Equal(got, want) {
+		t.Errorf("scratch chat env = %q, want %q: it belongs to no project", got, want)
+	}
+}
+
+// The inline CLI config that loads punk0's plugin replaces the plugins list
+// of the user's cli.json, so the user's own plugins must come along.
+func TestOpenCodeCLIConfigKeepsUserPlugins(t *testing.T) {
+	cli := filepath.Join(t.TempDir(), "cli.json")
+	if err := os.WriteFile(cli, []byte(`{"$schema":"x","plugins":["/home/u/mine"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, user, file, want string }{
+		{"cli.json plugins kept", "", cli, `{"plugins":["/home/u/mine","/p"]}`},
+		{"no cli.json", "", filepath.Join(t.TempDir(), "none.json"), `{"plugins":["/p"]}`},
+		{"the user's inline list wins, as in OpenCode", `{"theme":"x","plugins":["/inline"]}`, cli, `{"plugins":["/inline","/p"],"theme":"x"}`},
+		{"not added twice", `{"plugins":["/p"]}`, cli, `{"plugins":["/p"]}`},
+		{"invalid json is left alone", `{oops`, cli, `{oops`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got := opencodeCLIConfig(c.user, c.file, "/p"); got != c.want {
+				t.Errorf("got %s, want %s", got, c.want)
+			}
+		})
 	}
 }

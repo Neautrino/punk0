@@ -195,7 +195,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agents.claude.args",
 		Title:       "Claude Code Arguments",
-		Description: "Extra arguments for every Claude Code tab, placed right after the program name (e.g. --model opus). Shell syntax applies.",
+		Description: "Extra arguments for the Claude Code punk0 starts in a tab (from + or New chat, or resuming a tab's chat), placed right after the program name (e.g. --model opus). A claude you type at a tab's prompt gets only what you type. Shell syntax applies.",
 		Category:    "Agents",
 		Type:        "string",
 		Default:     "",
@@ -204,7 +204,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agents.codex.args",
 		Title:       "Codex Arguments",
-		Description: "Extra arguments for every Codex tab, placed right after the program name. Shell syntax applies.",
+		Description: "Extra arguments for the Codex punk0 starts in a tab, placed right after the program name. A codex you type at a tab's prompt gets only what you type. Shell syntax applies.",
 		Category:    "Agents",
 		Type:        "string",
 		Default:     "",
@@ -213,7 +213,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agents.opencode.args",
 		Title:       "OpenCode Arguments",
-		Description: "Extra arguments for every OpenCode tab, placed right after the program name. Shell syntax applies.",
+		Description: "Extra arguments for the OpenCode punk0 starts in a tab, placed right after the program name. An opencode you type at a tab's prompt gets only what you type. Shell syntax applies.",
 		Category:    "Agents",
 		Type:        "string",
 		Default:     "",
@@ -222,7 +222,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agents.agy.args",
 		Title:       "Antigravity Arguments",
-		Description: "Extra arguments for every Antigravity tab, placed right after the program name. Shell syntax applies.",
+		Description: "Extra arguments for the Antigravity punk0 starts in a tab, placed right after the program name. An agy you type at a tab's prompt gets only what you type. Shell syntax applies.",
 		Category:    "Agents",
 		Type:        "string",
 		Default:     "",
@@ -231,7 +231,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agents.cursor-agent.args",
 		Title:       "Cursor Agent Arguments",
-		Description: "Extra arguments for every Cursor Agent tab, placed right after the program name. Shell syntax applies.",
+		Description: "Extra arguments for the Cursor Agent punk0 starts in a tab, placed right after the program name. A cursor-agent you type at a tab's prompt gets only what you type. Shell syntax applies.",
 		Category:    "Agents",
 		Type:        "string",
 		Default:     "",
@@ -314,7 +314,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "terminal.shell",
 		Title:       "Shell",
-		Description: "The program new tabs run. Empty uses $SHELL, else /bin/sh; on Windows PowerShell 7, else Windows PowerShell, else cmd. Applies to tabs started afterwards.",
+		Description: "The program new tabs run. Empty uses $SHELL, else /bin/sh; on Windows PowerShell 7, else Windows PowerShell, else cmd. In zsh, bash and fish punk0 also sees agents you type at the prompt. Applies to tabs started afterwards.",
 		Category:    "Terminal",
 		Type:        "string",
 		Default:     "",
@@ -332,7 +332,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "terminal.idleStop",
 		Title:       "Stop Idle Terminal After (Minutes)",
-		Description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt; an agent is stopped like any other quiet tab, except a Claude that says it is working or waiting for an answer, and picks its chat up again when reopened. 0 never stops them.",
+		Description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt; an agent is stopped like any other quiet tab, except one that says it is working or waiting for an answer, and picks its chat up again when reopened. 0 never stops them.",
 		Category:    "Terminal",
 		Type:        "number",
 		Default:     30.0,
@@ -387,7 +387,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "notifications.desktop",
 		Title:       "Desktop Notifications",
-		Description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code) notify, and only while the agents page is open.",
+		Description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code, Codex, OpenCode) notify, and only while the agents page is open.",
 		Category:    "Notifications",
 		Type:        "select",
 		Default:     "off",

@@ -4,6 +4,7 @@ import { sideShown, rightView, showRightView } from './sideviews.js';
 import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
+import { agentIcon } from './agenticons.js';
 import { installClipboard, clipboardKey } from './termclip.js';
 import { termOptions } from './termoptions.js';
 
@@ -267,6 +268,7 @@ function renderTabChips() {
     const dot = document.createElement('span');
     dot.className = 'term-status-dot ' + (t.status === 'working' || t.status === 'waiting' ? 'busy' : 'idle');
     btn.appendChild(dot);
+    btn.insertAdjacentHTML('beforeend', agentIcon(t.kind, 'term-tab-kind'));
 
     const name = document.createElement('span');
     name.textContent = (several && t.workspaceName ? t.workspaceName + ' · ' : '') + getTabLabel(t);
@@ -428,19 +430,19 @@ export function onTermInspectorShown() {
 }
 
 const SUPPORTED_AGENTS = [
-  { id: 'claude', label: 'Claude Code', icon: '✳' },
-  { id: 'codex', label: 'Codex', icon: '◆' },
-  { id: 'opencode', label: 'OpenCode', icon: '◆' },
-  { id: 'agy', label: 'Antigravity', icon: '◆' },
-  { id: 'cursor-agent', label: 'Cursor Agent', icon: '◆' },
+  { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'opencode', label: 'OpenCode' },
+  { id: 'agy', label: 'Antigravity' },
+  { id: 'cursor-agent', label: 'Cursor Agent' },
 ];
 
 // agentChoices is the + menu's items for a new tab in workspace wsId (else
 // this editor's): an agent each, then a shell. Chats' section headers offer
 // them too, for a chat in that section's workspace.
 export const agentChoices = wsId => [
-  ...SUPPORTED_AGENTS.map(a => ({ icon: `<span class="agent-icon${a.id === 'claude' ? ' claude' : ''}">${a.icon}</span>`, label: a.label, run: () => addTab(a.id, wsId || undefined) })),
-  { icon: '<span class="agent-icon">$</span>', label: 'Shell', run: () => addTab('shell', wsId || undefined) },
+  ...SUPPORTED_AGENTS.map(a => ({ icon: agentIcon(a.id, 'agent-icon'), label: a.label, run: () => addTab(a.id, wsId || undefined) })),
+  { icon: agentIcon('shell', 'agent-icon'), label: 'Shell', run: () => addTab('shell', wsId || undefined) },
 ];
 
 // The + menu: a tab for each agent, then a shell.

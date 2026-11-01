@@ -79,7 +79,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agents.claude.args",
     title: "Claude Code Arguments",
-    description: "Extra arguments for every Claude Code tab, placed right after the program name (e.g. --model opus). Shell syntax applies.",
+    description: "Extra arguments for the Claude Code punk0 starts in a tab (from + or New chat, or resuming a tab's chat), placed right after the program name (e.g. --model opus). A claude you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
@@ -88,7 +88,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agents.codex.args",
     title: "Codex Arguments",
-    description: "Extra arguments for every Codex tab, placed right after the program name. Shell syntax applies.",
+    description: "Extra arguments for the Codex punk0 starts in a tab, placed right after the program name. A codex you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
@@ -97,7 +97,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agents.opencode.args",
     title: "OpenCode Arguments",
-    description: "Extra arguments for every OpenCode tab, placed right after the program name. Shell syntax applies.",
+    description: "Extra arguments for the OpenCode punk0 starts in a tab, placed right after the program name. An opencode you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
@@ -106,7 +106,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agents.agy.args",
     title: "Antigravity Arguments",
-    description: "Extra arguments for every Antigravity tab, placed right after the program name. Shell syntax applies.",
+    description: "Extra arguments for the Antigravity punk0 starts in a tab, placed right after the program name. An agy you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
@@ -115,7 +115,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agents.cursor-agent.args",
     title: "Cursor Agent Arguments",
-    description: "Extra arguments for every Cursor Agent tab, placed right after the program name. Shell syntax applies.",
+    description: "Extra arguments for the Cursor Agent punk0 starts in a tab, placed right after the program name. A cursor-agent you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
@@ -154,7 +154,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "terminal.scrollback",
     title: "Scrollback",
-    description: "Lines a terminal tab keeps for scrolling back in the page.",
+    description: "Lines a terminal tab keeps for scrolling back, in the page and in punk0, which redraws them when the tab is opened again.",
     category: "Terminal",
     type: "number",
     default: 10000,
@@ -198,7 +198,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "terminal.shell",
     title: "Shell",
-    description: "The program new tabs run. Empty uses $SHELL, else /bin/sh. Applies to tabs started afterwards.",
+    description: "The program new tabs run. Empty uses $SHELL, else /bin/sh; on Windows PowerShell 7, else Windows PowerShell, else cmd. In zsh, bash and fish punk0 also sees agents you type at the prompt. Applies to tabs started afterwards.",
     category: "Terminal",
     type: "string",
     default: "",
@@ -216,7 +216,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "terminal.idleStop",
     title: "Stop Idle Terminal After (Minutes)",
-    description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt; an agent is stopped like any other quiet tab, except a Claude that says it is working or waiting for an answer, and picks its chat up again when reopened. 0 never stops them.",
+    description: "Controls how long a terminal tab stays open with nothing typed or printed in it. A shell is only stopped at its prompt; an agent is stopped like any other quiet tab, except one that says it is working or waiting for an answer, and picks its chat up again when reopened. 0 never stops them.",
     category: "Terminal",
     type: "number",
     default: 30,
@@ -271,7 +271,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "notifications.desktop",
     title: "Desktop Notifications",
-    description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code) notify, and only while the agents page is open.",
+    description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code, Codex, OpenCode) notify, and only while the agents page is open.",
     category: "Notifications",
     type: "select",
     default: "off",

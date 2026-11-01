@@ -84,7 +84,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `layout.fileView` | Appearance | `"beside"` | `beside`, `tabs` | Files in a panel beside the terminals, or among the terminal tabs (agents page) |
 | `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
 | `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
-| `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name, one key per agent (`claude`, `codex`, `opencode`, `agy`, `cursor-agent`) |
+| `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent (`claude`, `codex`, `opencode`, `agy`, `cursor-agent`) |
 | `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
 | `terminal.fontFamily` | Terminal | `""` | CSS font stack | Terminal font |
 | `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
@@ -93,15 +93,15 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.cursorBlink` | Terminal | `true` | `true`, `false` | Blink the terminal cursor |
 | `terminal.copyOnSelect` | Terminal | `false` | `true`, `false` | Copy terminal text as soon as it is selected, in both terminals (see [Tabs](workbench.md#tabs)) |
 | `terminal.confirmCloseRunning` | Terminal | `true` | `true`, `false` | Ask before closing a tab that is still running |
-| `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh`; on Windows `pwsh`, else `powershell`, else `cmd` |
+| `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh`; on Windows `pwsh`, else `powershell`, else `cmd`. In zsh, bash and fish punk0 also sees agents typed at the prompt |
 | `terminal.env` ⚿ | Terminal | `""` | `KEY=VALUE` per line | Added to every tab's environment; `~/` expands to the home folder, `#` lines are comments |
-| `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent unless Claude reports it working or waiting. Reopening resumes the chat |
+| `terminal.idleStop` | Terminal | `30` | minutes, `0` never | Stop a tab that carries nothing for this long; a shell only at its prompt, an agent unless it reports working or waiting (Claude Code, Codex, OpenCode). Reopening resumes the chat |
 | `workspace.dir` ⚿ | Workspaces | `"~/punk0"` | folder path | Where new worktrees and scratch chats are created: `workspaces/<project>/<name>` and `scratch/<name>` inside it. Existing ones stay where they are; a git repository is refused |
 | `workspace.branchPrefix` | Workspaces | `""` | branch prefix | Prefix for branches New workspace creates (the folder stays unprefixed) |
 | `workspace.fetchBase` | Workspaces | `true` | `true`, `false` | Fetch the base branch before creating a workspace |
 | `workspace.deleteMergedBranch` | Workspaces | `false` | `true`, `false` | Delete a workspace's branch with it when it is merged; the delete response notes why it was kept otherwise |
 | `workspace.idleStop` | Workspaces | `5` | minutes, `0` never | Stop a folder's editor process after this long without requests; the next request starts it again |
-| `notifications.desktop` | Notifications | `"off"` | `"off"`, `"unfocused"`, `"always"` | Desktop notifications; asks for browser permission when turned on |
+| `notifications.desktop` | Notifications | `"off"` | `"off"`, `"unfocused"`, `"always"` | Desktop notifications for agents that report status (Claude Code, Codex, OpenCode); asks for browser permission when turned on |
 | `notifications.onWaiting` | Notifications | `true` | `true`, `false` | Notify when an agent waits for input |
 | `notifications.onDone` | Notifications | `true` | `true`, `false` | Notify when an agent finishes |
 | `notifications.sound` | Notifications | `false` | `true`, `false` | Play a sound with a notification |

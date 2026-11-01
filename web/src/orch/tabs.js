@@ -17,6 +17,8 @@ import { openPicker } from './picker.js';
 import { getSetting, visibleAgents, defaultAgent } from './settings.js';
 import { isSplit } from './split.js';
 import { scrollTabsOnWheel } from '../tabwheel.js';
+import { agentIcon } from '../agenticons.js';
+import { getTabLabel } from '../term-util.js';
 
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 const ICON_CHANGES = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v8M8 9h8M8 18h8"/></svg>';
@@ -81,7 +83,7 @@ function renderAgents() {
   const visible = visibleAgents(agents);
   const first = defaultAgent(visible);
   visible.sort((a, b) => (b.id === first ? 1 : 0) - (a.id === first ? 1 : 0));
-  const icon = a => `<span class="o-menu-kind${a.id === 'claude' ? ' claude' : ''}">${a.id === 'claude' ? '✳' : a.id === 'shell' ? '$' : '◆'}</span>`;
+  const icon = a => agentIcon(a.id, 'o-menu-kind');
   const what = a => a.id === 'shell' ? 'your own shell, in a real terminal' : `runs <code>${esc(a.id)}</code> in this folder`;
   $('#o-new-agents').innerHTML = visible.map(a =>
     `<button type="button" role="menuitem" data-new-tab="${esc(a.id)}">${icon(a)}${esc(a.label)}</button>`).join('');
@@ -110,15 +112,19 @@ function renderTabs() {
 function renderResume(w) {
   const tabs = w?.tabs || [];
   $('#o-empty-tabs').innerHTML = tabs.length ? `<span class="o-welcome-head">Open a tab again, or start a new one</span>` + tabs.map(t =>
-    `<button type="button" data-pick-tab="${esc(t.id)}"><span class="o-menu-kind${t.kind === 'claude' ? ' claude' : ''}">${t.kind === 'claude' ? '✳' : t.kind === 'shell' ? '$' : '◆'}</span><span>${esc(t.name)}</span><span class="wb-faint">${!t.running ? 'stopped' : TAB_STATUS[t.status] || 'running'}</span></button>`).join('') : '';
+    `<button type="button" data-pick-tab="${esc(t.id)}">${agentIcon(t.kind, 'o-menu-kind')}<span>${esc(getTabLabel(t))}</span><span class="wb-faint">${!t.running ? 'stopped' : TAB_STATUS[t.status] || 'running'}</span></button>`).join('') : '';
 }
+
+// label is what a tab says: a file its name, a terminal its own name, its
+// chat's title or what runs in it (getTabLabel).
+const label = t => t.kind === 'file' || t.changes ? t.name : getTabLabel(t);
 
 function tabsHTML(tabs, active) {
   return tabs.map(t => `
     <div class="tab${t.id === active?.id ? ' active' : ''}" data-tab="${esc(t.id)}" title="${esc(tabTitle(t))}" role="tab" aria-selected="${t.id === active?.id}">
       ${t.changes ? ICON_CHANGES : t.kind === 'file' ? `<span class="o-tab-ic" data-t="${fileKind(t.name)}"></span>` : `<span class="o-tab-dot${t.running ? ' on' : ''}${t.status ? ' ' + esc(t.status) : ''}"></span>
-      <span class="o-tab-kind">${t.kind === 'claude' ? '✳' : t.kind === 'shell' ? '$' : '◆'}</span>`}
-      <span class="tn">${esc(t.name)}</span>
+      ${agentIcon(t.kind, 'o-tab-kind')}`}
+      <span class="tn">${esc(label(t))}</span>
       <button type="button" class="x" data-act="close" title="Close tab" aria-label="Close tab">${ICON_CLOSE}</button>
     </div>`).join('');
 }
@@ -126,9 +132,9 @@ function tabsHTML(tabs, active) {
 function tabTitle(t) {
   if (t.changes) return 'Changes in this workspace';
   if (t.kind === 'file') return t.path;
-  const what = t.kind === 'claude' ? 'Claude Code' : t.kind === 'shell' ? 'Shell' : t.name;
   const st = !t.running ? 'stopped' : TAB_STATUS[t.status] || 'running';
-  return `${what}, ${st}: double-click to rename`;
+  const what = getTabLabel({ kind: t.kind });
+  return `${label(t)} (${what}, ${st}): double-click to rename`;
 }
 
 function toggleNewMenu() {
@@ -179,7 +185,7 @@ async function onTabClick(e) {
     closeFile(t.path);
   } else {
     if (t.running && getSetting('terminal.confirmCloseRunning') !== false &&
-      !confirm(`Close "${t.name}"? Its shell and anything running in it stop.`)) return;
+      !confirm(`Close "${label(t)}"? Its shell and anything running in it stop.`)) return;
     const res = await call('DELETE', `api/tabs/${encodeURIComponent(t.id)}`);
     if (!res.ok) return failed(res);
     await reload();
@@ -193,8 +199,8 @@ async function onTabClick(e) {
 async function onRename(e) {
   const t = tabAt(e);
   if (!t || t.kind === 'file' || e.target.closest('[data-act=close]')) return;
-  const name = prompt('Tab name', t.name)?.trim();
-  if (!name || name === t.name) return;
+  const name = prompt('Tab name', label(t))?.trim();
+  if (!name || name === label(t)) return;
   const res = await call('PATCH', `api/tabs/${encodeURIComponent(t.id)}`, { name });
   if (!res.ok) return failed(res);
   reload();

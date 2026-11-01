@@ -1,12 +1,16 @@
 package main
 
-// Claude Code tells punk0 what the agent in a tab is doing through hooks: a
-// settings file registers `punk0 hook` for every event punk0 cares about, and
-// each tab's PTY carries the URL of the tab to report to. The orchestrator
-// page then shows which agents are working, waiting for an answer, or done.
+// Agents tell punk0 what they are doing in a tab through hooks: Claude Code
+// through a settings file that registers `punk0 hook claude` for every event
+// punk0 cares about, Codex through -c overrides that register `punk0 hook
+// codex` (agentshell.go), OpenCode through a plugin. Each tab's PTY carries
+// the URL of the tab to report to. The orchestrator page then shows which
+// agent runs where, in which chat, and whether it is working, waiting for an
+// answer, or done.
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -17,6 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"time"
 
 	"px0/internal/applog"
@@ -43,9 +49,11 @@ var claudeHookEvents = []string{
 
 func claudeHooksPath() string { return filepath.Join(workbenchStateDir(), "claude-hooks.json") }
 
-// writeClaudeHooks writes the --settings file claude tabs start with. exe is
-// this punk0, so a hook keeps reporting to the version that started it; a
-// -dev punk0's hook gets its -dev=<dir>, so it logs and makes worktrees there.
+// writeClaudeHooks writes the --settings file claude starts with in a tab.
+// exe is this punk0, so a hook keeps reporting to the version that started
+// it; a -dev punk0's hook gets its -dev=<dir>, so it logs and makes worktrees
+// there. The hook names its agent, so the tab can tell Claude's events from
+// another agent's.
 func writeClaudeHooks(exe string) error {
 	type hookCmd struct {
 		Type    string   `json:"type"`
@@ -59,10 +67,8 @@ func writeClaudeHooks(exe string) error {
 	if a := devArg(); a != "" {
 		args = append(args, a)
 	}
-	line := shellQuote(exe)
-	for _, a := range args {
-		line += " " + shellQuote(a)
-	}
+	args = append(args, tabClaude)
+	line := hookLine(exe, tabClaude)
 	h := hookCmd{Type: "command", Command: line}
 	if runtime.GOOS == "windows" {
 		// Claude runs a hook's command line through Git Bash there, or
@@ -83,19 +89,37 @@ func writeClaudeHooks(exe string) error {
 // first (slimHookEvent), so only a very long prompt comes near it.
 const hookBodyMax = 1 << 20
 
-// runHook is `punk0 hook`: Claude Code runs it with the event on stdin. It
-// posts the event to the tab it came from and says nothing either way -- a
-// hook that writes to stderr or fails would show up in the agent's chat. A
-// report that fails or is slow goes in the log file instead (hookSlow). The
-// two worktree events are the exception: Claude waits for an answer, so
-// worktreeHook writes one (worktreehook.go).
-func runHook() {
+// runHook is `punk0 hook`. `punk0 hook <agent>` is what an agent's hooks
+// run, with the event on stdin; `punk0 hook start|exit <agent> [status]` is
+// what an agent's shell function runs around it (agentshell.go), reading
+// nothing: stdin is the terminal. Either way the event goes to the tab it
+// came from, and nothing is said either way -- a hook that writes to stderr
+// or fails would show up in the agent's chat. A report that fails or is slow
+// goes in the log file instead (hookSlow). The two worktree events are the
+// exception: Claude waits for an answer, so worktreeHook writes one
+// (worktreehook.go). args are those after `hook`, -dev=<dir> already applied.
+func runHook(args []string) {
 	start := time.Now()
-	body, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<20))
-	if err != nil || len(body) == 0 {
-		return
+	args = slices.DeleteFunc(slices.Clone(args), func(a string) bool { return strings.HasPrefix(a, "-dev=") })
+	var body []byte
+	switch {
+	case len(args) >= 2 && (args[0] == "start" || args[0] == "exit"):
+		ev := map[string]any{"hook_event_name": agentStartEvent, "punk0_agent": args[1]}
+		if args[0] == "exit" {
+			ev["hook_event_name"] = agentExitEvent
+		}
+		body, _ = json.Marshal(ev)
+	default:
+		in, err := io.ReadAll(io.LimitReader(os.Stdin, 64<<20))
+		if err != nil || len(in) == 0 {
+			return
+		}
+		agent := ""
+		if len(args) > 0 {
+			agent = args[0]
+		}
+		body = slimHookEvent(in, agent)
 	}
-	body = slimHookEvent(body)
 	var ev hookEvent
 	json.Unmarshal(body, &ev)
 	target := os.Getenv("PUNK0_HOOK_URL")
@@ -146,11 +170,15 @@ const hookSlow = 500 * time.Millisecond
 
 // slimHookEvent drops what punk0 never reads and a tool event can carry
 // megabytes of: the tool's result, and its input but for the file it wrote.
-// An event that does not parse goes as it came.
-func slimHookEvent(body []byte) []byte {
+// It names agent as the event's sender (punk0_agent), unless agent is "". An
+// event that does not parse goes as it came.
+func slimHookEvent(body []byte, agent string) []byte {
 	var ev map[string]json.RawMessage
 	if json.Unmarshal(body, &ev) != nil {
 		return body
+	}
+	if agent != "" {
+		ev["punk0_agent"], _ = json.Marshal(agent)
 	}
 	delete(ev, "tool_response")
 	if in, ok := ev["tool_input"]; ok {
@@ -168,20 +196,25 @@ func slimHookEvent(body []byte) []byte {
 	return out
 }
 
-// hookEvent is the part of a Claude Code hook event punk0 uses: what the tab
-// shows, the prompt a scratch chat is titled after, and the session and
-// folders its agent works in.
+// hookEvent is the part of an agent's hook event punk0 uses: which agent
+// sent it, what the tab shows, the prompt a scratch chat is titled after, the
+// chat and its title, and the folders its agent works in. Claude Code and
+// Codex name their fields alike; OpenCode's plugin sends the same ones, and
+// the shell functions send only their name and agent.
 type hookEvent struct {
 	Name         string          `json:"hook_event_name"`
+	Agent        string          `json:"punk0_agent"` // "" from a Claude started before hooks named their agent
 	Notification string          `json:"notification_type"`
 	Background   json.RawMessage `json:"background_tasks"`
 	Prompt       string          `json:"prompt"` // UserPromptSubmit
 	Session      string          `json:"session_id"`
+	Transcript   string          `json:"transcript_path"`
+	Title        string          `json:"title"` // OpenCode's plugin: the chat's title
 	Cwd          string          `json:"cwd"`
 	ToolInput    json.RawMessage `json:"tool_input"`    // file_path or notebook_path for the edit tools
 	WorktreeName string          `json:"name"`          // WorktreeCreate: the worktree Claude asks for
 	WorktreePath string          `json:"worktree_path"` // WorktreeRemove: the folder to remove
-	AgentID      string          `json:"agent_id"`      // SubagentStop: the subagent whose worktree Cwd is
+	AgentID      string          `json:"agent_id"`      // a subagent's event: the subagent
 }
 
 // hookStatus maps one hook event to the status its tab shows. The second
@@ -223,7 +256,10 @@ func hasBackgroundTasks(raw json.RawMessage) bool {
 }
 
 // handleHook takes a hook event from a tab's agent. It is a write from this
-// machine like any other, so it goes through the same Origin check.
+// machine like any other, so it goes through the same Origin check. An agent's
+// start and exit bind and unbind the tab (agentbind.go); any other event
+// counts only from the agent the tab runs, so a hook of something that agent
+// started, or of one that ran before, does not take the tab over.
 func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	if !localOrigin(w, r) {
 		return
@@ -243,6 +279,8 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad request")
 		return
 	}
+	// Only Claude sent events before they named their agent.
+	agent := cmp.Or(ev.Agent, tabClaude)
 	// The worktree events are requests, not reports: they answer with the
 	// folder Claude is to use, and say nothing about the tab's status.
 	switch ev.Name {
@@ -261,6 +299,23 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"ok": true})
 		return
+	case agentStartEvent, agentExitEvent:
+		bind := wb.records.AgentStarted
+		if ev.Name == agentExitEvent {
+			bind = wb.records.AgentExited
+		}
+		if err := bind(tab.ID, agent); err != nil {
+			failRecord(w, err)
+			return
+		}
+		slog.Info("agent "+strings.TrimPrefix(ev.Name, "punk0."), "tab", tab.ID, "agent", agent)
+		writeJSON(w, map[string]any{"ok": true})
+		return
+	}
+	if bound := tab.kind(); bound != agent {
+		slog.Debug("hook of an agent the tab does not run", "event", ev.Name, "tab", tab.ID, "agent", agent, "runs", bound)
+		writeJSON(w, map[string]any{"ok": true})
+		return
 	}
 	status, ok := hookStatus(ev)
 	if ok {
@@ -271,12 +326,24 @@ func (wb *workbench) handleHook(w http.ResponseWriter, r *http.Request) {
 	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
 		level = slog.LevelDebug // one per tool call
 	}
-	slog.Log(r.Context(), level, "hook", "event", ev.Name, "tab", tab.ID, "session", ev.Session, "status", status)
-	// The session it reports is filed under the tab's workspace, unless the
-	// user filed it elsewhere; a worktree it works in is listed under it.
+	slog.Log(r.Context(), level, "hook", "event", ev.Name, "tab", tab.ID, "agent", agent, "session", ev.Session, "status", status)
+	// The chat it reports is the tab's (a subagent's events carry its
+	// parent's), and is filed under the tab's workspace, unless the user
+	// filed it elsewhere; a worktree it works in is listed under it.
 	if ev.Session != "" {
+		if ev.AgentID == "" {
+			if err := wb.records.AgentSession(tab.ID, agent, ev.Session); err != nil {
+				log.Printf("binding the chat of tab %s: %v", tab.ID, err)
+			}
+		}
 		if err := wb.records.NoteSession(tab.ID, ev.Session); err != nil {
 			log.Printf("filing session of tab %s: %v", tab.ID, err)
+		}
+		switch ev.Name {
+		case "SessionStart", "UserPromptSubmit", "Stop":
+			// Claude and Codex name a chat after its first prompt and
+			// rename it as it goes; reading that waits for no agent.
+			go wb.refreshTitle(tab.ID, agent, ev)
 		}
 	}
 	wb.noteAgentDirs(tab.ID, ev)

@@ -1,0 +1,91 @@
+//go:build !windows
+
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// Codex trusts a hook by a hash of its definition; punk0 trusts its own hooks
+// for a run by passing that hash. This one was taken from Codex 0.166 running
+// a hook it trusted through exactly this override.
+func TestCodexHookHashMatchesCodex(t *testing.T) {
+	got := codexHookHash("session_start", "cat >> /tmp/cx-hook.log; echo >> /tmp/cx-hook.log")
+	if want := "sha256:145ffdc562ec63f219257bd5f05e34e712fed71fe540f089b69cbc916c7a34eb"; got != want {
+		t.Fatalf("hash %s, want %s", got, want)
+	}
+}
+
+// An agent typed at a tab's prompt reports its start and its exit, with the
+// hooks punk0 adds, whatever order the user's rc files put PATH in; one that
+// is not installed only says it is gone, so the tab never shows it.
+func TestAgentFunctionsReportStartAndExit(t *testing.T) {
+	for _, shell := range []string{"zsh", "bash"} {
+		t.Run(shell, func(t *testing.T) {
+			path, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skipf("%s is not installed", shell)
+			}
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("ZDOTDIR", "")
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			useSettings(t, map[string]any{})
+
+			// The user's rc puts their own bin first, after punk0 set PATH.
+			bin, log := filepath.Join(home, "bin"), filepath.Join(home, "hook.log")
+			os.MkdirAll(bin, 0o755)
+			writeExec(t, filepath.Join(bin, "codex"), "#!/bin/sh\necho \"codex ran with $#: $*\" >> "+log+"\nexit 3\n")
+			rc := "export PATH=" + bin + ":$PATH\nPS1='$ '\n"
+			for _, f := range []string{".zshrc", ".bashrc"} {
+				os.WriteFile(filepath.Join(home, f), []byte(rc), 0o644)
+			}
+			// The hook command stands in for punk0: it logs what it is told.
+			exe := filepath.Join(home, "punk0")
+			writeExec(t, exe, "#!/bin/sh\necho \"$*\" >> "+log+"\n")
+			if err := writeAgentShell(exe); err != nil {
+				t.Fatal(err)
+			}
+
+			sh, err := startShell(home, path, "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(sh.Close)
+			waitShown(t, sh, "$ ")
+			sh.tty.Write([]byte("codex resume x; cursor-agent; echo done-$?\r"))
+			waitShown(t, sh, "done-127")
+
+			got, _ := os.ReadFile(log)
+			lines := strings.Split(strings.TrimSpace(string(got)), "\n")
+			if len(lines) != 4 ||
+				lines[0] != "hook start codex" ||
+				!strings.HasPrefix(lines[1], "codex ran with ") || !strings.Contains(lines[1], "hooks.state=") || !strings.HasSuffix(lines[1], " resume x") ||
+				lines[2] != "hook exit codex 3" ||
+				lines[3] != "hook exit cursor-agent 127" {
+				t.Fatalf("log:\n%s", got)
+			}
+		})
+	}
+}
+
+func writeExec(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitShown waits until the shell's screen shows want.
+func waitShown(t *testing.T, sh *Shell, want string) {
+	t.Helper()
+	waitFor(t, func() bool {
+		sh.mu.Lock()
+		defer sh.mu.Unlock()
+		return strings.Contains(bufferText(sh.screen), want)
+	})
+}

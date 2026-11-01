@@ -103,13 +103,18 @@ type Workspace struct {
 }
 
 // Satellite is one tab: a shell in its workspace's folder, started on first
-// attach so a stopped tab costs no process. Kind is "shell" or the agent the
-// shell runs first (tabagents.go).
+// attach so a stopped tab costs no process. Kind is what runs in it: "shell",
+// or the agent bound to it while one runs (agentbind.go), which a tab made
+// for an agent starts first (tabagents.go). Name is the user's name for the
+// tab, "" for none: the page then shows Title, the chat's, or the agent's.
+// Kind, Name, Session and Title change under Records.mu and the tab's mu,
+// so either lock is enough to read them.
 type Satellite struct {
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
-	Name    string `json:"name"`
+	Name    string `json:"name,omitempty"`
 	Session string `json:"session,omitempty"` // the agent's chat id the tab resumes (agentCommand); claude's is its --session-id
+	Title   string `json:"title,omitempty"`   // the chat's title, as the agent keeps it
 
 	dir     string
 	project string // the project the tab's workspace is in, "" for a scratch chat
@@ -129,15 +134,14 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 	defer s.mu.Unlock()
 	started := false
 	if s.sh == nil || s.sh.Exited() {
+		shell := terminalShell()
+		hooked := hookFor(shell, nil) != nil
 		var env []string
 		if s.hook != "" {
 			env = append(env, "PUNK0_HOOK_URL="+s.hook)
 		}
-		if e := opencodeEnv(s.Kind, s.project); e != "" {
-			env = append(env, e)
-		}
-		shell := terminalShell()
-		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell)), env)
+		env = append(env, opencodeEnv(s.Kind, s.project, hooked)...)
+		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env)
 		if err != nil {
 			return nil, false, err
 		}
@@ -147,65 +151,10 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 	return s.sh, started, nil
 }
 
-// opencodeEnv is the OPENCODE_CONFIG_CONTENT an opencode tab of project
-// starts with, "" for any other tab: OpenCode makes its worktrees in the
-// folder its config names, so punk0's tabs point it at the Workspaces
-// Folder. An unusable Workspaces Folder leaves OpenCode's own choice alone.
-func opencodeEnv(kind, project string) string {
-	const key = "OPENCODE_CONFIG_CONTENT"
-	if kind != tabOpenCode || project == "" {
-		return ""
-	}
-	root, err := codeRoot()
-	if err != nil {
-		slog.Warn("opencode worktrees stay where opencode puts them", "err", err)
-		return ""
-	}
-	// terminal.env is what the user set for every tab; punk0's own
-	// environment is the fallback, as it is for the shell itself.
-	user := os.Getenv(key)
-	if lines, err := settings.ParseEnvLines(settings.SettingOr[string]("terminal.env")); err == nil {
-		for _, line := range lines {
-			if v, ok := strings.CutPrefix(line, key+"="); ok {
-				user = v
-			}
-		}
-	}
-	return key + "=" + opencodeConfig(user, filepath.Join(root, "workspaces", project))
-}
-
-// opencodeConfig is the user's inline OpenCode config with
-// worktree.directory pointing at dir: OpenCode puts every worktree it makes
-// straight in there, one folder per worktree. A config of the user's that
-// chooses a directory itself, or that does not parse, comes back untouched.
-func opencodeConfig(user, dir string) string {
-	cfg, worktree := map[string]json.RawMessage{}, map[string]json.RawMessage{}
-	if user = strings.TrimSpace(user); user != "" {
-		if json.Unmarshal([]byte(user), &cfg) != nil {
-			return user
-		}
-		if raw, ok := cfg["worktree"]; ok {
-			if json.Unmarshal(raw, &worktree) != nil {
-				return user
-			}
-			if d, ok := worktree["directory"]; ok && len(d) > 0 && string(d) != "null" {
-				return user
-			}
-		}
-	}
-	worktree["directory"], _ = json.Marshal(dir)
-	cfg["worktree"], _ = json.Marshal(worktree)
-	out, err := json.Marshal(cfg)
-	if err != nil {
-		return user
-	}
-	return string(out)
-}
-
-// command is the line the tab's next start runs, in a shell of syntax sx.
-// Callers hold s.mu or own s.
-func (s *Satellite) command(sx shellSyntax) string {
-	return agentCommand(s.Kind, s.Session, s.newChat, sx)
+// command is the line the tab's next start runs, in a shell of syntax sx
+// that hookFor did or did not hook. Callers hold s.mu or own s.
+func (s *Satellite) command(sx shellSyntax, hooked bool) string {
+	return agentCommand(s.Kind, s.Session, s.newChat, hooked, sx)
 }
 
 func (s *Satellite) running() bool {
@@ -243,7 +192,11 @@ func (s *Satellite) setStatus(status string) {
 
 // view is one tab as the page sees it.
 func (s *Satellite) view() tabView {
-	return tabView{ID: s.ID, Kind: s.Kind, Name: s.Name, Running: s.running(), Status: s.Status(), tab: s}
+	s.mu.Lock()
+	v := tabView{ID: s.ID, Kind: s.Kind, Name: s.Name, Title: s.Title, tab: s}
+	s.mu.Unlock()
+	v.Running, v.Status = s.running(), s.Status()
+	return v
 }
 
 func (s *Satellite) close() {
@@ -390,6 +343,11 @@ func OpenRecords(home string) (*Records, error) {
 				if k := chatKey(t.Kind, t.Session); t.Session != "" && r.chatWorkspaces[k] == "" {
 					r.chatWorkspaces[k] = w.ID
 				}
+				// Tabs used to be named after their kind when made; that
+				// name is now what an unnamed tab shows anyway.
+				if t.Name == t.Kind || t.Name == tabShell || t.Name == tabAgents[t.Kind].Label {
+					t.Name = ""
+				}
 			}
 		}
 	}
@@ -483,6 +441,7 @@ type tabView struct {
 	ID      string `json:"id"`
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
 	Running bool   `json:"running"`
 	Status  string `json:"status"`
 	// The workspace the tab is in, for a list that spans a folder's
@@ -519,7 +478,7 @@ func (r *Records) List() []projectView {
 			wv.Workspace, wv.Branch, wv.LSP = &wc, w.Branch, lsp[w.Dir]
 			wv.Tabs = make([]tabView, len(w.Tabs))
 			for k, t := range w.Tabs {
-				wv.Tabs[k] = tabView{ID: t.ID, Kind: t.Kind, Name: t.Name, tab: t}
+				wv.Tabs[k] = tabView{ID: t.ID, Kind: t.Kind, Name: t.Name, Title: t.Title, tab: t}
 			}
 		}
 	}
@@ -1152,7 +1111,10 @@ func (r *Records) RenameTab(id, name string) error {
 	if w == nil {
 		return fmt.Errorf("tab %q: %w", id, errNotFound)
 	}
-	w.Tabs[i].Name = name
+	t := w.Tabs[i]
+	t.mu.Lock()
+	t.Name = name
+	t.mu.Unlock()
 	return r.saveLocked()
 }
 
@@ -1558,7 +1520,7 @@ func (r *Records) Running() []runningWorkspace {
 			}
 			c := wsCopy{rw: runningWorkspace{id: w.ID, dir: w.Dir, name: name}}
 			for _, t := range w.Tabs {
-				c.tabs = append(c.tabs, tabCopy{t, t.Name, t.Kind})
+				c.tabs = append(c.tabs, tabCopy{t, tabLabel(t.Kind, t.Name, t.Title), t.Kind})
 			}
 			all = append(all, c)
 		}
@@ -1829,10 +1791,7 @@ func newWorkspace(name, kind, dir, branch string) *Workspace {
 // session the first time it runs, and a claude tab gets the session id its
 // conversation will be saved under; with a session it resumes that chat.
 func newTab(kind, dir, session string) *Satellite {
-	t := &Satellite{ID: newID(), Kind: kind, Name: kind, dir: dir, Session: session}
-	if a, ok := tabAgents[kind]; ok && kind != tabClaude {
-		t.Name = a.Label
-	}
+	t := &Satellite{ID: newID(), Kind: kind, dir: dir, Session: session}
 	if session == "" {
 		t.newChat = kind != tabShell
 		if kind == tabClaude {

@@ -193,18 +193,23 @@ func trimRecent(f *wbFile) {
 }
 
 func writeFileAtomic(p string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), ".workbench-*.json")
+	return writeBytesAtomic(p, append(b, '\n'))
+}
+
+// writeBytesAtomic replaces p with b, so a reader never sees half a file.
+func writeBytesAtomic(p string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".workbench-*")
 	if err != nil {
 		return err
 	}
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
+	if _, err := tmp.Write(b); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		return err
@@ -375,8 +380,8 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, er
 }
 
 // serveFrom tells punk0 how to reach itself: a tab's agent reports its hooks
-// to this URL, and the hook settings a claude tab starts with name this
-// executable. Both are known only once the server is listening.
+// to this URL, and the hook settings and agent functions a tab's shell reads
+// name this executable. Both are known only once the server is listening.
 func (wb *workbench) serveFrom(loopbackURL string) {
 	wb.records.SetHookBase(loopbackURL)
 	if err := writeClaudeHooks(wb.exe); err != nil {
@@ -384,6 +389,10 @@ func (wb *workbench) serveFrom(loopbackURL string) {
 		slog.Warn("claude hooks not written", "err", err)
 	} else {
 		slog.Info("claude hooks written", "file", tildePath(claudeHooksPath()), "exe", tildePath(wb.exe))
+	}
+	if err := writeAgentShell(wb.exe); err != nil {
+		ui.Status("warn", "agent functions", err.Error(), 0, os.Stderr)
+		slog.Warn("agent functions not written: agents typed in a tab go unseen", "err", err)
 	}
 }
 
@@ -861,9 +870,10 @@ func (wb *workbench) reapTabs(limit time.Duration) {
 		if sh == nil {
 			continue
 		}
-		if stopIdleTab(t.Kind, t.Status(), sh.Foreground(), sh.IdleFor(), limit) {
-			ui.Event("stop", t.Kind, wb.records.TabLabel(t.ID), idleNote(limit), os.Stdout)
-			slog.Info("tab idle stop", "tab", t.ID, "kind", t.Kind, "name", wb.records.TabLabel(t.ID), "limit", idleNote(limit))
+		kind := t.kind()
+		if stopIdleTab(kind, t.Status(), sh.Foreground(), sh.IdleFor(), limit) {
+			ui.Event("stop", kind, wb.records.TabLabel(t.ID), idleNote(limit), os.Stdout)
+			slog.Info("tab idle stop", "tab", t.ID, "kind", kind, "name", wb.records.TabLabel(t.ID), "limit", idleNote(limit))
 			t.close()
 		}
 	}

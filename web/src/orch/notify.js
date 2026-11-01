@@ -1,13 +1,15 @@
 // web/src/orch/notify.js
 // Tab status notifications (Notifications settings): a desktop notification
 // and a tone when a tab starts waiting for the user or finishes working, and
-// the count of waiting tabs in the page title. Only tabs that report status
-// (Claude Code, through its hooks) can notify. Statuses come from the
-// store's api/projects polls; workbench.js polls only while the page is in
-// view, so this keeps polling every 5 s while it is hidden.
+// the count of waiting tabs in the page title. Only tabs whose agent reports
+// status through its hooks (Claude Code, Codex, OpenCode) can notify.
+// Statuses come from the store's api/projects polls; workbench.js polls only
+// while the page is in view, so this keeps polling every 5 s while it is
+// hidden.
 import { on } from '../bus.js';
 import { state, subscribe, reload, selectWorkspace, selectTab, wsLabel } from './store.js';
 import { getSetting } from './settings.js';
+import { getTabLabel } from '../term-util.js';
 
 const HIDDEN_POLL = 5000;
 
@@ -60,7 +62,7 @@ function announce(w, t, body) {
   if (mode === 'off' || mode === 'unfocused' && !unfocused()) return;
   if (getSetting('notifications.sound')) tone();
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const n = new Notification(`${wsLabel(w)} · ${t.name}`, { body, tag: `punk0-tab-${t.id}` });
+  const n = new Notification(`${wsLabel(w)} · ${getTabLabel(t)}`, { body, tag: `punk0-tab-${t.id}` });
   n.onclick = () => {
     window.focus();
     selectWorkspace(w.id);

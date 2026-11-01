@@ -698,7 +698,7 @@ func TestScratchChats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ext.Dir != mine || !isDir(mine) || ext.Title != "" || ext.Tabs[0].Kind != "codex" || ext.Tabs[0].Name != "Codex" {
+	if ext.Dir != mine || !isDir(mine) || ext.Title != "" || ext.Tabs[0].Kind != "codex" {
 		t.Fatalf("chat in my folder: %+v %+v", ext, ext.Tabs[0])
 	}
 
@@ -869,9 +869,13 @@ func TestAgentCommand(t *testing.T) {
 		{"agy", "S", false, "agy"},
 	}
 	for _, c := range cases {
-		if got := agentCommand(c.kind, c.session, c.first, posixShell); got != c.want {
+		if got := agentCommand(c.kind, c.session, c.first, false, posixShell); got != c.want {
 			t.Errorf("agentCommand(%s, %q, %v)\n got %s\nwant %s", c.kind, c.session, c.first, got, c.want)
 		}
+	}
+	// In a shell punk0 hooked, the claude function adds the hooks itself.
+	if got, want := agentCommand(tabClaude, "S", false, true, posixShell), "claude --resume S || claude --session-id S"; got != want {
+		t.Errorf("hooked claude\n got %s\nwant %s", got, want)
 	}
 
 	// Windows shells: PowerShell 5.1 has no ||, and each shell quotes the
@@ -888,7 +892,7 @@ func TestAgentCommand(t *testing.T) {
 		{cmdShell, "codex", "S", false, "codex resume S || codex"},
 		{cmdShell, tabClaude, "S", true, `claude --settings "` + hooks + `" --session-id S`},
 	} {
-		if got := agentCommand(c.kind, c.session, c.first, c.sx); got != c.want {
+		if got := agentCommand(c.kind, c.session, c.first, false, c.sx); got != c.want {
 			t.Errorf("agentCommand(%s, %q, %v) in syntax %d\n got %s\nwant %s", c.kind, c.session, c.first, c.sx, got, c.want)
 		}
 	}
@@ -912,26 +916,26 @@ func TestAddTabWithSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := codex.command(posixShell), "codex resume 019a-abc_1 || codex"; got != want {
+	if got, want := codex.command(posixShell, false), "codex resume 019a-abc_1 || codex"; got != want {
 		t.Fatalf("first start of a tab opened on a chat\n got %s\nwant %s", got, want)
 	}
 	claude, err := rec.AddTab(ws.ID, tabClaude, "5f0c-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := claude.command(posixShell); !strings.Contains(got, " --resume 5f0c-1 || ") {
+	if got := claude.command(posixShell, false); !strings.Contains(got, " --resume 5f0c-1 || ") {
 		t.Fatalf("claude tab opened on a chat starts a new session: %s", got)
 	}
 	fresh, err := rec.AddTab(ws.ID, "codex", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fresh.command(posixShell); got != "codex" {
+	if got := fresh.command(posixShell, false); got != "codex" {
 		t.Fatalf("a new codex tab must not pick up an older session: %s", got)
 	}
 
 	tabs := listed(openRecords(t, home), p.ID).Workspaces[0].Tabs
-	if len(tabs) != 3 || tabs[0].tab.Session != "019a-abc_1" || tabs[0].tab.command(posixShell) != "codex resume 019a-abc_1 || codex" {
+	if len(tabs) != 3 || tabs[0].tab.Session != "019a-abc_1" || tabs[0].tab.command(posixShell, false) != "codex resume 019a-abc_1 || codex" {
 		t.Fatalf("reloaded tab lost its session: %+v", tabs)
 	}
 
@@ -996,7 +1000,7 @@ func TestAgentCommandArgs(t *testing.T) {
 		{"opencode", "", false, "opencode --continue || opencode"}, // no args set
 		{"codex", "S", false, "codex -m o3 resume S || codex -m o3"},
 	} {
-		if got := agentCommand(c.kind, c.session, c.first, posixShell); got != c.want {
+		if got := agentCommand(c.kind, c.session, c.first, false, posixShell); got != c.want {
 			t.Errorf("agentCommand(%s, %q, %v)\n got %s\nwant %s", c.kind, c.session, c.first, got, c.want)
 		}
 	}
@@ -1004,6 +1008,7 @@ func TestAgentCommandArgs(t *testing.T) {
 
 func TestTabProcessShellAndEnv(t *testing.T) {
 	t.Setenv("SHELL", "/bin/fromenv")
+	t.Setenv("XDG_STATE_HOME", t.TempDir()) // no agent functions written yet
 	useSettings(t, map[string]any{})
 	if sh := terminalShell(); sh != "/bin/fromenv" {
 		t.Fatalf("default shell %q, want $SHELL", sh)

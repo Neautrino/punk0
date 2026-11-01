@@ -5,6 +5,7 @@ package main
 // tab, or the whole browser, leaves the agent running until punk0 stops.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -138,16 +139,17 @@ func (sx shellSyntax) orElse(a, b string) string {
 // launch is the shell's arguments to run command and then stay open, as if
 // the command had been typed at its prompt. A POSIX shell runs it
 // interactively, so the rc files set PATH, and then replaces itself with a
-// plain one. cmd.exe reads its command line itself: with /S the quotes around
-// command are all it strips, so its arguments go verbatim (term_windows.go).
-func (sx shellSyntax) launch(command string) []string {
+// plain one: stay, or `exec "$SHELL"` when stay is "". cmd.exe reads its
+// command line itself: with /S the quotes around command are all it strips,
+// so its arguments go verbatim (term_windows.go).
+func (sx shellSyntax) launch(command, stay string) []string {
 	switch sx {
 	case powerShell:
 		return []string{"-NoLogo", "-NoExit", "-Command", command}
 	case cmdShell:
 		return []string{"/S", "/K", `"` + command + `"`}
 	}
-	return []string{"-i", "-c", command + `; exec "$SHELL"`}
+	return []string{"-i", "-c", command + "; " + cmp.Or(stay, `exec "$SHELL"`)}
 }
 
 // terminalShell is the program a new tab runs: terminal.shell, else the
@@ -164,12 +166,11 @@ func terminalShell() string {
 // before env so punk0's own variables (hook URL, tab id) still win over the
 // user's. A terminal.env that does not parse is ignored rather than failing
 // the tab; saving one is refused. A POSIX shell gets SHELL, which its launch
-// execs; elsewhere SHELL keeps what tools that read it expect.
+// execs; elsewhere SHELL keeps what tools that read it expect. A shell punk0
+// can hook reads its agent functions (hookFor), the one left at the prompt
+// after command too.
 func tabProcess(shell, command string, env []string) (args []string, cmdEnv []string) {
 	sx := syntaxOf(shell)
-	if command != "" {
-		args = sx.launch(command)
-	}
 	cmdEnv = os.Environ()
 	if sx == posixShell {
 		cmdEnv = append(cmdEnv, "SHELL="+shell)
@@ -178,7 +179,16 @@ func tabProcess(shell, command string, env []string) (args []string, cmdEnv []st
 	if user, err := settings.ParseEnvLines(settings.SettingOr[string]("terminal.env")); err == nil {
 		cmdEnv = append(cmdEnv, user...)
 	}
-	return args, append(cmdEnv, env...)
+	cmdEnv = append(cmdEnv, env...)
+	stay := ""
+	if h := hookFor(shell, cmdEnv); h != nil {
+		args, stay = slices.Clone(h.args), h.stay
+		cmdEnv = append(cmdEnv, h.env...)
+	}
+	if command != "" {
+		args = append(args, sx.launch(command, stay)...)
+	}
+	return args, cmdEnv
 }
 
 // startShell runs shell interactively in dir, with env added to its
@@ -471,22 +481,23 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.CloseNow()
 	sh, started, err := tab.Shell()
+	kind := tab.kind()
 	if err != nil {
-		ui.Event("warn", tab.Kind, wb.records.TabLabel(tab.ID), "could not start: "+err.Error(), os.Stderr)
-		slog.Warn("tab could not start", "tab", tab.ID, "kind", tab.Kind, "name", wb.records.TabLabel(tab.ID), "shell", terminalShell(), "err", err)
+		ui.Event("warn", kind, wb.records.TabLabel(tab.ID), "could not start: "+err.Error(), os.Stderr)
+		slog.Warn("tab could not start", "tab", tab.ID, "kind", kind, "name", wb.records.TabLabel(tab.ID), "shell", terminalShell(), "err", err)
 		conn.Close(websocket.StatusInternalError, err.Error())
 		return
 	}
 	if started {
 		// Named now: the tab may be gone by the time its shell exits.
 		label := wb.records.TabLabel(tab.ID)
-		ui.Event("start", tab.Kind, label, "", os.Stdout)
-		slog.Info("tab started", "tab", tab.ID, "kind", tab.Kind, "name", label, "shell", terminalShell(), "pid", sh.Pid())
+		ui.Event("start", kind, label, "", os.Stdout)
+		slog.Info("tab started", "tab", tab.ID, "kind", kind, "name", label, "shell", terminalShell(), "pid", sh.Pid())
 		at := time.Now()
 		go func() {
 			if sh.exitedByItself() {
-				ui.Event("stop", tab.Kind, label, "exited", os.Stdout)
-				slog.Info("tab exited", "tab", tab.ID, "kind", tab.Kind, "name", label, "ran", time.Since(at).Round(time.Second).String())
+				ui.Event("stop", kind, label, "exited", os.Stdout)
+				slog.Info("tab exited", "tab", tab.ID, "kind", kind, "name", label, "ran", time.Since(at).Round(time.Second).String())
 			}
 		}()
 	}

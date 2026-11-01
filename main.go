@@ -39,12 +39,12 @@ var rawVersion string
 var version = strings.TrimSpace(rawVersion)
 
 func main() {
-	// `punk0 hook` is what Claude Code runs for a tab's hook events: it has
-	// to report them and get out of the way, before flags, updates or
+	// `punk0 hook` is what an agent's hooks and a tab's agent functions run:
+	// it has to report and get out of the way, before flags, updates or
 	// anything else that could print. A -dev punk0 adds -dev=<dir> (hookDev).
 	if len(os.Args) >= 2 && os.Args[1] == "hook" {
 		hookDev(os.Args[2:])
-		runHook()
+		runHook(os.Args[2:])
 		return
 	}
 	// `punk0 migrate` moves an old ~/.punk0 install to the standard folders;

@@ -18,7 +18,7 @@ func TestSlimHookEvent(t *testing.T) {
 		"tool_input":    map[string]any{"file_path": "/w/a.go", "content": big},
 		"tool_response": map[string]any{"content": big},
 	})
-	out := slimHookEvent(in)
+	out := slimHookEvent(in, "")
 	if len(out) > 300 {
 		t.Fatalf("slimmed event is %d bytes: %.300s", len(out), out)
 	}
@@ -30,8 +30,14 @@ func TestSlimHookEvent(t *testing.T) {
 		json.Unmarshal(ev.ToolInput, &input) != nil || input.FilePath != "/w/a.go" {
 		t.Fatalf("slimmed = %s (%v)", out, err)
 	}
-	if got := slimHookEvent([]byte("not json")); string(got) != "not json" {
+	if got := slimHookEvent([]byte("not json"), "codex"); string(got) != "not json" {
 		t.Fatalf("unparsed event changed: %q", got)
+	}
+	// The hook names the agent that sent it, so the tab can tell its own
+	// agent's events from another's.
+	var tagged hookEvent
+	if err := json.Unmarshal(slimHookEvent(in, "codex"), &tagged); err != nil || tagged.Agent != "codex" {
+		t.Fatalf("tagged event = %+v (%v)", tagged, err)
 	}
 	// The worktree events carry what the answer is made of; slimming must
 	// keep every one of those fields.
@@ -40,7 +46,7 @@ func TestSlimHookEvent(t *testing.T) {
 		"worktree_path": "/w/t", "agent_id": "a1",
 	})
 	var kept hookEvent
-	if err := json.Unmarshal(slimHookEvent(wt), &kept); err != nil {
+	if err := json.Unmarshal(slimHookEvent(wt, ""), &kept); err != nil {
 		t.Fatal(err)
 	}
 	if kept.Name != "WorktreeCreate" || kept.WorktreeName != "fix-login" || kept.WorktreePath != "/w/t" || kept.AgentID != "a1" || kept.Cwd != "/w" {
@@ -81,9 +87,9 @@ func TestClaudeHooksFile(t *testing.T) {
 			t.Fatalf("%s: %+v", ev, m)
 		}
 		h := m[0].Hooks[0]
-		want, wantArgs := "/x/punk0 hook", []string(nil)
+		want, wantArgs := "/x/punk0 hook claude", []string(nil)
 		if runtime.GOOS == "windows" {
-			want, wantArgs = "/x/punk0", []string{"hook"}
+			want, wantArgs = "/x/punk0", []string{"hook", "claude"}
 		}
 		if h.Type != "command" || h.Command != want || !slices.Equal(h.Args, wantArgs) {
 			t.Errorf("%s runs %q %q, want %q %q", ev, h.Command, h.Args, want, wantArgs)

@@ -24,15 +24,16 @@ type tabAgent struct {
 	bin      string
 	resume   []string // args resuming the latest session; nil when the agent has none
 	resumeID []string // args before a session id resuming exactly it; nil when the agent cannot
+	hooks    bool     // its hooks report its chat and status (agentshell.go); the others only start and exit
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
 var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "agy", "cursor-agent"}
 
 var tabAgents = map[string]tabAgent{
-	tabClaude:      {Label: "Claude Code", bin: "claude"},
-	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}},
-	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}},
+	tabClaude:      {Label: "Claude Code", bin: "claude", hooks: true},
+	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, hooks: true},
+	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, hooks: true},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 }
@@ -47,8 +48,10 @@ var tabAgents = map[string]tabAgent{
 // a new one. A new tab without a session never resumes: in a folder of the
 // user's, the latest session may belong to something else.
 // agents.<kind>.args goes right after the program name, verbatim: it is shell
-// text the user wrote. session must be shell-safe (validSession).
-func agentCommand(kind, session string, first bool, sx shellSyntax) string {
+// text the user wrote. session must be shell-safe (validSession). In a hooked
+// shell (hookFor) the agent's function adds punk0's hooks; elsewhere Claude's
+// go on the command line here.
+func agentCommand(kind, session string, first, hooked bool, sx shellSyntax) string {
 	a, ok := tabAgents[kind]
 	if !ok {
 		return ""
@@ -58,11 +61,14 @@ func agentCommand(kind, session string, first bool, sx shellSyntax) string {
 		bin += " " + args
 	}
 	if kind == tabClaude {
-		start := claudeCommand(bin, sx) + " --session-id " + session
+		if !hooked {
+			bin = claudeCommand(bin, sx)
+		}
+		start := bin + " --session-id " + session
 		if first {
 			return start
 		}
-		return sx.orElse(claudeCommand(bin, sx)+" --resume "+session, start)
+		return sx.orElse(bin+" --resume "+session, start)
 	}
 	if session != "" && a.resumeID != nil {
 		return sx.orElse(bin+" "+strings.Join(a.resumeID, " ")+" "+session, bin)
@@ -93,7 +99,7 @@ func (wb *workbench) handleAgents(w http.ResponseWriter, r *http.Request) {
 		a := tabAgents[id]
 		_, installed := harness.LookPath(a.bin)
 		out = append(out, agentView{ID: id, Label: a.Label, Installed: installed, Resumes: id == tabClaude || a.resume != nil,
-			ResumesByID: id == tabClaude || a.resumeID != nil, Status: id == tabClaude})
+			ResumesByID: id == tabClaude || a.resumeID != nil, Status: a.hooks})
 	}
 	writeJSON(w, out)
 }
