@@ -115,33 +115,39 @@ func (r *Records) bindLocked(id string, change func(*Satellite) bool) error {
 	return r.saveLocked()
 }
 
-// titleOf is the title of an agent's chat, read from the transcript a hook
-// named; "" when there is none yet. Only a file under the agent's own folder
-// is read: the path comes from a hook.
-func (h *chatHistory) titleOf(agent, id, transcript string) string {
-	var root string
-	var read func(string) (chatSession, bool)
-	switch agent {
-	case tabClaude:
-		root, read = claudeRoot(), readClaudeChat
-	case "codex":
-		root, read = codexRoot(), readCodexChat
-	default:
+// titleSource is where the title of one agent's chat comes from, for an agent
+// whose events do not carry it (refreshTitle). h caches the transcripts punk0
+// parses; "" is no title yet, which leaves the tab's as it was.
+type titleSource interface {
+	title(h *chatHistory, ev hookEvent) string
+}
+
+// chatFileTitle reads the title from the chat file a hook named, through the
+// cache the Chats panel reads with. Only a file under the agent's own folder
+// is read: the path comes from a hook. titles, where the agent keeps one, is
+// its own list of chat names under that folder, which wins over the file's
+// (Codex records a renamed chat there).
+type chatFileTitle struct {
+	root   func() string
+	read   func(string) (chatSession, bool)
+	titles string
+}
+
+func (t chatFileTitle) title(h *chatHistory, ev hookEvent) string {
+	root := t.root()
+	if root == "" || ev.Transcript == "" || !within(root, ev.Transcript) {
 		return ""
 	}
-	if root == "" || transcript == "" || !within(root, transcript) {
-		return ""
-	}
-	info, err := os.Stat(transcript)
+	info, err := os.Stat(ev.Transcript)
 	if err != nil {
 		return ""
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	c, ok := h.cached(transcript, info, read)
-	if agent == "codex" {
-		h.loadCodexIndex(filepath.Join(root, "session_index.jsonl"))
-		if e, named := h.index.entries[id]; named && e.title != "" {
+	c, ok := h.cached(ev.Transcript, info, t.read)
+	if t.titles != "" {
+		h.loadCodexIndex(filepath.Join(root, t.titles))
+		if e, named := h.index.entries[ev.Session]; named && e.title != "" {
 			return e.title
 		}
 	}
@@ -158,12 +164,19 @@ func within(dir, path string) bool {
 }
 
 // refreshTitle looks the tab's chat title up after an event that may have
-// changed it: OpenCode says it in the event, the others in their transcript.
+// changed it: OpenCode says it in the event, the others in a file of their
+// own (agentReport.title, read straight from the table: a title comes from
+// the agent's own folder, not from a file punk0 wrote).
 func (wb *workbench) refreshTitle(tabID, agent string, ev hookEvent) {
 	if ev.Session == "" {
 		return
 	}
-	title := cmp.Or(ev.Title, wb.records.Chats().titleOf(agent, ev.Session, ev.Transcript))
+	title := ev.Title
+	if title == "" {
+		if r := tabAgents[agent].report; r != nil && r.title != nil {
+			title = r.title.title(wb.records.Chats(), ev)
+		}
+	}
 	if title == "" {
 		return
 	}

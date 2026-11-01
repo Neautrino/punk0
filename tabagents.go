@@ -30,9 +30,12 @@ type tabAgent struct {
 }
 
 // agentReport is what punk0 learns from one agent while it runs: a mechanism
-// that gets punk0's reporting into a single run (agentshell.go).
+// that gets punk0's reporting into a single run (agentshell.go), and where
+// the chat's title comes from (agentbind.go), for an agent whose events do
+// not carry it.
 type agentReport struct {
-	via reportVia
+	via   reportVia
+	title titleSource
 }
 
 // reportOff names the agents punk0 could not set reporting up for this run
@@ -82,8 +85,8 @@ func reportLine(kind, bin string, sx shellSyntax) string {
 var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "agy", "cursor-agent"}
 
 var tabAgents = map[string]tabAgent{
-	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}}},
-	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, report: &agentReport{via: codexOverrides{}}},
+	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}, title: chatFileTitle{root: claudeRoot, read: readClaudeChat}}},
+	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, report: &agentReport{via: codexOverrides{}, title: chatFileTitle{root: codexRoot, read: readCodexChat, titles: "session_index.jsonl"}}},
 	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, report: &agentReport{via: opencodeVia{}}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
