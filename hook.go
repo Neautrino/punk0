@@ -44,7 +44,8 @@ var claudeHookEvents = []string{
 func claudeHooksPath() string { return filepath.Join(workbenchStateDir(), "claude-hooks.json") }
 
 // writeClaudeHooks writes the --settings file claude tabs start with. exe is
-// this punk0, so a hook keeps reporting to the version that started it.
+// this punk0, so a hook keeps reporting to the version that started it; a
+// -dev punk0's hook gets its -dev=<dir>, so it logs and makes worktrees there.
 func writeClaudeHooks(exe string) error {
 	type hookCmd struct {
 		Type    string   `json:"type"`
@@ -54,14 +55,22 @@ func writeClaudeHooks(exe string) error {
 	type hookMatcher struct {
 		Hooks []hookCmd `json:"hooks"`
 	}
-	h := hookCmd{Type: "command", Command: shellQuote(exe) + " hook"}
+	args := []string{"hook"}
+	if a := devArg(); a != "" {
+		args = append(args, a)
+	}
+	line := shellQuote(exe)
+	for _, a := range args {
+		line += " " + shellQuote(a)
+	}
+	h := hookCmd{Type: "command", Command: line}
 	if runtime.GOOS == "windows" {
 		// Claude runs a hook's command line through Git Bash there, or
 		// PowerShell without it, and they quote differently. With args
 		// (exec form, Claude Code 2.1.139+) it starts punk0 with no shell.
 		// Unix keeps the command line: an older Claude would ignore args
 		// and start a whole punk0.
-		h = hookCmd{Type: "command", Command: exe, Args: []string{"hook"}}
+		h = hookCmd{Type: "command", Command: exe, Args: args}
 	}
 	hooks := make(map[string][]hookMatcher, len(claudeHookEvents))
 	for _, ev := range claudeHookEvents {

@@ -82,3 +82,25 @@ func TestLegacyFolderKeptUntilMigrated(t *testing.T) {
 		t.Errorf("Config moved with State: each folder decides by its own file")
 	}
 }
+
+// A -dev punk0 keeps its settings and state in its own folder whatever the
+// installed punk0 would use: a legacy ~/.punk0 or set XDG variables.
+func TestDevFolderWins(t *testing.T) {
+	h := testHome(t)
+	touch(t, filepath.Join(h, ".punk0", "records.json"))
+	touch(t, filepath.Join(h, ".punk0", "settings.json"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(h, "st"))
+	dev := filepath.Join(h, "src", "punk0", ".punk0-dev")
+	UseDev(dev)
+	t.Cleanup(func() { UseDev("") })
+	if got, want := Config(), filepath.Join(dev, "config"); got != want {
+		t.Errorf("Config = %s, want %s", got, want)
+	}
+	if got, want := State(), filepath.Join(dev, "state"); got != want {
+		t.Errorf("State = %s, want %s", got, want)
+	}
+	UseDev("")
+	if got, want := State(), filepath.Join(h, "st", "punk0"); got != want {
+		t.Errorf("State after leaving dev = %s, want %s", got, want)
+	}
+}

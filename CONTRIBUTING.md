@@ -35,6 +35,17 @@ cd punk0
 make build      # bundles web assets and builds ./punk0
 ```
 
+## Run your build
+
+```sh
+make dev                          # builds ./punk0 as a dev build
+./punk0 ~/code/some-project       # runs beside your installed punk0
+```
+
+A dev build runs beside an installed punk0 without touching it: it keeps its settings, projects, chats, logs, worktrees and scratch chats in `.punk0-dev/` in your checkout (gitignored), listens on <http://127.0.0.1:7800>, says `dev` beside its version, and never updates itself. Delete `.punk0-dev/` to start over. `make build` (and every release) makes a normal binary again, which uses the installed punk0's folders. Any build runs as a dev punk0 with `-dev`, and `-dev=/full/path` keeps the folder somewhere else; `go run . -dev` needs a full path, since `go run` builds into a temporary folder. The agents' own conversations (`~/.claude` and the like) are shared with the installed punk0, so don't resume one chat in both at once. A scratch chat made in dev sits inside your punk0 checkout, so git (and an agent running git) there sees punk0's repository.
+
+web/ is embedded in the binary: after changing HTML, CSS or JS, stop punk0 (Ctrl-C), run `make dev` and start it again.
+
 ## Before you open a pull request
 
 ```sh

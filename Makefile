@@ -1,4 +1,4 @@
-.PHONY: all build web build-web test dist publish clean help
+.PHONY: all build dev web build-web test dist publish clean help
 
 VERSION ?= $(shell cat VERSION 2>/dev/null | tr -d ' \r\n')
 # Support 'make publish 0.2.0' where target argument is passed as next goal
@@ -22,6 +22,7 @@ all: build
 help:
 	@echo "punk0 make targets:"
 	@echo "  make build             - build punk0 binary for current platform"
+	@echo "  make dev               - build ./punk0 as a dev build: ./punk0 <dir> then runs beside the installed punk0"
 	@echo "  make web               - bundle web assets (JS/CSS/themes)"
 	@echo "  make test              - run go test suite"
 	@echo "  make test-short        - run fast unit tests (short mode)"
@@ -45,6 +46,14 @@ build: web
 	@echo "Building punk0 for local system..."
 	go build -trimpath -ldflags="$(LDFLAGS)" -o punk0 .
 	@echo "Built ./punk0 ($$(du -h punk0 | cut -f1))"
+
+# A dev build keeps settings, projects, chats and worktrees in .punk0-dev/ here
+# and listens on 7800, so ./punk0 runs beside the installed punk0 (dev.go).
+# `make build` makes a normal binary again.
+dev: web
+	@echo "Building punk0 (dev) for local system..."
+	go build -trimpath -ldflags="$(LDFLAGS) -X main.devBuild=1" -o punk0 .
+	@echo "Built ./punk0 (dev): run ./punk0 [dir]; it keeps everything in .punk0-dev/"
 
 dist:
 	./build.sh

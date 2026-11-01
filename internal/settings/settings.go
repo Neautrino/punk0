@@ -822,6 +822,11 @@ func SettingOr[T any](key string) T {
 	if v, ok := raw[key].(T); ok {
 		return v
 	}
+	return Default[T](key)
+}
+
+// Default is key's schema default, the zero T when it has none of that type.
+func Default[T any](key string) T {
 	var zero T
 	for _, it := range Schema {
 		if it.Key == key {
@@ -832,6 +837,18 @@ func SettingOr[T any](key string) T {
 		}
 	}
 	return zero
+}
+
+// SetDefault replaces key's schema default for this run, so the settings
+// modal shows what applies: a -dev punk0's Workspaces Folder is its own. Call
+// it at startup, before anything reads settings.
+func SetDefault(key string, v any) {
+	for i := range Schema {
+		if Schema[i].Key == key {
+			Schema[i].Default = v
+			return
+		}
+	}
 }
 
 // ParseEnvLines reads terminal.env: KEY=VALUE per line, blank lines and

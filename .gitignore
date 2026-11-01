@@ -2,6 +2,8 @@ dist/
 bench-repos/
 punk0
 punk0.exe
+# punk0 -dev keeps its settings, projects and worktrees here (dev.go)
+.punk0-dev/
 *.test
 *.prof
 

@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"px0/internal/applog"
+	"px0/internal/paths"
 	"px0/internal/settings"
 	"px0/internal/ui"
 	"px0/internal/update"
@@ -40,8 +41,9 @@ var version = strings.TrimSpace(rawVersion)
 func main() {
 	// `punk0 hook` is what Claude Code runs for a tab's hook events: it has
 	// to report them and get out of the way, before flags, updates or
-	// anything else that could print.
-	if len(os.Args) == 2 && os.Args[1] == "hook" {
+	// anything else that could print. A -dev punk0 adds -dev=<dir> (hookDev).
+	if len(os.Args) >= 2 && os.Args[1] == "hook" {
+		hookDev(os.Args[2:])
 		runHook()
 		return
 	}
@@ -73,12 +75,24 @@ func main() {
 		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the punk0 workbench")
 		wbHost       = flag.String("workbench-host", "", "internal: the address the workbench that started this child listens on")
 		workspaceIDFlag = flag.String("workspace-id", "", "internal: workspace id when run under workbench")
+		dev             = &devFlag{on: devBuild != ""}
 	)
+	flag.Var(dev, "dev", "run as a dev punk0 beside the installed one: own settings, projects, chats and worktrees in .punk0-dev beside this executable (or -dev=<full path>), port 7800, no auto-update; on by default in a `make dev` build")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "punk0 %s - an agent orchestrator and code navigator\n\nusage:\n  punk0 [flags]                      open the agents page\n  punk0 [flags] <file or directory>  open its workspace there\n  punk0 [flags] <pr-url>             review a pull request\n  punk0 migrate                      move an old ~/.punk0 install to the standard folders\n\nflags:\n", version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if dev.on {
+		dir, err := devDir(dev)
+		if err != nil {
+			fatal(err)
+		}
+		useDevFolder(dir)
+		if !flagSet("port") {
+			*port = devPort
+		}
+	}
 
 	if *noColor {
 		f := false
@@ -149,11 +163,15 @@ func main() {
 		if *agentCmd != "" {
 			childArgs = append(childArgs, "-agent", *agentCmd)
 		}
+		if a := devArg(); a != "" {
+			childArgs = append(childArgs, a)
+		}
 		initial := ""
 		if flag.NArg() > 0 {
 			initial = target
 		}
-		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate && settings.SettingOr[bool]("update.auto"), childArgs, initial)
+		// A dev build never updates itself: the update is the release.
+		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate && !dev.on && settings.SettingOr[bool]("update.auto"), childArgs, initial)
 		return
 	}
 
@@ -470,7 +488,12 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		shown = target
 	}
 
-	ui.Heading("punk0 "+version, nil, os.Stdout)
+	if d := paths.Dev(); d != "" {
+		ui.Heading("punk0 "+version+" dev", nil, os.Stdout)
+		ui.KV("dev", tildePath(d), 11, os.Stdout)
+	} else {
+		ui.Heading("punk0 "+version, nil, os.Stdout)
+	}
 	ui.KV("agents", ui.Accent(shown, os.Stdout), 11, os.Stdout)
 	if project != "" {
 		ui.KV("project", project, 11, os.Stdout)

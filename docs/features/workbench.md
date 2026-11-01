@@ -261,3 +261,5 @@ Nothing is written inside your repositories, apart from worktree registrations (
 ## Flags
 
 `-no-lsp`, `-no-git`, `-no-agent` and `-agent` are passed on to every editor punk0 starts. `-host`, `-port`, `-base-path` and `-no-open` apply to punk0 itself. punk0 has no telemetry; `-no-telemetry` is still accepted and does nothing.
+
+A punk0 built with `make dev` is a dev punk0 (see [CONTRIBUTING.md](../../CONTRIBUTING.md#run-your-build)), and `-dev` makes any build one for a run: settings, projects, chats, logs, worktrees and scratch chats in `.punk0-dev/` beside the executable, or in the folder `-dev=/full/path` names; port 7800 unless `-port` is given; no auto-update; `dev` beside the version on the page. `-dev=false` runs a dev build as a normal punk0. Releases and `make build` are never dev builds. A second dev run hands its folder to the dev punk0 already running on the same dev folder, never to the installed punk0.

@@ -4,7 +4,8 @@
 // directories, macOS included (like gh and opencode); Windows uses AppData.
 // punk0 before this layout kept everything in ~/.punk0: while that folder
 // holds the file a standard folder lacks, punk0 keeps using it, so upgrading
-// moves nothing until `punk0 migrate`.
+// moves nothing until `punk0 migrate`. A -dev punk0 (UseDev) keeps its
+// settings and state in one folder of its own instead.
 package paths
 
 import (
@@ -15,6 +16,17 @@ import (
 
 const app = "punk0"
 
+// dev is the folder a -dev punk0 keeps everything in, "" for any other.
+var dev string
+
+// UseDev makes Config and State subfolders of dir, so a punk0 being worked
+// on never shares settings, records, the instance lock, logs or hooks with
+// the installed one. Call it before anything reads them.
+func UseDev(dir string) { dev = dir }
+
+// Dev is the folder UseDev set, "" outside dev mode.
+func Dev() string { return dev }
+
 // Legacy is the folder every punk0 before this layout used.
 func Legacy() string {
 	if h := home(); h != "" {
@@ -24,10 +36,20 @@ func Legacy() string {
 }
 
 // Config holds settings.json.
-func Config() string { return legacyOr("XDG_CONFIG_HOME", StandardConfig(), "settings.json") }
+func Config() string {
+	if dev != "" {
+		return filepath.Join(dev, "config")
+	}
+	return legacyOr("XDG_CONFIG_HOME", StandardConfig(), "settings.json")
+}
 
 // State holds records.json and everything else punk0 writes for itself.
-func State() string { return legacyOr("XDG_STATE_HOME", StandardState(), "records.json") }
+func State() string {
+	if dev != "" {
+		return filepath.Join(dev, "state")
+	}
+	return legacyOr("XDG_STATE_HOME", StandardState(), "records.json")
+}
 
 // Cache holds downloads punk0 can fetch again; it has no legacy fallback.
 func Cache() string { return folder("XDG_CACHE_HOME", ".cache", "LOCALAPPDATA", "cache") }

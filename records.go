@@ -308,7 +308,7 @@ type recordsFile struct {
 func codeRootPath() (string, error) {
 	dir := settings.SettingOr[string]("workspace.dir")
 	if dir == "" {
-		dir = "~/punk0"
+		dir = settings.Default[string]("workspace.dir") // ~/punk0; a -dev punk0's own folder
 	}
 	dir, err := expandPath(dir, "")
 	if err != nil {

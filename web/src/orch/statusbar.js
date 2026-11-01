@@ -96,9 +96,12 @@ function nextAgent(status) {
 }
 
 function renderStatus() {
-  const { version } = state.wb;
-  $('#o-empty-ver').textContent = version ? 'v' + version : '';
-  $('#st-ver').textContent = version ? 'v' + version : '';
+  // A `punk0 -dev` says so beside its version, so its page is never taken
+  // for the installed punk0's.
+  const { version, dev } = state.wb;
+  const ver = version ? `v${version}${dev ? ' dev' : ''}` : '';
+  $('#o-empty-ver').textContent = ver;
+  $('#st-ver').textContent = ver;
   drawAgentStates(agentTabs('waiting').length, agentTabs('working').length);
 }
 

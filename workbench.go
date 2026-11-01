@@ -930,6 +930,9 @@ func (wb *workbench) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	html := strings.Replace(string(b), `<base href="/">`, fmt.Sprintf(`<base href="%s">`, template.HTMLEscapeString(wb.basePath)), 1)
 	html = strings.Replace(html, `data-theme="catppuccin-mocha"`, fmt.Sprintf(`data-theme="%s"`, template.HTMLEscapeString(wbTheme())), 1)
+	if paths.Dev() != "" {
+		html = strings.Replace(html, `<title>punk0 agents</title>`, `<title>punk0 agents (dev)</title>`, 1)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	io.WriteString(w, html)
 }
@@ -978,6 +981,7 @@ func (wb *workbench) handleState(w http.ResponseWriter, r *http.Request) {
 		"home":    home,
 		"sep":     string(filepath.Separator),
 		"version": version,
+		"dev":     paths.Dev() != "", // `punk0 -dev` (dev.go): the page says so beside the version
 		"folders": folderInfo(),
 		// The workspace of the tab last picked or typed in: where a page
 		// with no selection of its own opens (Records.UseTab).
