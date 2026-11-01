@@ -4,9 +4,10 @@
 // open files; in the tabs layout the terminals' bar holds both. "+" offers a
 // new tab of every installed agent not in agents.hidden, a shell, or the
 // open file picker, agents.default first; the empty center's welcome view
-// offers the same, and the file group's "+" opens the picker. Double-click
-// renames a terminal tab after what it is for. At the right end, the
-// workspace's folder opens in the full editor.
+// offers the same, below the workspace's own tabs to open again, and the
+// file group's "+" opens the picker. Double-click renames a terminal tab
+// after what it is for. At the right end, the workspace's folder opens in
+// the full editor.
 import { $, $$, esc } from '../state.js';
 import { emit, on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
@@ -46,6 +47,8 @@ export function initTabs() {
     startNew(kind);
   });
   $('#o-empty').addEventListener('click', e => {
+    const pick = e.target.closest('[data-pick-tab]')?.dataset.pickTab;
+    if (pick) return selectTab(pick);
     const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
     if (kind) startNew(kind);
   });
@@ -99,6 +102,15 @@ function renderTabs() {
     fileBarEl.innerHTML = '';
   }
   for (const el of [barEl, fileBarEl]) el.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  renderResume(w);
+}
+
+// renderResume lists workspace w's terminal tabs in the welcome view, which
+// shows when none is open in this page: opening one is the user's choice.
+function renderResume(w) {
+  const tabs = w?.tabs || [];
+  $('#o-empty-tabs').innerHTML = tabs.length ? `<span class="o-welcome-head">Open a tab again, or start a new one</span>` + tabs.map(t =>
+    `<button type="button" data-pick-tab="${esc(t.id)}"><span class="o-menu-kind${t.kind === 'claude' ? ' claude' : ''}">${t.kind === 'claude' ? '✳' : t.kind === 'shell' ? '$' : '◆'}</span><span>${esc(t.name)}</span><span class="wb-faint">${!t.running ? 'stopped' : TAB_STATUS[t.status] || 'running'}</span></button>`).join('') : '';
 }
 
 function tabsHTML(tabs, active) {
@@ -147,10 +159,11 @@ function group(t) {
 }
 
 // neighbour is the tab of tabs to show once t closes: the one before it,
-// else after.
+// else after. A stopped terminal is passed over: showing it would start it.
 function neighbour(t, tabs) {
-  const i = tabs.findIndex(x => x.id === t.id);
-  return (tabs[i - 1] || tabs[i + 1])?.id;
+  const open = tabs.filter(x => x.id === t.id || x.kind === 'file' || x.running);
+  const i = open.findIndex(x => x.id === t.id);
+  return (open[i - 1] || open[i + 1])?.id;
 }
 
 async function onTabClick(e) {

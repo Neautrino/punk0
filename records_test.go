@@ -1447,3 +1447,54 @@ func TestSessionTabFindsTheTabOnAChat(t *testing.T) {
 		t.Fatalf("TabSessions = %v", rec.TabSessions())
 	}
 }
+
+// The tab last picked or typed in is what a fresh page opens after a
+// restart: each workspace keeps its own, the most recent one's workspace is
+// the one opened, and a closed tab is not reopened.
+func TestUsedTabSurvivesARestart(t *testing.T) {
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	p1, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws1, ws2 := p1.Workspaces[0], p2.Workspaces[0]
+	tab := func(ws string) *Satellite {
+		s, err := rec.AddTab(ws, tabShell, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	_, b, c := tab(ws1.ID), tab(ws1.ID), tab(ws2.ID)
+	for _, id := range []string{b.ID, c.ID} {
+		if err := rec.UseTab(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	back := openRecords(t, home)
+	if got := back.LastWorkspace(); got != ws2.ID {
+		t.Fatalf("LastWorkspace = %q, want the workspace of the tab used last %q", got, ws2.ID)
+	}
+	if got := listed(back, p1.ID).Workspaces[0].LastTab; got != b.ID {
+		t.Fatalf("first workspace's LastTab = %q, want %q: using another workspace's tab must not change it", got, b.ID)
+	}
+	if got := listed(back, p2.ID).Workspaces[0].LastTab; got != c.ID {
+		t.Fatalf("second workspace's LastTab = %q, want %q", got, c.ID)
+	}
+
+	if err := back.RemoveTab(b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := listed(openRecords(t, home), p1.ID).Workspaces[0].LastTab; got != "" {
+		t.Fatalf("a closed tab is still the one to reopen: %q", got)
+	}
+	if err := back.UseTab("no-such-tab"); err == nil {
+		t.Fatal("UseTab accepted an unknown tab")
+	}
+}

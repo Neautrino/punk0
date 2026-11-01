@@ -6,26 +6,38 @@ import { call } from './api.js';
 
 const listeners = new Set();
 
+// What a page shows is its own: the selection, open files and the split's
+// collapsed group live in sessionStorage, so two browser tabs on punk0 never
+// overwrite each other, and a reload keeps what that tab showed.
+const page = sessionStorage;
 const loadJSON = (key, empty) => {
   try {
-    return JSON.parse(localStorage.getItem(key)) || empty;
+    return JSON.parse(page.getItem(key)) || empty;
   } catch {
     return empty;
   }
 };
+const loadText = key => {
+  try {
+    return page.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
 const saveJSON = (key, value) => {
   try {
-    localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+    page.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
   } catch {}
 };
 
 // initialWs is the workspace to select on load. A page `punk0 <dir>` opened
 // carries ?ws=<id>: that one, saved as if clicked, with the parameter dropped
-// so a reload keeps whatever is selected by then. Else the last selected.
+// so a reload keeps whatever is selected by then. Else this tab's last
+// selected; a new tab has none and takes punk0's last used (reload).
 function initialWs() {
   const params = new URLSearchParams(location.search);
   const id = params.get('ws');
-  if (!id) return localStorage.getItem('punk0.ws') || '';
+  if (!id) return loadText('punk0.ws');
   params.delete('ws');
   const q = params.toString();
   history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
@@ -46,7 +58,7 @@ export const state = {
   changes: loadJSON('punk0.changes', {}), // workspace id -> true while its Changes tab is open
   // The split layout's collapsed group: '', 'term' (files maximized) or
   // 'file' (file panel hidden). Selecting a tab of that group shows it again.
-  collapsed: localStorage.getItem('punk0.splitCollapsed') || '',
+  collapsed: loadText('punk0.splitCollapsed'),
 };
 
 export function subscribe(fn) {
@@ -61,6 +73,8 @@ export function rerender() {
 
 let lastSig = '';
 let reloading = null;
+let settled = false; // the first full list has placed this page's selection
+let picked = false; // the user chose what is selected since the last takePick
 
 // reload fetches both lists and re-renders only when something changed, so
 // the periodic refresh cannot swallow a click or a double-click mid-press.
@@ -75,21 +89,53 @@ export function reload() {
       state.wb = rest;
     }
     pruneFiles();
-    // An archived chat cannot stay selected: its tabs are stopped.
+    let moved = false;
+    // A page with no selection of its own opens where the user last picked
+    // or typed, in any page (Records.UseTab); with none, nothing opens.
+    if (!settled && p.ok && wb.ok) {
+      settled = true;
+      if (!state.ws && state.wb.lastWorkspace) {
+        state.ws = state.wb.lastWorkspace;
+        saveJSON('punk0.ws', state.ws);
+      }
+      adoptLast(workspace());
+      moved = true;
+    }
+    // A workspace that is gone, or an archived chat (its tabs are stopped),
+    // cannot stay selected; nothing is chosen in its place.
     const sel = workspace();
-    if (!sel || sel.archived) {
-      const all = state.projects.flatMap(pr => pr.workspaces).filter(w => !w.archived);
-      const first = all.find(w => !projectOf(w.id)?.scratch) || all[0];
-      if (first) return selectWorkspace(first.id);
-      if (sel) return selectWorkspace('');
+    if (p.ok && state.ws && (!sel || sel.archived)) {
+      state.ws = '';
+      saveJSON('punk0.ws', '');
+      moved = true;
     }
     const sig = JSON.stringify([state.projects, state.reviews, state.wb.version]);
-    if (sig !== lastSig) {
+    if (sig !== lastSig || moved) {
       lastSig = sig;
       rerender();
     }
   })().finally(() => { reloading = null; });
   return reloading;
+}
+
+// adoptLast gives workspace w, when this page remembers no tab of it that
+// still exists, the tab last used there in any page. Taken once, when the
+// workspace is selected: a tab used in another page later does not move
+// what this one shows.
+function adoptLast(w) {
+  if (!w || w.tabs.some(t => t.id === used(w.id).term)) return;
+  if (!w.tabs.some(t => t.id === w.lastTab)) return;
+  used(w.id).term = w.lastTab;
+  saveJSON('punk0.tabs', state.tabs);
+}
+
+// takePick reports whether the user chose the selection since it was last
+// asked, and clears it: the terminal attached for a choice tells punk0 so,
+// one reopened by a page load does not.
+export function takePick() {
+  const p = picked;
+  picked = false;
+  return p;
 }
 
 // pruneFiles forgets the open files, diffs and Changes tabs of workspaces
@@ -161,11 +207,13 @@ function used(id) {
   return e && typeof e === 'object' ? e : (state.tabs[id] = {});
 }
 
-// termTab is the selected workspace's last used terminal tab, else its first.
+// termTab is the selected workspace's last used terminal tab, or null: a tab
+// shown is a tab started, so none is chosen for the user (the welcome view
+// offers them instead).
 export function termTab(w = workspace()) {
   if (!w) return null;
   const id = used(w.id).term;
-  return w.tabs.find(t => t.id === id) || w.tabs[0] || null;
+  return w.tabs.find(t => t.id === id) || null;
 }
 
 // fileTab is the selected workspace's last used file tab, else its first.
@@ -185,7 +233,9 @@ export function activeTab() {
 
 export function selectWorkspace(id) {
   state.ws = id;
+  picked = true;
   saveJSON('punk0.ws', id);
+  adoptLast(workspace());
   rerender();
 }
 
@@ -193,6 +243,7 @@ export function selectTab(id) {
   const kind = kindOf(id);
   Object.assign(used(state.ws), { [kind]: id, front: kind });
   saveJSON('punk0.tabs', state.tabs);
+  picked ||= kind === 'term';
   if (state.collapsed === kind) return setCollapsed('');
   rerender();
 }

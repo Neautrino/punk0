@@ -30,7 +30,7 @@ func TestShellSizeFollowsLatestViewer(t *testing.T) {
 			return
 		}
 		defer conn.CloseNow()
-		sh.Attach(r.Context(), conn)
+		sh.Attach(r.Context(), conn, nil)
 	}))
 	t.Cleanup(srv.Close)
 

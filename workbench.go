@@ -986,7 +986,10 @@ func (wb *workbench) handleState(w http.ResponseWriter, r *http.Request) {
 		"sep":     string(filepath.Separator),
 		"version": version,
 		"folders": folderInfo(),
-		"items":   views,
+		// The workspace of the tab last picked or typed in: where a page
+		// with no selection of its own opens (Records.UseTab).
+		"lastWorkspace": wb.records.LastWorkspace(),
+		"items":         views,
 	})
 }
 

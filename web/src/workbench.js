@@ -9,7 +9,7 @@
 // tabs in the middle (terminals from the parent, files from the folder's
 // editor backend, side by side or as tabs: split.js), its files on the right.
 import { $, esc } from './state.js';
-import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel, selectWorkspace } from './orch/store.js';
+import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel, selectWorkspace, takePick } from './orch/store.js';
 import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
 import { initNewChat } from './orch/newchat.js';
@@ -71,6 +71,8 @@ let shownTerm = null; // id of the terminal tab xterm is attached to
 let shownWs = null;
 let front = null; // id of the tab in front
 subscribe(() => {
+  // Only the render a click caused may report its tab as picked.
+  const pick = takePick();
   const w = workspace();
   forgetClosed(w?.id || '', state.files[w?.id] || []);
   const v = layoutCenter();
@@ -78,7 +80,9 @@ subscribe(() => {
     shownWs = w?.id || '';
     if (!v.term && shownTerm) attachTerm((shownTerm = null)); // not this workspace's terminal
   }
-  emptyPane.dataset.ws = !w ? 'none' : w.missing ? 'missing' : 'yes';
+  // No selection: "pick one" once there is anything to pick, else "add one".
+  const any = state.projects.some(p => p.workspaces.length);
+  emptyPane.dataset.ws = !w ? (any ? 'pick' : 'none') : w.missing ? 'missing' : 'yes';
   const p = w && projectOf(w.id);
   $('#o-empty-ws').innerHTML = w ? `<b>${esc(p && !p.scratch ? p.name + ' / ' + w.name : wsLabel(w))}</b> <span class="wb-faint">${esc(tildify(w.dir))}</span>` : '';
   termPane.hidden = !v.term;
@@ -105,7 +109,7 @@ subscribe(() => {
   if (!termTab()) {
     if (shownTerm) attachTerm((shownTerm = null));
   } else if (v.term && v.term.id !== shownTerm) {
-    attachTerm((shownTerm = v.term.id));
+    attachTerm((shownTerm = v.term.id), pick);
   } else if (v.term && front === v.term.id && was !== front) {
     focusTerm();
   }

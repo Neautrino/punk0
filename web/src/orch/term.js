@@ -2,7 +2,8 @@
 // Terminal pane: xterm.js <-> api/tabs/{id}/term websocket <-> that tab's
 // PTY in the parent. The PTY outlives the socket; attaching replays its
 // scrollback, and attaching to a stopped tab starts it again. Binary frames
-// carry PTY bytes both ways; text frames carry {"cols","rows"}.
+// carry PTY bytes both ways; text frames carry {"cols","rows"}, and
+// {"use":true} when the user types, so punk0 knows which tab was used last.
 //
 // xterm.js is loaded from static/vendor on the first attach rather than
 // bundled, so the page itself stays small.
@@ -21,7 +22,7 @@ let booting = null; // Promise of the xterm instance
 let xterm = null;
 let sock = null;
 let termTab = null; // tab id the pane shows
-let ended = false; // the socket closed: the next key reattaches, starting the tab again
+let ended = false; // the socket closed: the next key reattaches, resuming the tab
 const enc = new TextEncoder();
 
 // initTerm binds the pane. onChange runs when a tab connects or ends, so tab
@@ -77,8 +78,17 @@ function boot() {
 
     const send = data => sock?.readyState === WebSocket.OPEN && sock.send(data);
     const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
+    // A key pressed here makes this the tab last used (Records.UseTab).
+    // onData cannot tell: it also carries xterm's answers to the agent's
+    // terminal queries. Once a second is plenty.
+    let usedAt = 0;
+    const markUse = () => {
+      if (sock?.readyState !== WebSocket.OPEN || Date.now() - usedAt < 1000) return;
+      usedAt = Date.now();
+      send(JSON.stringify({ use: true }));
+    };
     term.onData(s => {
-      if (ended) return connect();
+      if (ended) return connect(true); // this key only resumes the tab: the agent is not up to read it
       if (Date.now() - claimed > 1000) reclaim(); // typing here makes this the latest viewer
       send(enc.encode(s));
     });
@@ -101,6 +111,7 @@ function boot() {
     // xterm.js has no kitty keyboard protocol: send Shift+Enter as ESC CR
     // (Alt+Enter), which Claude Code reads as a newline.
     term.attachCustomKeyEventHandler(e => {
+      if (e.type === 'keydown') markUse();
       if (clipboardKey(term, e)) return false;
       if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
       e.preventDefault();
@@ -113,8 +124,9 @@ function boot() {
   return booting;
 }
 
-// connect (re)opens the socket of termTab, replacing any open one.
-function connect() {
+// connect (re)opens the socket of termTab, replacing any open one. pick says
+// the user chose the tab, which makes it the one punk0 reopens (term.go).
+function connect(pick = false) {
   if (sock) {
     sock.onclose = null; // a deliberate switch is not a disconnect
     sock.close();
@@ -125,7 +137,7 @@ function connect() {
   term.reset(); // the server replays this tab's scrollback
   if (!termTab) return;
   const id = termTab;
-  const ws = new WebSocket(wsURL(`api/tabs/${encodeURIComponent(id)}/term`));
+  const ws = new WebSocket(wsURL(`api/tabs/${encodeURIComponent(id)}/term${pick ? '?pick=1' : ''}`));
   sock = ws;
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => { sendSize(); term.focus(); onTermChange(); };
@@ -136,17 +148,19 @@ function connect() {
     if (sock !== ws) return;
     sock = null;
     if (e.code === FELL_BEHIND) return connect();
-    term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'} · press any key to restart]\x1b[0m\r\n`);
+    // A loopback socket closed with no reason is punk0 itself going away.
+    term.write(`\r\n\x1b[2m[${e.reason || 'punk0 stopped'} · press any key to resume]\x1b[0m\r\n`);
     ended = true;
     onTermChange();
   };
 }
 
 // attachTerm shows tab id in the pane; null detaches and leaves it empty.
-export function attachTerm(id) {
+// pick: the user chose it (connect).
+export function attachTerm(id, pick = false) {
   termTab = id;
   boot().then(() => {
-    if (termTab === id) connect();
+    if (termTab === id) connect(pick);
   }, err => {
     termEl.textContent = `Could not load the terminal: ${err.message}`;
   });

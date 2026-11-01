@@ -285,8 +285,10 @@ func (s *Shell) Foreground() bool { return s.tty.Foreground() }
 
 // Attach streams the shell to one websocket until either side ends. Taking
 // the scrollback and registering as a viewer under one lock means no output
-// is lost or repeated between the replay and the live stream.
-func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
+// is lost or repeated between the replay and the live stream. onUse, if set,
+// runs when the viewer reports the user typing ({"use":true}): the browser
+// tells keys from the terminal's own answers to queries, the PTY bytes do not.
+func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn, onUse func()) {
 	conn.SetReadLimit(maxTermFrame)
 	s.mu.Lock()
 	if s.exited {
@@ -309,7 +311,7 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 	defer cancel()
 	go func() {
 		defer cancel()
-		s.input(ctx, conn, v)
+		s.input(ctx, conn, v, onUse)
 	}()
 
 	if len(backlog) > 0 && conn.Write(ctx, websocket.MessageBinary, backlog) != nil {
@@ -336,8 +338,8 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn) {
 }
 
 // input writes browser keystrokes into the PTY and applies viewer v's resizes
-// until the websocket closes.
-func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte) {
+// and use reports until the websocket closes.
+func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte, onUse func()) {
 	for {
 		typ, data, err := conn.Read(ctx)
 		if err != nil {
@@ -350,8 +352,17 @@ func (s *Shell) input(ctx context.Context, conn *websocket.Conn, v chan []byte) 
 			}
 			continue
 		}
-		var msg struct{ Cols, Rows uint16 }
-		if json.Unmarshal(data, &msg) == nil && msg.Cols > 0 && msg.Rows > 0 {
+		var msg struct {
+			Cols, Rows uint16
+			Use        bool
+		}
+		if json.Unmarshal(data, &msg) != nil {
+			continue
+		}
+		if msg.Use && onUse != nil {
+			onUse()
+		}
+		if msg.Cols > 0 && msg.Rows > 0 {
 			s.mu.Lock()
 			if _, live := s.viewers[v]; live { // a detached viewer's size must not come back
 				s.sizes = append(slices.DeleteFunc(s.sizes, func(z viewerSize) bool { return z.v == v }),
@@ -456,7 +467,17 @@ func (wb *workbench) handleTerm(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
-	sh.Attach(r.Context(), conn)
+	use := func() {
+		if err := wb.records.UseTab(tab.ID); err != nil {
+			slog.Warn("could not remember the last used tab", "tab", tab.ID, "err", err)
+		}
+	}
+	// pick=1: the user chose this tab (a click), not a page reopening the one
+	// it showed before a reload.
+	if r.URL.Query().Get("pick") == "1" {
+		use()
+	}
+	sh.Attach(r.Context(), conn, use)
 }
 
 // handleTabSend serves POST /api/tabs/{id}/send {"text"}: the text goes to

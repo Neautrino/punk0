@@ -522,10 +522,12 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-empty .wb-faint { font-size: 12px; }
 #o-empty b { color: var(--fg); }
 #o-empty[data-ws="none"] .o-empty-none,
+#o-empty[data-ws="pick"] .o-empty-pick,
 #o-empty[data-ws="yes"] .o-empty-yes,
 #o-empty[data-ws="missing"] .o-empty-missing,
 #o-empty .o-welcome-tag, #o-empty .o-welcome-foot { display: block; }
 #o-empty[data-ws="yes"] .o-welcome-acts { display: flex; }
+#o-empty[data-ws="yes"] .o-welcome-acts:empty { display: none; }
 .o-welcome {
   width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 28px 24px 22px; border: 1px solid var(--line); border-radius: var(--r-lg);
@@ -544,6 +546,9 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-welcome-acts button .wb-faint { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-welcome-acts button:hover, .o-welcome-acts button:focus-visible { background: var(--bg3); outline: none; }
 .o-welcome-acts code { font: 11px var(--mono); }
+/* The workspace's own tabs above the new ones, under a small heading. */
+.o-welcome-head { padding: 0 10px 2px; text-align: left; font-size: 11.5px; color: var(--faint); }
+#o-empty-tabs { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 #o-empty .o-welcome-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); width: 100%; font-size: 11.5px; }
 
 /* Open file picker: the app's palette rows (.pi) in a box over the center. */

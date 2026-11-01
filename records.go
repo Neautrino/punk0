@@ -98,6 +98,7 @@ type Workspace struct {
 	Auto     bool         `json:"auto,omitempty"`     // worktree kind: an agent made it, not the user, so it is forgotten once its folder is gone
 	Owned    bool         `json:"owned,omitempty"`    // folder kind: punk0 made this folder, so it goes with the chat
 	Parent   string       `json:"parent,omitempty"`   // worktree kind: the workspace it is listed under, "" at the top
+	LastTab  string       `json:"lastTab,omitempty"`  // the tab last picked or typed in (UseTab), what a page opens here
 	Tabs     []*Satellite `json:"tabs"`
 }
 
@@ -273,6 +274,7 @@ type Records struct {
 	// belongs to, past its tab's life: local workspaces share a folder, so the
 	// folder alone cannot tell them apart.
 	chatWorkspaces map[string]string
+	last           string // the workspace of the tab last used (UseTab), what a fresh page opens
 
 	chats *chatHistory // the agents' own chat history (history.go), read-only after this
 }
@@ -297,6 +299,7 @@ type recordsFile struct {
 	// on disk hold it, and `removed` is the removed projects' key.
 	RemovedChats   []string          `json:"hiddenChats,omitempty"`
 	ChatWorkspaces map[string]string `json:"chatWorkspaces,omitempty"`
+	LastWorkspace  string            `json:"lastWorkspace,omitempty"`
 }
 
 // codeRootPath is the workspace.dir setting as a clean absolute path, with
@@ -369,7 +372,7 @@ func OpenRecords(home string) (*Records, error) {
 		}
 	}
 	r.projects, r.removed, r.removedChats = f.Projects, f.Removed, f.RemovedChats
-	r.chatWorkspaces = f.ChatWorkspaces
+	r.chatWorkspaces, r.last = f.ChatWorkspaces, f.LastWorkspace
 	if r.chatWorkspaces == nil {
 		r.chatWorkspaces = map[string]string{}
 	}
@@ -453,7 +456,7 @@ func (r *Records) adoptLocked(p *Project, w *Workspace) {
 }
 
 func (r *Records) saveLocked() error {
-	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats, ChatWorkspaces: r.chatWorkspaces})
+	return writeFileAtomic(r.file(), recordsFile{Projects: r.projects, Removed: r.removed, LSP: r.lsp, RemovedChats: r.removedChats, ChatWorkspaces: r.chatWorkspaces, LastWorkspace: r.last})
 }
 
 type projectView struct {
@@ -1162,8 +1165,35 @@ func (r *Records) RemoveTab(id string) error {
 		return fmt.Errorf("tab %q: %w", id, errNotFound)
 	}
 	w.Tabs[i].close()
+	if w.LastTab == id {
+		w.LastTab = ""
+	}
 	w.Tabs = slices.Delete(w.Tabs, i, i+1)
 	return r.saveLocked()
+}
+
+// UseTab records tab id as the one the user last picked or typed in: its
+// workspace's LastTab and the workspace a fresh page opens on. records.json
+// is written only when that changes, not once per key.
+func (r *Records) UseTab(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, _ := r.tabLocked(id)
+	if w == nil {
+		return fmt.Errorf("tab %q: %w", id, errNotFound)
+	}
+	if w.LastTab == id && r.last == w.ID {
+		return nil
+	}
+	w.LastTab, r.last = id, w.ID
+	return r.saveLocked()
+}
+
+// LastWorkspace is the workspace of the tab last used, "" before any.
+func (r *Records) LastWorkspace() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.last
 }
 
 func (r *Records) Workspace(id string) *Workspace {
