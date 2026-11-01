@@ -24,6 +24,7 @@ type tabAgent struct {
 	bin      string
 	resume   []string // args resuming the latest session; nil when the agent has none
 	resumeID []string // args before a session id resuming exactly it; nil when the agent cannot
+	joinID   bool     // the id joins the last of resumeID ("--resume=" + id) rather than following it
 	hooks    bool     // its hooks report its chat and status (agentshell.go); the others only start and exit
 }
 
@@ -36,6 +37,21 @@ var tabAgents = map[string]tabAgent{
 	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, hooks: true},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
+}
+
+// resumeArgs are the arguments that resume session: resumeID, then the id, or
+// the id joined to the last of them for a flag that takes its value that way
+// (copilot's `--resume=<id>`). nil for an agent that cannot resume by id.
+func (a tabAgent) resumeArgs(session string) []string {
+	if a.resumeID == nil {
+		return nil
+	}
+	args := append([]string(nil), a.resumeID...)
+	if a.joinID {
+		args[len(args)-1] += session
+		return args
+	}
+	return append(args, session)
 }
 
 // agentCommand is the line a tab's shell runs first, in the shell's syntax;
@@ -71,7 +87,7 @@ func agentCommand(kind, session string, first, hooked bool, sx shellSyntax) stri
 		return sx.orElse(bin+" --resume "+session, start)
 	}
 	if session != "" && a.resumeID != nil {
-		return sx.orElse(bin+" "+strings.Join(a.resumeID, " ")+" "+session, bin)
+		return sx.orElse(bin+" "+strings.Join(a.resumeArgs(session), " "), bin)
 	}
 	if first || a.resume == nil {
 		return bin

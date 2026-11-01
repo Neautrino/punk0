@@ -901,6 +901,31 @@ func TestAgentCommand(t *testing.T) {
 	}
 }
 
+// An agent whose resume flag takes its value joined (copilot's
+// `--resume=<id>`) gets the id on the flag, not as a word of its own; the
+// table's own argument list is never written through, so a tab that starts
+// twice resumes the same chat both times.
+func TestResumeArgs(t *testing.T) {
+	for _, c := range []struct {
+		a    tabAgent
+		want []string
+	}{
+		{tabAgent{resumeID: []string{"resume"}}, []string{"resume", "S"}},
+		{tabAgent{resumeID: []string{"--session"}}, []string{"--session", "S"}},
+		{tabAgent{resumeID: []string{"--resume="}, joinID: true}, []string{"--resume=S"}},
+		{tabAgent{}, nil},
+	} {
+		if got := c.a.resumeArgs("S"); !slices.Equal(got, c.want) {
+			t.Errorf("resumeArgs(%v, join %v) = %v, want %v", c.a.resumeID, c.a.joinID, got, c.want)
+		}
+	}
+	a := tabAgent{resumeID: []string{"--resume="}, joinID: true}
+	a.resumeArgs("A")
+	if got := a.resumeArgs("B"); !slices.Equal(got, []string{"--resume=B"}) {
+		t.Errorf("a second resume = %v, want [--resume=B]", got)
+	}
+}
+
 // A tab opened on an existing chat resumes it from its very first start, and
 // still does after punk0 restarts.
 func TestAddTabWithSession(t *testing.T) {
