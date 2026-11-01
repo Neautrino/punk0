@@ -846,7 +846,7 @@ func TestChatTitle(t *testing.T) {
 
 func TestAgentCommand(t *testing.T) {
 	useSettings(t, map[string]any{})
-	claude := claudeCommand("claude", posixShell)
+	claude := reportLine(tabClaude, "claude", posixShell)
 	cases := []struct {
 		kind, session string
 		first         bool
@@ -1009,7 +1009,7 @@ func useSettings(t *testing.T, m map[string]any) {
 
 func TestAgentCommandArgs(t *testing.T) {
 	useSettings(t, map[string]any{"agents.claude.args": "--model opus", "agents.codex.args": " -m o3 "})
-	claude := claudeCommand("claude --model opus", posixShell)
+	claude := reportLine(tabClaude, "claude --model opus", posixShell)
 	if !strings.HasPrefix(claude, "claude --model opus --settings ") {
 		t.Fatalf("claude command %q", claude)
 	}

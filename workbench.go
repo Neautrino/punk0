@@ -384,16 +384,12 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, er
 // name this executable. Both are known only once the server is listening.
 func (wb *workbench) serveFrom(loopbackURL string) {
 	wb.records.SetHookBase(loopbackURL)
-	if err := writeClaudeHooks(wb.exe); err != nil {
-		ui.Status("warn", "claude hooks", err.Error(), 0, os.Stderr)
-		slog.Warn("claude hooks not written", "err", err)
-	} else {
-		slog.Info("claude hooks written", "file", tildePath(claudeHooksPath()), "exe", tildePath(wb.exe))
-	}
 	if err := writeAgentShell(wb.exe); err != nil {
 		ui.Status("warn", "agent functions", err.Error(), 0, os.Stderr)
 		slog.Warn("agent functions not written: agents typed in a tab go unseen", "err", err)
+		return
 	}
+	slog.Info("agent reporting written", "dir", tildePath(agentShellDir()), "exe", tildePath(wb.exe))
 }
 
 func (wb *workbench) route(sub string) string {

@@ -89,3 +89,39 @@ func waitShown(t *testing.T, sh *Shell, want string) {
 		return strings.Contains(bufferText(sh.screen), want)
 	})
 }
+
+// An agent whose reporting punk0 could not write this run starts without it:
+// the file on the line would be whatever an earlier punk0 left there, which
+// reports to a punk0 that is gone. The next run that can write it gets it
+// back.
+func TestAgentRunsUnhookedWhenItsSetupFails(t *testing.T) {
+	useSettings(t, map[string]any{})
+	exe := filepath.Join(t.TempDir(), "punk0")
+	// A failed setup belongs to one punk0 run, and the tests share a process.
+	t.Cleanup(func() {
+		reportOff.mu.Lock()
+		reportOff.kind = nil
+		reportOff.mu.Unlock()
+	})
+
+	// Nothing can be written where a folder already stands.
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := os.MkdirAll(claudeHooksPath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAgentShell(exe); err != nil {
+		t.Fatalf("one agent's setup failing stopped the others: %v", err)
+	}
+	if got, want := agentCommand(tabClaude, "S", true, false, posixShell), "claude --session-id S"; got != want {
+		t.Fatalf("claude with no hook settings\n got %s\nwant %s", got, want)
+	}
+
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := writeAgentShell(exe); err != nil {
+		t.Fatal(err)
+	}
+	want := "claude --settings " + shellQuote(claudeHooksPath()) + " --session-id S"
+	if got := agentCommand(tabClaude, "S", true, false, posixShell); got != want {
+		t.Fatalf("claude with hook settings\n got %s\nwant %s", got, want)
+	}
+}

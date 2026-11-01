@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"px0/internal/settings"
+	"px0/internal/ui"
 )
 
 // agentShellDir holds the startup files a tab's shell reads (writeAgentShell).
@@ -100,21 +101,87 @@ func tomlString(s string) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// agentInjects is what each agent's function adds before the user's
-// arguments: the hook settings punk0 reports through.
-func agentInjects(exe string) map[string][]string {
-	return map[string][]string{
-		tabClaude: {"--settings", claudeHooksPath()},
-		"codex":   codexHookArgs(hookLine(exe, "codex")),
-	}
+// reportVia is one mechanism that gets punk0's reporting into a single run of
+// an agent. setup writes that run's files, once at startup (writeAgentShell),
+// and says what the agent's shell function must add: argv before the user's
+// arguments, env for that one command. unhooked is what a tab adds instead
+// where punk0 could not hook the shell: argv on the command line it writes
+// (agentCommand) and env in the tab's environment (Satellite.Shell). unhooked
+// reads no file, so a tab may ask before setup has run.
+type reportVia interface {
+	setup(exe, kind string) (argv, env []string, err error)
+	unhooked(kind string) (argv, env []string)
 }
+
+// claudeSettings reports through the settings file a claude run takes on its
+// command line (writeClaudeHooks).
+type claudeSettings struct{}
+
+func (v claudeSettings) setup(exe, kind string) (argv, env []string, err error) {
+	if err := writeClaudeHooks(exe); err != nil {
+		return nil, nil, err
+	}
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+func (claudeSettings) unhooked(string) (argv, env []string) {
+	return []string{"--settings", claudeHooksPath()}, nil
+}
+
+// codexOverrides reports through the -c overrides one codex run is given
+// (codexHookArgs), so punk0 writes no file for it. They stay in the shell
+// function punk0 wrote, where they are quoted for a POSIX shell: punk0 puts
+// no TOML on a Windows command line, and a codex tab there reports nothing.
+type codexOverrides struct{}
+
+func (codexOverrides) setup(exe, kind string) (argv, env []string, err error) {
+	return codexHookArgs(hookLine(exe, kind)), nil, nil
+}
+
+func (codexOverrides) unhooked(string) (argv, env []string) { return nil, nil }
+
+// opencodeVia writes the plugin one opencode run reports through. What a run
+// needs to load it is the tab's own (opencodeEnv): those configs carry the
+// user's own and the tab's project, so they are made per tab, not once here.
+type opencodeVia struct{}
+
+func (opencodeVia) setup(exe, kind string) (argv, env []string, err error) {
+	for _, name := range []string{"server.js", "tui.js"} {
+		if err := writeBytesAtomic(filepath.Join(opencodePluginDir(), name), []byte(opencodePlugin)); err != nil {
+			return nil, nil, err
+		}
+	}
+	return nil, nil, nil
+}
+
+func (opencodeVia) unhooked(string) (argv, env []string) { return nil, nil }
 
 // writeAgentShell writes the startup files a tab's shell reads (shellHook):
 // agents.sh and agents.fish with one function per agent, zsh's startup files
-// in zsh/, and bash's rcfile. exe is this punk0, as for writeClaudeHooks.
+// in zsh/, and bash's rcfile, after running each agent's reporting setup
+// (reportVia). exe is this punk0, as for writeClaudeHooks.
 func writeAgentShell(exe string) error {
 	dir := agentShellDir()
-	injects := agentInjects(exe)
+	argv := map[string][]string{}
+	off := map[string]bool{}
+	for _, kind := range tabAgentOrder {
+		a := tabAgents[kind]
+		if a.report == nil {
+			continue
+		}
+		args, _, err := a.report.via.setup(exe, kind)
+		if err != nil {
+			off[kind] = true
+			ui.Status("warn", kind+" reporting", err.Error(), 0, os.Stderr)
+			slog.Warn("agent reports nothing until punk0 restarts", "agent", kind, "err", err)
+			continue
+		}
+		argv[kind] = args
+	}
+	reportOff.mu.Lock()
+	reportOff.kind = off
+	reportOff.mu.Unlock()
 	start, exit := hookLine(exe, "start"), hookLine(exe, "exit")
 	var sh, fish strings.Builder
 	sh.WriteString(`# punk0 (agentshell.go): agents typed here report to the tab.
@@ -154,7 +221,7 @@ end
 	for _, kind := range tabAgentOrder {
 		bin := tabAgents[kind].bin
 		var shArgs, fishArgs string
-		for _, a := range injects[kind] {
+		for _, a := range argv[kind] {
 			shArgs += " " + shellQuote(a)
 			fishArgs += " " + fishQuote(a)
 		}
@@ -173,15 +240,13 @@ end
 	}
 	agents := filepath.Join(dir, "agents.sh")
 	files := map[string]string{
-		agents:                                          sh.String(),
-		filepath.Join(dir, "agents.fish"):               fish.String(),
-		filepath.Join(dir, "bashrc"):                    bashRC(agents),
-		filepath.Join(dir, "zsh", ".zshenv"):            zshStartup(".zshenv", ""),
-		filepath.Join(dir, "zsh", ".zprofile"):          zshStartup(".zprofile", ""),
-		filepath.Join(dir, "zsh", ".zshrc"):             zshStartup(".zshrc", agents),
-		filepath.Join(dir, "zsh", ".zlogin"):            zshStartup(".zlogin", ""),
-		filepath.Join(opencodePluginDir(), "server.js"): opencodePlugin,
-		filepath.Join(opencodePluginDir(), "tui.js"):    opencodePlugin,
+		agents:                                 sh.String(),
+		filepath.Join(dir, "agents.fish"):      fish.String(),
+		filepath.Join(dir, "bashrc"):           bashRC(agents),
+		filepath.Join(dir, "zsh", ".zshenv"):   zshStartup(".zshenv", ""),
+		filepath.Join(dir, "zsh", ".zprofile"): zshStartup(".zprofile", ""),
+		filepath.Join(dir, "zsh", ".zshrc"):    zshStartup(".zshrc", agents),
+		filepath.Join(dir, "zsh", ".zlogin"):   zshStartup(".zlogin", ""),
 	}
 	for p, body := range files {
 		if err := writeBytesAtomic(p, []byte(body)); err != nil {

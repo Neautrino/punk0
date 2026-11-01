@@ -12,6 +12,7 @@ package main
 import (
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/px0-ai/harness"
 
@@ -22,19 +23,68 @@ import (
 type tabAgent struct {
 	Label    string
 	bin      string
-	resume   []string // args resuming the latest session; nil when the agent has none
-	resumeID []string // args before a session id resuming exactly it; nil when the agent cannot
-	joinID   bool     // the id joins the last of resumeID ("--resume=" + id) rather than following it
-	hooks    bool     // its hooks report its chat and status (agentshell.go); the others only start and exit
+	resume   []string     // args resuming the latest session; nil when the agent has none
+	resumeID []string     // args before a session id resuming exactly it; nil when the agent cannot
+	joinID   bool         // the id joins the last of resumeID ("--resume=" + id) rather than following it
+	report   *agentReport // how it reports its chat and status (agentshell.go); nil: punk0 only sees it start and exit
+}
+
+// agentReport is what punk0 learns from one agent while it runs: a mechanism
+// that gets punk0's reporting into a single run (agentshell.go).
+type agentReport struct {
+	via reportVia
+}
+
+// reportOff names the agents punk0 could not set reporting up for this run
+// (writeAgentShell): each runs with none until punk0 restarts. It is written
+// once at startup and read by every tab that starts a shell.
+var reportOff = struct {
+	mu   sync.Mutex
+	kind map[string]bool
+}{}
+
+// agentReportOf is how kind reports to its tab this run: nil for an agent
+// that does not report, and for one whose setup failed.
+func agentReportOf(kind string) *agentReport {
+	a, ok := tabAgents[kind]
+	if !ok || a.report == nil {
+		return nil
+	}
+	reportOff.mu.Lock()
+	defer reportOff.mu.Unlock()
+	if reportOff.kind[kind] {
+		return nil
+	}
+	return a.report
+}
+
+// reportLine is bin with what one run of kind needs on the command line to
+// report to its tab, for a shell punk0 could not hook: in one it did, the
+// agent's own function adds it instead (writeAgentShell). A flag goes bare
+// and anything else is quoted for the shell, as Claude's settings path is.
+func reportLine(kind, bin string, sx shellSyntax) string {
+	r := agentReportOf(kind)
+	if r == nil {
+		return bin
+	}
+	argv, _ := r.via.unhooked(kind)
+	for _, a := range argv {
+		if strings.HasPrefix(a, "-") && shellQuote(a) == a {
+			bin += " " + a
+			continue
+		}
+		bin += " " + sx.quote(a)
+	}
+	return bin
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
 var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "agy", "cursor-agent"}
 
 var tabAgents = map[string]tabAgent{
-	tabClaude:      {Label: "Claude Code", bin: "claude", hooks: true},
-	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, hooks: true},
-	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, hooks: true},
+	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}}},
+	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, report: &agentReport{via: codexOverrides{}}},
+	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, report: &agentReport{via: opencodeVia{}}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 }
@@ -65,8 +115,8 @@ func (a tabAgent) resumeArgs(session string) []string {
 // user's, the latest session may belong to something else.
 // agents.<kind>.args goes right after the program name, verbatim: it is shell
 // text the user wrote. session must be shell-safe (validSession). In a hooked
-// shell (hookFor) the agent's function adds punk0's hooks; elsewhere Claude's
-// go on the command line here.
+// shell (hookFor) the agent's function adds punk0's reporting; elsewhere
+// reportLine puts it on the line here.
 func agentCommand(kind, session string, first, hooked bool, sx shellSyntax) string {
 	a, ok := tabAgents[kind]
 	if !ok {
@@ -76,10 +126,10 @@ func agentCommand(kind, session string, first, hooked bool, sx shellSyntax) stri
 	if args := strings.TrimSpace(settings.SettingOr[string]("agents." + kind + ".args")); args != "" {
 		bin += " " + args
 	}
+	if !hooked {
+		bin = reportLine(kind, bin, sx)
+	}
 	if kind == tabClaude {
-		if !hooked {
-			bin = claudeCommand(bin, sx)
-		}
 		start := bin + " --session-id " + session
 		if first {
 			return start
@@ -115,7 +165,7 @@ func (wb *workbench) handleAgents(w http.ResponseWriter, r *http.Request) {
 		a := tabAgents[id]
 		_, installed := harness.LookPath(a.bin)
 		out = append(out, agentView{ID: id, Label: a.Label, Installed: installed, Resumes: id == tabClaude || a.resume != nil,
-			ResumesByID: id == tabClaude || a.resumeID != nil, Status: a.hooks})
+			ResumesByID: id == tabClaude || a.resumeID != nil, Status: a.report != nil})
 	}
 	writeJSON(w, out)
 }

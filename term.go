@@ -38,13 +38,6 @@ const ttyCols, ttyRows = 80, 24
 // copy, rather than silently missing bytes mid escape sequence.
 const viewerQueue = 256
 
-// claudeCommand starts Claude Code in a claude tab's new shell, with the
-// hook settings punk0 writes (hook.go) so the tab can show what the agent is
-// doing. bin is the program with any user arguments.
-func claudeCommand(bin string, sx shellSyntax) string {
-	return bin + " --settings " + sx.quote(claudeHooksPath())
-}
-
 // tty is a shell on a terminal: a PTY on Unix (term_unix.go), a pseudo
 // console on Windows (term_windows.go).
 type tty interface {
