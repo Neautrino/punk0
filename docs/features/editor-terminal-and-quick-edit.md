@@ -20,7 +20,7 @@ The Terminal mode's own row holds the tab chips and **+**.
 The pane is an xterm.js terminal connected to the orchestrator's PTY for the editor's workspace folder. The tabs are the workspace's own terminal tabs, so a tab opened here also appears on the agents page and the other way round.
 
 - **Chips**: one per tab, with a status dot that lights while an agent is working or waiting. Click a chip to show that tab. A stopped tab starts when you click it.
-- **`+`**: opens a menu of agents (Claude Code, Codex, OpenCode, Antigravity, Cursor Agent), then Shell, and starts a tab running the one you pick.
+- **`+`**: opens a menu of every agent punk0 knows (Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Antigravity, Cursor Agent, Qwen Code, Factory Droid, Kimi Code, Crush, Pi, Oh My Pi, Aider), then Shell, and starts a tab running the one you pick.
 - **`×`** on a chip closes that tab.
 
 Shells and agents run in the orchestrator, not the page: closing the browser or the editor leaves them running, and reconnecting redraws their screen and scrollback as they were. When the connection ends, the terminal says so; press any key to reconnect.

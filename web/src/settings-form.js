@@ -352,7 +352,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "notifications.desktop",
     title: "Desktop Notifications",
-    description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status (Claude Code, Codex, OpenCode) notify, and only while the agents page is open.",
+    description: "Show a browser notification when an agent needs you or finishes. Unfocused only notifies while the agents page is in the background. Only agents that report their status notify (not Gemini CLI, Kimi Code, Aider or Cursor Agent), and only while the agents page is open.",
     category: "Notifications",
     type: "select",
     default: "off",

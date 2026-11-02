@@ -2,7 +2,7 @@
 // Tab status notifications (Notifications settings): a desktop notification
 // and a tone when a tab starts waiting for the user or finishes working, and
 // the count of waiting tabs in the page title. Only tabs whose agent reports
-// status through its hooks (Claude Code, Codex, OpenCode) can notify.
+// its status (agentReport, tabagents.go) can notify.
 // Statuses come from the store's api/projects polls; workbench.js polls only
 // while the page is in view, so this keeps polling every 5 s while it is
 // hidden.
