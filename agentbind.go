@@ -241,6 +241,67 @@ func readDroidTitle(path string) (chatSession, bool) {
 	return chatSession{Title: r.Title}, true
 }
 
+// copilotTitle reads a copilot chat's name from the workspace.yaml copilot
+// keeps beside it, found by the event's id: only Stop names a transcript.
+// The id comes from a hook, so it must be one (validSession) and stay in
+// copilot's folder before it becomes a path. punk0 parses no YAML: the name
+// is one top-level line.
+type copilotTitle struct{}
+
+func (copilotTitle) title(_ *chatHistory, ev hookEvent) string {
+	root := copilotRoot()
+	if root == "" || !validSession.MatchString(ev.Session) {
+		return ""
+	}
+	p := filepath.Join(root, ev.Session, "workspace.yaml")
+	if !within(root, p) {
+		return ""
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	for line := range strings.Lines(string(b)) {
+		if v, ok := strings.CutPrefix(strings.TrimRight(line, "\r\n"), "name: "); ok {
+			return yamlScalar(v)
+		}
+	}
+	return ""
+}
+
+// copilotRoot is where copilot keeps its chats: $COPILOT_HOME, else
+// ~/.copilot, as copilot resolves it (app.js: configDir ?? COPILOT_HOME ??
+// ~/.copilot). A --config-dir in agents.copilot.args moves the chats where
+// punk0 does not look, so such a tab gets no title.
+func copilotRoot() string {
+	home := strings.TrimSpace(os.Getenv("COPILOT_HOME"))
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		home = filepath.Join(h, ".copilot")
+	}
+	return filepath.Join(home, "session-state")
+}
+
+// yamlScalar is the text of a one-line YAML scalar: copilot quotes a name
+// holding ':' or '#', single quotes doubling a quote inside, double quotes
+// escaping it.
+func yamlScalar(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) < 2 {
+		return v
+	}
+	switch q := v[0]; {
+	case q == '\'' && v[len(v)-1] == q:
+		return strings.ReplaceAll(v[1:len(v)-1], "''", "'")
+	case q == '"' && v[len(v)-1] == q:
+		return strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(v[1 : len(v)-1])
+	}
+	return v
+}
+
 // within reports whether path is inside dir, both cleaned and absolute.
 func within(dir, path string) bool {
 	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))

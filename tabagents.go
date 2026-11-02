@@ -82,12 +82,13 @@ func reportLine(kind, bin string, sx shellSyntax) string {
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
-var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "agy", "cursor-agent", "qwen", "droid"}
+var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "copilot", "agy", "cursor-agent", "qwen", "droid"}
 
 var tabAgents = map[string]tabAgent{
 	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}, title: chatFileTitle{root: claudeRoot, read: readClaudeChat}}},
 	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, report: &agentReport{via: codexOverrides{}, title: chatFileTitle{root: codexRoot, read: readCodexChat, titles: "session_index.jsonl"}}},
 	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, report: &agentReport{via: opencodeVia{}}},
+	"copilot":      {Label: "GitHub Copilot", bin: "copilot", resume: []string{"--continue"}, resumeID: []string{"--resume="}, joinID: true, report: &agentReport{via: pluginDir{}, title: copilotTitle{}}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},

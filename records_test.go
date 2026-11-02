@@ -848,6 +848,7 @@ func TestAgentCommand(t *testing.T) {
 	useSettings(t, map[string]any{})
 	claude := reportLine(tabClaude, "claude", posixShell)
 	droid := "droid --settings " + shellQuote(filepath.Join(reportDir("droid"), "droid.json"))
+	copilot := reportLine("copilot", "copilot", posixShell) // carries --plugin-dir except on Windows
 	cases := []struct {
 		kind, session string
 		first         bool
@@ -866,6 +867,9 @@ func TestAgentCommand(t *testing.T) {
 		{"codex", "S", false, "codex resume S || codex"},
 		{"opencode", "S", false, "opencode --session S || opencode"},
 		{"cursor-agent", "S", true, "cursor-agent --resume S || cursor-agent"},
+		// copilot's resume flag takes its value joined: --resume=<id>.
+		{"copilot", "S", true, copilot + " --resume=S || " + copilot},
+		{"copilot", "", false, copilot + " --continue || " + copilot},
 		// agy cannot resume by id: an id it was given changes nothing.
 		{"agy", "S", false, "agy"},
 		// qwen and droid resume like codex; droid, unhooked, names its settings.
@@ -884,6 +888,10 @@ func TestAgentCommand(t *testing.T) {
 	// In a shell punk0 hooked, the claude function adds the hooks itself.
 	if got, want := agentCommand(tabClaude, "S", false, true, posixShell), "claude --resume S || claude --session-id S"; got != want {
 		t.Errorf("hooked claude\n got %s\nwant %s", got, want)
+	}
+	// In a shell punk0 hooked, the copilot function adds the plugin folder.
+	if got, want := agentCommand("copilot", "S", false, true, posixShell), "copilot --resume=S || copilot"; got != want {
+		t.Errorf("hooked copilot\n got %s\nwant %s", got, want)
 	}
 
 	// Windows shells: PowerShell 5.1 has no ||, and each shell quotes the

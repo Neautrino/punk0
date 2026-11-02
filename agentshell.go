@@ -231,6 +231,63 @@ func (droidSettings) unhooked(kind string) (argv, env []string) {
 
 func droidSettingsPath(kind string) string { return filepath.Join(reportDir(kind), "droid.json") }
 
+// copilotHookEvents are the events a copilot run reports, under the
+// Claude-style names that make copilot send Claude's fields (session_id,
+// transcript_path). Live, copilot 1.0.63 sends PermissionRequest in its own
+// camelCase shape whatever the key, so a permission prompt is read from its
+// Notification (permission_prompt). No SessionStart: copilot sends it after
+// the first prompt, where it would turn a working tab idle, and every event
+// names the chat anyway. No PreToolUse: UserPromptSubmit already says working.
+var copilotHookEvents = []string{"UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"}
+
+// copilotToolMatcher is every tool but report_intent, copilot's own note of
+// what it is about to do: it finishes beside a permission prompt and would
+// turn a tab waiting on the user back to working. copilot anchors a matcher
+// as ^(?:…)$ on the tool's name.
+const copilotToolMatcher = "(?!report_intent$).*"
+
+// pluginDir reports through a plugin folder one copilot run loads
+// (--plugin-dir): a manifest naming hooks.json, whose hooks run this punk0.
+// Copilot merges them with the user's own hooks.
+type pluginDir struct{}
+
+func (v pluginDir) setup(exe, kind string) (argv, env []string, err error) {
+	type hookCmd struct {
+		Type       string `json:"type"`
+		Bash       string `json:"bash"`
+		TimeoutSec int    `json:"timeoutSec"`
+		Matcher    string `json:"matcher,omitempty"`
+	}
+	dir := reportDir(kind)
+	hooks := make(map[string][]hookCmd, len(copilotHookEvents))
+	for _, ev := range copilotHookEvents {
+		h := hookCmd{Type: "command", Bash: hookLine(exe, kind), TimeoutSec: 5}
+		if ev == "PostToolUse" {
+			h.Matcher = copilotToolMatcher
+		}
+		hooks[ev] = []hookCmd{h}
+	}
+	manifest := map[string]string{"name": "punk0", "version": "1", "description": "punk0 tab status", "hooks": "hooks.json"}
+	if err := writeFileAtomic(filepath.Join(dir, "plugin.json"), manifest); err != nil {
+		return nil, nil, err
+	}
+	if err := writeFileAtomic(filepath.Join(dir, "hooks.json"), map[string]any{"version": 1, "hooks": hooks}); err != nil {
+		return nil, nil, err
+	}
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+// unhooked names no plugin on Windows: hooks.json's entries are bash ones,
+// which copilot does not run there, so a copilot tab on Windows reports
+// nothing, as a codex one does (codexOverrides).
+func (pluginDir) unhooked(kind string) (argv, env []string) {
+	if runtime.GOOS == "windows" {
+		return nil, nil
+	}
+	return []string{"--plugin-dir", reportDir(kind)}, nil
+}
+
 // writeAgentShell writes the startup files a tab's shell reads (shellHook):
 // agents.sh and agents.fish with one function per agent, zsh's startup files
 // in zsh/, and bash's rcfile, after running each agent's reporting setup

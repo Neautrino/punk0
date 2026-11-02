@@ -311,3 +311,44 @@ func TestQwenAndDroidChatTitles(t *testing.T) {
 		}
 	}
 }
+
+// Copilot keeps a chat's name in workspace.yaml beside the chat, quoted when
+// the name holds YAML's own characters. The id comes from a hook, so one
+// that could leave copilot's folder is never followed.
+func TestCopilotTitle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("COPILOT_HOME", home)
+	chat := func(id, yaml string) {
+		t.Helper()
+		dir := filepath.Join(home, "session-state", id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte(yaml), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Captured from ~/.copilot/session-state (copilot 1.0.63), trimmed.
+	chat("c344e21f-c7b9-490e-ae30-41ae7579aa13", "id: c344e21f-c7b9-490e-ae30-41ae7579aa13\ncwd: /tmp/hookspike/work/copilot\nbranch: master\nclient_name: github/cli\nname: Run Shell Command to Create File\nuser_named: false\nsummary_count: 0\n")
+	chat("2bd7c780-8b3c-4c00-b2f9-c388049af354", "id: 2bd7c780-8b3c-4c00-b2f9-c388049af354\nname: 'Reply with exactly: AGENT_OK'\nuser_named: false\n")
+	chat("11111111-2222-4333-8444-555555555555", "id: 11111111-2222-4333-8444-555555555555\nname: 'it''s #1'\n")
+	chat("22222222-2222-4333-8444-555555555555", "id: 22222222-2222-4333-8444-555555555555\nname: \"say \\\"ok\\\": now\"\n")
+	// Titled only after the first turn: no name line yet.
+	chat("1bb5ade6-db6b-4423-8817-495b26a80e17", "id: 1bb5ade6-db6b-4423-8817-495b26a80e17\ncwd: /home/u\nuser_named: false\n")
+	// Not a session id: it would name a path outside copilot's folder.
+	chat("../escape", "name: Escaped\n")
+
+	for id, want := range map[string]string{
+		"c344e21f-c7b9-490e-ae30-41ae7579aa13": "Run Shell Command to Create File",
+		"2bd7c780-8b3c-4c00-b2f9-c388049af354": "Reply with exactly: AGENT_OK",
+		"11111111-2222-4333-8444-555555555555": "it's #1",
+		"22222222-2222-4333-8444-555555555555": `say "ok": now`,
+		"1bb5ade6-db6b-4423-8817-495b26a80e17": "",
+		"33333333-2222-4333-8444-555555555555": "",
+		"../escape":                            "",
+	} {
+		if got := (copilotTitle{}).title(nil, hookEvent{Session: id}); got != want {
+			t.Errorf("title of %q = %q, want %q", id, got, want)
+		}
+	}
+}
