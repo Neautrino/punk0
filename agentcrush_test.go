@@ -118,10 +118,13 @@ func TestCrushTitleComesFromCrush(t *testing.T) {
 	ran := filepath.Join(bin, "ran")
 	os.WriteFile(filepath.Join(project, "marker"), nil, 0o644)
 	os.WriteFile(filepath.Join(hung, "hang"), nil, 0o644)
-	// Chats are per project: each folder lists its own (crush session list --json).
+	// Chats are per project: each folder lists its own (crush session list
+	// --json). A crush left to refresh its providers first takes seconds
+	// (3.8 s live), past the lookup's bound.
 	writeExec(t, filepath.Join(bin, "crush"), `#!/bin/sh
 echo "$*" >> `+ran+`
 [ "$*" = "session list --json" ] || exit 2
+[ "$CRUSH_DISABLE_PROVIDER_AUTO_UPDATE" = 1 ] || sleep 30
 [ -f hang ] && sleep 30
 if [ -f marker ]; then
   echo '[{"id":"75bb0b811fb73599","uuid":"`+named+`","title":"Spike Hello Title","created":"2026-11-01T20:56:37Z","modified":"2026-11-01T20:57:11Z"},'

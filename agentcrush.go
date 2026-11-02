@@ -104,7 +104,10 @@ func (crushConfig) unhooked(kind string) (argv, env []string) {
 // not named yet. Crush makes <folder>/.crush where it runs: a real event names
 // the folder crush already runs in, so only a forged cwd could put one
 // elsewhere, and a relative one is refused. An id that is not a session's
-// (validSession) never starts crush; a crush that hangs costs 2 s.
+// (validSession) never starts crush; a crush that hangs costs 2 s. The lookup
+// skips crush's refresh of its provider list, which otherwise comes first on
+// every launch and takes seconds; the user's own crush runs are left as they
+// are.
 type crushTitle struct{}
 
 func (crushTitle) title(_ *chatHistory, ev hookEvent) string {
@@ -115,6 +118,7 @@ func (crushTitle) title(_ *chatHistory, ev hookEvent) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "crush", "session", "list", "--json")
 	cmd.Dir = ev.Cwd
+	cmd.Env = append(os.Environ(), "CRUSH_DISABLE_PROVIDER_AUTO_UPDATE=1")
 	cmd.WaitDelay = 100 * time.Millisecond
 	out, err := cmd.Output()
 	if err != nil {
