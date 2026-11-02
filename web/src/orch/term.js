@@ -11,7 +11,7 @@
 import { on } from '../bus.js';
 import { pageURL, wsURL } from './api.js';
 import { installClipboard, clipboardKey } from '../termclip.js';
-import { termOptions } from '../termoptions.js';
+import { termOptions, loadTermFonts, remeasure } from '../termoptions.js';
 
 // The server closes a viewer that lags behind the PTY with 1013 (try again
 // later); reattaching draws the screen again, so nothing is lost.
@@ -48,10 +48,13 @@ function termColors() {
 }
 
 function boot() {
-  booting ||= Promise.all([
+  if (booting) return booting;
+  let late = () => {}; // set once the terminal exists
+  booting = Promise.all([
     import(pageURL('static/vendor/xterm.mjs')),
     import(pageURL('static/vendor/addon-fit.mjs')),
     import(pageURL('static/vendor/addon-image.mjs')),
+    loadTermFonts(termOptions(), () => late()),
   ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }]) => {
     const term = new Terminal({ ...termOptions(), theme: termColors() });
     const fit = new FitAddon();
@@ -72,12 +75,16 @@ function boot() {
       else fitNow();
     };
     fitNow();
+    late = () => { remeasure(term); fitNow(); };
     new ResizeObserver(refit).observe(termEl);
     on('theme:changed', () => { term.options.theme = termColors(); });
     on('setting:changed', key => {
       if (!key.startsWith('terminal.')) return;
-      Object.assign(term.options, termOptions());
-      fitNow();
+      const next = termOptions();
+      loadTermFonts(next, () => late()).then(() => {
+        Object.assign(term.options, next);
+        fitNow();
+      });
     });
     installClipboard(term, termEl);
 

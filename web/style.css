@@ -1,3 +1,17 @@
+/* punk0's own fonts (fetched once from the pinned release and cached by the
+   server, see vendorCDNs in server.go; every url here needs an entry there).
+   JetBrains Mono is the full upstream build: Google's subset lacks box drawing
+   and Powerline. JetBrainsMono Nerd Font Mono is the terminals' default and
+   icon fallback: its icons fit one cell. An installed copy is used first. */
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-style: normal; font-display: swap; src: local("JetBrains Mono Regular"), local("JetBrainsMono-Regular"), url("vendor/fonts/JetBrainsMono-2.304-Regular.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-style: italic; font-display: swap; src: local("JetBrains Mono Italic"), local("JetBrainsMono-Italic"), url("vendor/fonts/JetBrainsMono-2.304-Italic.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 500; font-style: normal; font-display: swap; src: local("JetBrains Mono Medium"), local("JetBrainsMono-Medium"), url("vendor/fonts/JetBrainsMono-2.304-Medium.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 600; font-style: normal; font-display: swap; src: local("JetBrains Mono SemiBold"), local("JetBrainsMono-SemiBold"), url("vendor/fonts/JetBrainsMono-2.304-SemiBold.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 700; font-style: normal; font-display: swap; src: local("JetBrains Mono Bold"), local("JetBrainsMono-Bold"), url("vendor/fonts/JetBrainsMono-2.304-Bold.woff2") format("woff2"); }
+@font-face { font-family: "JetBrainsMono Nerd Font Mono"; font-weight: 400; font-style: normal; font-display: block; src: local("JetBrainsMono NFM Regular"), local("JetBrainsMonoNFM-Regular"), url("vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Regular.ttf") format("truetype"); }
+@font-face { font-family: "JetBrainsMono Nerd Font Mono"; font-weight: 700; font-style: normal; font-display: block; src: local("JetBrainsMono NFM Bold"), local("JetBrainsMonoNFM-Bold"), url("vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Bold.ttf") format("truetype"); }
+@font-face { font-family: "JetBrainsMono Nerd Font Mono"; font-weight: 400; font-style: italic; font-display: block; src: local("JetBrainsMono NFM Italic"), local("JetBrainsMonoNFM-Italic"), url("vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Italic.ttf") format("truetype"); }
+
 /* Colours are never written in this file: every one is read through a token.
    Themes live in web/themes/<id>.css and are served joined as /static/themes.css.
    This block holds the structural tokens and fallbacks for the optional colour

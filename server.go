@@ -270,8 +270,9 @@ func (s *Server) scavenge() {
 }
 
 // script-src allows WebAssembly ('wasm-unsafe-eval', not JS eval): the
-// terminals' image addon decodes SIXEL with it.
-const contentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
+// terminals' image addon decodes SIXEL with it. Fonts are punk0's own
+// (vendorCDNs), so font-src needs nothing past 'self'.
+const contentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
 
 // ServeHTTP delegates incoming HTTP requests to the configured ServeMux,
 // recording request timing and updating access timestamps.
@@ -664,11 +665,31 @@ func staticContentType(p string) string {
 	return "application/octet-stream"
 }
 
+// vendorCDNs are the vendor assets fetched on first use and cached
+// (openOrFetchVendorAsset). The fonts are the @font-face files of
+// web/style.css: JetBrains Mono for the UI and code, and its Nerd Font Mono
+// build for terminals, whose icons fit one cell. Each file name carries its
+// version, so a bump fetches anew instead of reusing the cache.
 var (
 	vendorFetchMu sync.Mutex
 	vendorCDNs    = map[string]string{
 		"vendor/mermaid-12.0.0.min.js": "https://cdn.jsdelivr.net/npm/mermaid@12.0.0/dist/mermaid.min.js",
+
+		"vendor/fonts/JetBrainsMono-2.304-Regular.woff2":  jetBrainsMonoCDN + "JetBrainsMono-Regular.woff2",
+		"vendor/fonts/JetBrainsMono-2.304-Italic.woff2":   jetBrainsMonoCDN + "JetBrainsMono-Italic.woff2",
+		"vendor/fonts/JetBrainsMono-2.304-Medium.woff2":   jetBrainsMonoCDN + "JetBrainsMono-Medium.woff2",
+		"vendor/fonts/JetBrainsMono-2.304-SemiBold.woff2": jetBrainsMonoCDN + "JetBrainsMono-SemiBold.woff2",
+		"vendor/fonts/JetBrainsMono-2.304-Bold.woff2":     jetBrainsMonoCDN + "JetBrainsMono-Bold.woff2",
+
+		"vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Regular.ttf": nerdMonoCDN + "Regular/JetBrainsMonoNerdFontMono-Regular.ttf",
+		"vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Bold.ttf":    nerdMonoCDN + "Bold/JetBrainsMonoNerdFontMono-Bold.ttf",
+		"vendor/fonts/JetBrainsMonoNerdFontMono-3.4.0-Italic.ttf":  nerdMonoCDN + "Italic/JetBrainsMonoNerdFontMono-Italic.ttf",
 	}
+)
+
+const (
+	jetBrainsMonoCDN = "https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@v2.304/fonts/webfonts/"
+	nerdMonoCDN      = "https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/JetBrainsMono/Ligatures/"
 )
 
 func vendorCacheDir() string { return filepath.Join(paths.Cache(), "vendor") }

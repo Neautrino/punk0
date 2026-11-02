@@ -257,8 +257,8 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 
 - `default-src 'self';`
 - `script-src 'self' 'wasm-unsafe-eval';` (disallows inline scripts; blocks injected `<script>` tags and event handlers; `'wasm-unsafe-eval'` lets the terminals' image addon compile its SIXEL decoder and allows no JS `eval`)
-- `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;` (allows Google Fonts and dynamic UI styling)
-- `font-src 'self' https://fonts.gstatic.com;`
+- `style-src 'self' 'unsafe-inline';` (allows dynamic UI styling)
+- `font-src 'self';` (every font is served by punk0; see below)
 - `img-src 'self' data: https: http:;` (supports icons, data URI previews, and external markdown images)
 - `connect-src 'self';` (prevents exfiltration to third-party endpoints)
 - `object-src 'none';`
@@ -267,6 +267,8 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 - `form-action 'none';`
 
 The pinned Mermaid browser runtime is fetched on demand at runtime and cached under the user cache directory (`~/.cache/punk0/vendor/`, or `$XDG_CACHE_HOME/punk0/vendor/` when that is set). When a Markdown preview containing a Mermaid fence is rendered, the frontend requests `/static/vendor/mermaid-12.0.0.min.js`, which `server.go` serves same-origin from the local cache (downloading and caching from the pinned CDN release on first use if absent). This keeps the compiled executable lean while satisfying the strict same-origin `'self'` CSP, preventing exfiltration, and preserving full offline capability for subsequent sessions.
+
+Fonts take the same path. `web/style.css` declares `@font-face` rules whose files are `/static/vendor/fonts/…`: the full upstream JetBrains Mono (v2.304 woff2: Regular, Italic, Medium, SemiBold, Bold), the UI and code font, and JetBrainsMono Nerd Font Mono (nerd-fonts v3.4.0 TrueType: Regular, Bold, Italic), the terminals' default and their icon fallback. Each url has an entry in `vendorCDNs`, which `TestStyleFontsAreServed` checks; each file name carries its version, so a bump fetches anew. An installed copy (`local(...)`) is used before the download, and a font that cannot be fetched answers 404, so the browser falls back to the next family in the stack. The terminals wait up to 3 s for their fonts before opening (`loadTermFonts`) and re-measure when one arrives later (`remeasure`), since xterm.js measures its cells once.
 
 ### Binary Size Optimization & Packaging Footprint
 

@@ -6,7 +6,7 @@ import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
 import { agentIcon } from './agenticons.js';
 import { installClipboard, clipboardKey } from './termclip.js';
-import { termOptions } from './termoptions.js';
+import { termOptions, loadTermFonts, remeasure } from './termoptions.js';
 
 let termEl = null;
 let tabListEl = null;
@@ -47,10 +47,12 @@ function termColors() {
 
 function boot() {
   if (!booting) {
+    let late = () => {}; // set once the terminal exists; see orch/term.js
     booting = Promise.all([
       import(parentURL('static/vendor/xterm.mjs')),
       import(parentURL('static/vendor/addon-fit.mjs')),
       import(parentURL('static/vendor/addon-image.mjs')),
+      loadTermFonts(termOptions(), () => late()),
     ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }]) => {
       const term = new Terminal({ ...termOptions(), theme: termColors() });
       const fit = new FitAddon();
@@ -64,13 +66,17 @@ function boot() {
         }
       };
       fitNow();
+      late = () => { remeasure(term); fitNow(); };
       new ResizeObserver(fitNow).observe(termEl);
 
       on('theme:changed', () => { term.options.theme = termColors(); });
       on('setting:changed', key => {
         if (!key.startsWith('terminal.')) return;
-        Object.assign(term.options, termOptions());
-        fitNow();
+        const next = termOptions();
+        loadTermFonts(next, () => late()).then(() => {
+          Object.assign(term.options, next);
+          fitNow();
+        });
       });
       installClipboard(term, termEl);
 
