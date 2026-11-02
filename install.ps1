@@ -32,7 +32,7 @@
   $arch = switch ($arch) {
     { $_ -in 'X64', 'AMD64' } { 'amd64'; break }
     { $_ -in 'Arm64', 'ARM64' } { 'arm64'; break }
-    { $_ -in 'X86', 'x86' } { '386'; break }
+    { $_ -in 'X86', 'x86' } { throw "32-bit Windows is not supported: punk0 needs 64-bit Windows"; break }
     default { throw "Unsupported machine architecture: $arch" }
   }
 

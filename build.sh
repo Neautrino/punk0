@@ -11,9 +11,9 @@ LDFLAGS="-s -w"
 ./scripts/build-web.js
 
 TARGETS="
-linux/amd64 linux/arm64 linux/arm linux/386 linux/riscv64
+linux/amd64 linux/arm64 linux/riscv64
 darwin/amd64 darwin/arm64
-windows/amd64 windows/arm64 windows/386
+windows/amd64 windows/arm64
 freebsd/amd64 freebsd/arm64 openbsd/amd64 openbsd/arm64 netbsd/amd64
 "
 

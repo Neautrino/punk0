@@ -59,8 +59,10 @@ ARCH="$(uname -m)"
 case "$ARCH" in
   x86_64|amd64)    ARCH="amd64" ;;
   aarch64|arm64)   ARCH="arm64" ;;
-  armv7*|armv6*|arm) ARCH="arm" ;;
-  i386|i686)       ARCH="386" ;;
+  armv7*|armv6*|arm|i386|i686)
+    log_error "32-bit systems are not supported: punk0 needs a 64-bit OS ($ARCH)"
+    exit 1
+    ;;
   riscv64)         ARCH="riscv64" ;;
   *)
     log_error "Unsupported machine architecture: $ARCH"
