@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -150,5 +151,23 @@ func TestSettingsValidation(t *testing.T) {
 	}
 	if rec := settingsReq(t, srv, "/api/settings", map[string]any{"agents.hidden": []string{"shell"}, "my.custom": 3}); rec.Code != 200 {
 		t.Fatalf("valid save: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The settings offer exactly the agents a tab can run, and every one of them
+// gets its own arguments setting (agentCommand reads agents.<kind>.args).
+func TestAgentSettingsCoverTabAgents(t *testing.T) {
+	want := append(slices.Clone(tabAgentOrder), tabShell)
+	keys := map[string]bool{}
+	for _, it := range settings.Schema {
+		keys[it.Key] = true
+		if (it.Key == "agents.default" || it.Key == "agents.hidden") && !slices.Equal(it.Options, want) {
+			t.Errorf("%s options\n got %v\nwant %v", it.Key, it.Options, want)
+		}
+	}
+	for _, kind := range tabAgentOrder {
+		if !keys["agents."+kind+".args"] {
+			t.Errorf("no agents.%s.args setting", kind)
+		}
 	}
 }

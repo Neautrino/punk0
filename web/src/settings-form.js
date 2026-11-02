@@ -65,7 +65,7 @@ const BUILTIN_SCHEMA = [
     category: "Agents",
     type: "select",
     default: "claude",
-    options: ["claude", "codex", "opencode", "agy", "cursor-agent", "shell"]
+    options: ["claude", "codex", "opencode", "gemini", "copilot", "agy", "cursor-agent", "qwen", "droid", "kimi", "crush", "pi", "omp", "aider", "shell"]
   },
   {
     key: "agents.hidden",
@@ -74,7 +74,7 @@ const BUILTIN_SCHEMA = [
     category: "Agents",
     type: "multiselect",
     default: [],
-    options: ["claude", "codex", "opencode", "agy", "cursor-agent", "shell"]
+    options: ["claude", "codex", "opencode", "gemini", "copilot", "agy", "cursor-agent", "qwen", "droid", "kimi", "crush", "pi", "omp", "aider", "shell"]
   },
   {
     key: "agents.claude.args",
@@ -104,6 +104,24 @@ const BUILTIN_SCHEMA = [
     exec: true
   },
   {
+    key: "agents.gemini.args",
+    title: "Gemini CLI Arguments",
+    description: "Extra arguments for the Gemini CLI punk0 starts in a tab, placed right after the program name. A gemini you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.copilot.args",
+    title: "GitHub Copilot Arguments",
+    description: "Extra arguments for the GitHub Copilot punk0 starts in a tab, placed right after the program name. A copilot you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
     key: "agents.agy.args",
     title: "Antigravity Arguments",
     description: "Extra arguments for the Antigravity punk0 starts in a tab, placed right after the program name. An agy you type at a tab's prompt gets only what you type. Shell syntax applies.",
@@ -116,6 +134,69 @@ const BUILTIN_SCHEMA = [
     key: "agents.cursor-agent.args",
     title: "Cursor Agent Arguments",
     description: "Extra arguments for the Cursor Agent punk0 starts in a tab, placed right after the program name. A cursor-agent you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.qwen.args",
+    title: "Qwen Code Arguments",
+    description: "Extra arguments for the Qwen Code punk0 starts in a tab, placed right after the program name. A qwen you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.droid.args",
+    title: "Factory Droid Arguments",
+    description: "Extra arguments for the Factory Droid punk0 starts in a tab, placed right after the program name. A droid you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.kimi.args",
+    title: "Kimi Code Arguments",
+    description: "Extra arguments for the Kimi Code punk0 starts in a tab, placed right after the program name. A kimi you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.crush.args",
+    title: "Crush Arguments",
+    description: "Extra arguments for the Crush punk0 starts in a tab, placed right after the program name. A crush you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.pi.args",
+    title: "Pi Arguments",
+    description: "Extra arguments for the Pi punk0 starts in a tab, placed right after the program name. A pi you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.omp.args",
+    title: "Oh My Pi Arguments",
+    description: "Extra arguments for the Oh My Pi punk0 starts in a tab, placed right after the program name. An omp you type at a tab's prompt gets only what you type. Shell syntax applies.",
+    category: "Agents",
+    type: "string",
+    default: "",
+    exec: true
+  },
+  {
+    key: "agents.aider.args",
+    title: "Aider Arguments",
+    description: "Extra arguments for the Aider punk0 starts in a tab, placed right after the program name. An aider you type at a tab's prompt gets only what you type. Shell syntax applies.",
     category: "Agents",
     type: "string",
     default: "",
