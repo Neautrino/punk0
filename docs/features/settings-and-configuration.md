@@ -28,9 +28,9 @@ punk0 stores all configuration in a single per-user global file (`~/.config/punk
 
 | Setting Key | Category | Default | Allowed Values / Range | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `editor.fontSize` | Text Editor | `13.5` | `9.0` – `32.0` (px) | Font size in the code viewer |
+| `editor.fontSize` | Text Editor | `12.0` | `9.0` – `32.0` (px) | Font size in the code viewer |
 | `editor.fontFamily` | Fonts | JetBrains Mono stack | CSS font stack string | Font family stack for viewer |
-| `editor.lineHeight` | Text Editor | `21.0` | `14.0` – `48.0` (px) | Line height for viewer rows |
+| `editor.lineHeight` | Text Editor | `20.0` | `14.0` – `48.0` (px) | Line height for viewer rows |
 | `editor.tabSize` | Text Editor | `4` | `2`, `4`, `8` | Number of spaces per tab |
 | `editor.wordWrap` | Text Editor | `"on"` | `"on"`, `"off"` | Soft line wrapping at editor boundary (also applies to the edit view) |
 | `editor.lineNumbers` | Text Editor | `"on"` | `"on"`, `"off"` | Line numbers display in gutter |
@@ -86,7 +86,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
 | `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
 | `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent id in `agents.default`'s list |
-| `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
+| `terminal.fontSize` | Terminal | `12` | `8` – `32` (px) | Terminal font size |
 | `terminal.fontFamily` | Fonts | `""` | CSS font stack | Terminal font; empty uses JetBrainsMono Nerd Font Mono, which also draws the icons of a font without them |
 | `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
 | `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab, in the page and in punk0 for reopening the tab (applies to tabs started afterwards) |

@@ -213,7 +213,7 @@ const BUILTIN_SCHEMA = [
     description: "The font size of terminal tabs, in pixels.",
     category: "Terminal",
     type: "number",
-    default: 13,
+    default: 12,
     min: 8,
     max: 32,
     step: 0.5
@@ -402,7 +402,7 @@ const BUILTIN_SCHEMA = [
     description: "Controls the font size in pixels for the code viewer.",
     category: "Text Editor",
     type: "number",
-    default: 13.5,
+    default: 12,
     min: 9.0,
     max: 32.0,
     step: 0.5
@@ -422,7 +422,7 @@ const BUILTIN_SCHEMA = [
     description: "Controls the line height in pixels for the code viewer.",
     category: "Text Editor",
     type: "number",
-    default: 21.0,
+    default: 20,
     min: 14.0,
     max: 48.0,
     step: 1.0

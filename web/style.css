@@ -18,10 +18,10 @@
    tokens, derived from the required ones. Theme rules use :root[data-theme]
    so they outrank these defaults regardless of load order. See docs/internals/styling-and-themes.md. */
 :root {
-  --lh: 21px;
+  --lh: 20px;
   --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
   --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --fs: 13.5px;
+  --fs: 12px;
 
   --on-accent: #fff;
   --on-badge: var(--bg);

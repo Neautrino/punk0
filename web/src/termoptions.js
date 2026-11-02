@@ -8,7 +8,7 @@ import { termFontFamily } from './fonts.js';
 export function termOptions() {
   const mono = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace';
   return {
-    fontSize: getSetting('terminal.fontSize') ?? 13,
+    fontSize: getSetting('terminal.fontSize') ?? 12,
     fontFamily: termFontFamily(getSetting('terminal.fontFamily'), mono),
     lineHeight: getSetting('terminal.lineHeight') ?? 1,
     scrollback: getSetting('terminal.scrollback') ?? 10000,

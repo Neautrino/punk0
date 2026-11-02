@@ -40,9 +40,9 @@ function queueTypography() {
   typographyQueued = true;
   queueMicrotask(() => {
     typographyQueued = false;
-    const fs = parseFloat(S.settings['editor.fontSize']) || 13.5;
+    const fs = parseFloat(S.settings['editor.fontSize']) || 12;
     const ff = S.settings['editor.fontFamily'] || '';
-    const lh = parseFloat(S.settings['editor.lineHeight']) || 21.0;
+    const lh = parseFloat(S.settings['editor.lineHeight']) || 20;
     const ts = parseInt(S.settings['editor.tabSize'], 10) || 4;
     applyEditorTypography(fs, ff, lh, ts);
     drawFileDetails(); // the bar's Tab Size and Col

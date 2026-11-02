@@ -20,7 +20,7 @@ const VIEW_OVERSCAN = 30;
 
 let codeVp, codeSizer, codeRows, fileTitle, fileMeta;
 let stPos, gotoEl, gotoIn;
-let lineH = 21; // --lh, measured at init
+let lineH = 20; // --lh, measured at init
 let tabSize = 4; // editor.tabSize: how wide a tab renders and counts in Col
 let viewWs = ''; // workspace id of the open files below
 let viewHref = ''; // its folder's backend, "w/<id>/"

@@ -18,8 +18,8 @@ func isolateSettings(t *testing.T) string {
 func TestSettingsDefaults(t *testing.T) {
 	isolateSettings(t)
 	m := ReadMergedMap()
-	if m["editor.fontSize"] != 13.5 {
-		t.Errorf("expected editor.fontSize 13.5, got %v", m["editor.fontSize"])
+	if m["editor.fontSize"] != 12.0 {
+		t.Errorf("expected editor.fontSize 12, got %v", m["editor.fontSize"])
 	}
 	if m["workbench.colorTheme"] != "catppuccin-mocha" {
 		t.Errorf("expected workbench.colorTheme catppuccin-mocha, got %v", m["workbench.colorTheme"])
