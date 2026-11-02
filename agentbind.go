@@ -309,9 +309,10 @@ func within(dir, path string) bool {
 }
 
 // refreshTitle looks the tab's chat title up after an event that may have
-// changed it: OpenCode says it in the event, the others in a file of their
-// own (agentReport.title, read straight from the table: a title comes from
-// the agent's own folder, not from a file punk0 wrote).
+// changed it: OpenCode, pi and omp say it in the event, the others through a
+// source of their own (agentReport.title, read straight from the table: a
+// title comes from the agent's own folder or the agent itself, not from a
+// file punk0 wrote).
 func (wb *workbench) refreshTitle(tabID, agent string, ev hookEvent) {
 	if ev.Session == "" {
 		return

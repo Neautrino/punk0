@@ -6,11 +6,14 @@ package main
 // with punk0's hooks added (spec: crush fold-in).
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // crushHookEvents are the crush events punk0 registers: the chat's id rides
@@ -92,4 +95,42 @@ func (v crushConfig) setup(exe, kind string) (argv, env []string, err error) {
 
 func (crushConfig) unhooked(kind string) (argv, env []string) {
 	return nil, []string{"CRUSH_GLOBAL_CONFIG=" + reportDir(kind)}
+}
+
+// crushTitle asks crush for a chat's title: crush keeps its chats per project,
+// so it lists the chats of the folder the event names, and the chat is the one
+// whose uuid is the event's session. Crush names a chat during its first turn,
+// so only a turn's end asks; "Untitled Session" is crush's name for one it has
+// not named yet. Crush makes <folder>/.crush where it runs: a real event names
+// the folder crush already runs in, so only a forged cwd could put one
+// elsewhere, and a relative one is refused. An id that is not a session's
+// (validSession) never starts crush; a crush that hangs costs 2 s.
+type crushTitle struct{}
+
+func (crushTitle) title(_ *chatHistory, ev hookEvent) string {
+	if ev.Name != "Stop" || !validSession.MatchString(ev.Session) || !filepath.IsAbs(ev.Cwd) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "crush", "session", "list", "--json")
+	cmd.Dir = ev.Cwd
+	cmd.WaitDelay = 100 * time.Millisecond
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	var chats []struct {
+		UUID  string `json:"uuid"`
+		Title string `json:"title"`
+	}
+	if json.Unmarshal(out, &chats) != nil {
+		return ""
+	}
+	for _, c := range chats {
+		if c.UUID == ev.Session && c.Title != "Untitled Session" {
+			return c.Title
+		}
+	}
+	return ""
 }

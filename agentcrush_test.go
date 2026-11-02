@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // crushRun writes punk0's startup files with the user's crush folder holding
@@ -104,5 +105,66 @@ func TestCrushRunsUnhookedOnTheUsersBadConfig(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "crushrc")); !os.IsNotExist(err) {
 		t.Fatalf("crushrc sources a file the user removed: %v", err)
+	}
+}
+
+// Crush's title comes from crush itself, asked in the chat's own folder once
+// a turn ended. A crush that has not named the chat yet, a chat crush does
+// not list there, a turn that only started, an id a hook could forge, and a
+// crush that hangs all leave the tab as it was.
+func TestCrushTitleComesFromCrush(t *testing.T) {
+	bin, project, other, hung := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	const named, untitled, unlisted = "ec14c082-ecbb-474e-92bf-1d229b584cec", "f103b48e-afd2-4ae7-ac35-b18bf4f38433", "740e079b-104b-4f12-bdd3-5e9b64ea33fd"
+	ran := filepath.Join(bin, "ran")
+	os.WriteFile(filepath.Join(project, "marker"), nil, 0o644)
+	os.WriteFile(filepath.Join(hung, "hang"), nil, 0o644)
+	// Chats are per project: each folder lists its own (crush session list --json).
+	writeExec(t, filepath.Join(bin, "crush"), `#!/bin/sh
+echo "$*" >> `+ran+`
+[ "$*" = "session list --json" ] || exit 2
+[ -f hang ] && sleep 30
+if [ -f marker ]; then
+  echo '[{"id":"75bb0b811fb73599","uuid":"`+named+`","title":"Spike Hello Title","created":"2026-11-01T20:56:37Z","modified":"2026-11-01T20:57:11Z"},'
+  echo ' {"id":"aa11","uuid":"`+untitled+`","title":"Untitled Session","created":"2026-11-01T20:58:00Z","modified":"2026-11-01T20:58:00Z"},'
+  echo ' {"id":"bb22","uuid":"230426e0-1780-4772-b14c-54b081446f07","title":"Another chat","created":"2026-11-01T20:55:00Z","modified":"2026-11-01T20:55:30Z"}]'
+else
+  echo '[{"id":"cc33","uuid":"0b0b0b0b-0000-4000-8000-000000000000","title":"Someone else","created":"2026-11-01T20:00:00Z","modified":"2026-11-01T20:00:00Z"}]'
+fi
+`)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stop := func(session, cwd string) hookEvent {
+		return hookEvent{Name: "Stop", Agent: "crush", Session: session, Cwd: cwd}
+	}
+	cases := []struct {
+		name string
+		ev   hookEvent
+		want string
+	}{
+		{"named", stop(named, project), "Spike Hello Title"},
+		{"untitled", stop(untitled, project), ""},
+		{"not listed", stop(unlisted, project), ""},
+		{"another folder", stop(named, other), ""},
+		{"turn start", hookEvent{Name: "UserPromptSubmit", Agent: "crush", Session: named, Cwd: project}, ""},
+		{"relative folder", stop(named, "."), ""},
+	}
+	for _, c := range cases {
+		if got := (crushTitle{}).title(nil, c.ev); got != c.want {
+			t.Errorf("%s: title %q, want %q", c.name, got, c.want)
+		}
+	}
+
+	os.Remove(ran)
+	for _, forged := range []string{"--help", "a b", "../x", ""} {
+		if got := (crushTitle{}).title(nil, stop(forged, project)); got != "" {
+			t.Errorf("id %q: title %q", forged, got)
+		}
+	}
+	if _, err := os.Stat(ran); !os.IsNotExist(err) {
+		t.Fatal("crush ran for an id that is not a session's")
+	}
+
+	start := time.Now()
+	if got := (crushTitle{}).title(nil, stop(named, hung)); got != "" || time.Since(start) > 5*time.Second {
+		t.Fatalf("a hanging crush: title %q after %v", got, time.Since(start))
 	}
 }

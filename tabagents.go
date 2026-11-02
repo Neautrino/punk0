@@ -94,7 +94,7 @@ var tabAgents = map[string]tabAgent{
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},
 	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}, title: chatFileTitle{root: droidRoot, read: readDroidTitle}}},
-	"crush":        {Label: "Crush", bin: "crush", resume: []string{"-C"}, resumeID: []string{"-s"}, report: &agentReport{via: crushConfig{}, events: crushEvents}},
+	"crush":        {Label: "Crush", bin: "crush", resume: []string{"-C"}, resumeID: []string{"-s"}, report: &agentReport{via: crushConfig{}, events: crushEvents, title: crushTitle{}}},
 	"pi":           {Label: "Pi", bin: "pi", resume: []string{"-c"}, resumeID: []string{"--session"}, report: &agentReport{via: extension{piExtension}}},
 	"omp":          {Label: "Oh My Pi", bin: "omp", resume: []string{"-c"}, resumeID: []string{"--resume"}, report: &agentReport{via: extension{ompExtension}}},
 }
