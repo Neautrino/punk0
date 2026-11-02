@@ -433,8 +433,17 @@ const SUPPORTED_AGENTS = [
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'opencode', label: 'OpenCode' },
+  { id: 'gemini', label: 'Gemini CLI' },
+  { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'agy', label: 'Antigravity' },
   { id: 'cursor-agent', label: 'Cursor Agent' },
+  { id: 'qwen', label: 'Qwen Code' },
+  { id: 'droid', label: 'Factory Droid' },
+  { id: 'kimi', label: 'Kimi Code' },
+  { id: 'crush', label: 'Crush' },
+  { id: 'pi', label: 'Pi' },
+  { id: 'omp', label: 'Oh My Pi' },
+  { id: 'aider', label: 'Aider' },
 ];
 
 // agentChoices is the + menu's items for a new tab in workspace wsId (else

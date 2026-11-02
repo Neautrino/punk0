@@ -7,8 +7,17 @@ const KIND_LABELS = {
   shell: 'Shell',
   codex: 'Codex',
   opencode: 'OpenCode',
+  gemini: 'Gemini CLI',
+  copilot: 'GitHub Copilot',
   agy: 'Antigravity',
   'cursor-agent': 'Cursor Agent',
+  qwen: 'Qwen Code',
+  droid: 'Factory Droid',
+  kimi: 'Kimi Code',
+  crush: 'Crush',
+  pi: 'Pi',
+  omp: 'Oh My Pi',
+  aider: 'Aider',
 };
 
 /** A tab's label: the user's name for it, else its chat's title, else what

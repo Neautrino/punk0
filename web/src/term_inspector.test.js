@@ -6,6 +6,7 @@ test('getTabLabel names an unnamed tab after what runs in it', () => {
   assert.equal(getTabLabel({ kind: 'claude', name: '' }), 'Claude Code');
   assert.equal(getTabLabel({ kind: 'shell', name: '' }), 'Shell');
   assert.equal(getTabLabel({ kind: 'cursor-agent' }), 'Cursor Agent');
+  assert.equal(getTabLabel({ kind: 'omp' }), 'Oh My Pi');
 });
 
 test('getTabLabel prefers the user name, then the chat title', () => {
