@@ -127,7 +127,8 @@ func TestAgentRunsUnhookedWhenItsSetupFails(t *testing.T) {
 }
 
 // A qwen typed at a tab's prompt gets the defaults file punk0 wrote for it in
-// its own environment; the shell left at the prompt does not carry it.
+// its own environment, and droid its settings file on its command line; the
+// shell left at the prompt carries neither.
 func TestAgentFunctionsCarryTheirReporting(t *testing.T) {
 	for _, shell := range []string{"zsh", "bash"} {
 		t.Run(shell, func(t *testing.T) {
@@ -143,7 +144,7 @@ func TestAgentFunctionsCarryTheirReporting(t *testing.T) {
 
 			bin, log := filepath.Join(home, "bin"), filepath.Join(home, "agent.log")
 			os.MkdirAll(bin, 0o755)
-			for _, name := range []string{"qwen"} {
+			for _, name := range []string{"qwen", "droid"} {
 				writeExec(t, filepath.Join(bin, name), "#!/bin/sh\necho \""+name+" env=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset} args=$*\" >> "+log+"\n")
 			}
 			rc := "export PATH=" + bin + ":$PATH\nPS1='$ '\n"
@@ -162,15 +163,16 @@ func TestAgentFunctionsCarryTheirReporting(t *testing.T) {
 			}
 			t.Cleanup(sh.Close)
 			waitShown(t, sh, "$ ")
-			sh.tty.Write([]byte("qwen x; echo \"left=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset}\"\r"))
+			sh.tty.Write([]byte("qwen x; droid y; echo \"left=${QWEN_CODE_SYSTEM_DEFAULTS_PATH-unset}\"\r"))
 			waitShown(t, sh, "left=unset")
 
 			defaults := filepath.Join(reportDir("qwen"), "defaults.json")
+			settings := filepath.Join(reportDir("droid"), "droid.json")
 			got, _ := os.ReadFile(log)
-			if want := "qwen env=" + defaults + " args=x\n"; string(got) != want {
+			if want := "qwen env=" + defaults + " args=x\ndroid env=unset args=--settings " + settings + " y\n"; string(got) != want {
 				t.Fatalf("log:\n%s\nwant:\n%s", got, want)
 			}
-			for _, f := range []string{defaults} {
+			for _, f := range []string{defaults, settings} {
 				if _, err := os.Stat(f); err != nil {
 					t.Fatalf("an agent is pointed at %s, which punk0 did not write: %v", f, err)
 				}

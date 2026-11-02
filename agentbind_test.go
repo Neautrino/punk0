@@ -205,3 +205,45 @@ func agentTurn(t *testing.T, wb *workbench, repo, kind string, registered map[st
 	}
 	return slices.Compact(statuses), slices.Compact(sessions)
 }
+
+// A droid turn with a permission prompt shows working, needs-you, working,
+// idle in its tab. droid reports through Claude's event names and values.
+// Captured live: SessionStart, PreToolUse, PostToolUse, Stop and SessionEnd
+// (droid exec 1.1.0, hookspike-2026-11-01/out/droid.jsonl, session
+// 7f8dbc47). WRITTEN BY HAND, never seen from droid: UserPromptSubmit and
+// both Notifications. The interactive app needs a Factory login the spike
+// did not have; their shape is Claude's.
+func TestDroidTurnShowsInItsTab(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	exe := "/x/punk0"
+	argv, _, err := agentReportOf("droid").via.setup(exe, "droid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(argv) != 2 || argv[0] != "--settings" {
+		t.Fatalf("droid is given %q, not a settings file", argv)
+	}
+	statuses, sessions := agentTurn(t, wb, repo, "droid", reportedEvents(t, argv[1], exe, "droid"), droidTurn)
+	if want := []string{statusIdle, statusWorking, statusWaiting, statusWorking, statusIdle, ""}; !slices.Equal(statuses, want) {
+		t.Errorf("statuses %q, want %q", statuses, want)
+	}
+	if want := []string{"7f8dbc47-cde1-4007-90a9-ea517575555b"}; !slices.Equal(sessions, want) {
+		t.Errorf("chats %q, want %q", sessions, want)
+	}
+}
+
+// droidTurn is one droid turn with a permission prompt; see
+// TestDroidTurnShowsInItsTab for which lines are captured and which are not.
+var droidTurn = []string{
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-medium","hook_event_name":"SessionStart","source":"startup"}`,
+	// by hand
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","hook_event_name":"UserPromptSubmit","prompt":"Run the shell command: echo hi > hello.txt"}`,
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-low","hook_event_name":"PreToolUse","tool_name":"Execute","tool_input":{"command":"echo hi > hello.txt","riskLevel":"low","riskLevelReason":"creates a file in the work folder"}}`,
+	// by hand
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Droid needs your permission to use Execute"}`,
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-low","hook_event_name":"PostToolUse","tool_name":"Execute","tool_input":{"command":"echo hi > hello.txt","riskLevel":"low","riskLevelReason":"creates a file in the work folder"},"tool_response":"Command completed successfully\n\n[Process exited with code 0]"}`,
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-low","hook_event_name":"Stop","stop_hook_active":false,"tool_execution_count":0,"elapsed_time":108}`,
+	// by hand
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Droid is waiting for your input"}`,
+	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-low","hook_event_name":"SessionEnd","reason":"other","session_duration_ms":338.795654296875,"message_count":10}`,
+}

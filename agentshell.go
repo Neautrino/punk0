@@ -196,6 +196,41 @@ func (qwenDefaults) unhooked(kind string) (argv, env []string) {
 
 func qwenDefaultsPath(kind string) string { return filepath.Join(reportDir(kind), "defaults.json") }
 
+// droidHookEvents are the droid events punk0 registers. droid uses Claude's
+// names, and Claude's Notification values for a permission prompt.
+var droidHookEvents = []string{
+	"SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
+	"PostToolUse", "Notification", "Stop",
+}
+
+// droidSettings reports through the settings file one droid run takes with
+// --settings, which droid merges over the user's own for that run only and
+// keeps out of its tools' environment.
+type droidSettings struct{}
+
+func (v droidSettings) setup(exe, kind string) (argv, env []string, err error) {
+	h := settingsHook{Type: "command", Command: hookLine(exe, kind)}
+	hooks := make(map[string][]settingsHooks, len(droidHookEvents))
+	for _, ev := range droidHookEvents {
+		m := settingsHooks{Hooks: []settingsHook{h}}
+		if ev == "PreToolUse" || ev == "PostToolUse" {
+			m.Matcher = "*" // every tool, as the hooks droid ran live were registered
+		}
+		hooks[ev] = []settingsHooks{m}
+	}
+	if err := writeFileAtomic(droidSettingsPath(kind), map[string]any{"hooks": hooks}); err != nil {
+		return nil, nil, err
+	}
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+func (droidSettings) unhooked(kind string) (argv, env []string) {
+	return []string{"--settings", droidSettingsPath(kind)}, nil
+}
+
+func droidSettingsPath(kind string) string { return filepath.Join(reportDir(kind), "droid.json") }
+
 // writeAgentShell writes the startup files a tab's shell reads (shellHook):
 // agents.sh and agents.fish with one function per agent, zsh's startup files
 // in zsh/, and bash's rcfile, after running each agent's reporting setup

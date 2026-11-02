@@ -847,6 +847,7 @@ func TestChatTitle(t *testing.T) {
 func TestAgentCommand(t *testing.T) {
 	useSettings(t, map[string]any{})
 	claude := reportLine(tabClaude, "claude", posixShell)
+	droid := "droid --settings " + shellQuote(filepath.Join(reportDir("droid"), "droid.json"))
 	cases := []struct {
 		kind, session string
 		first         bool
@@ -867,6 +868,13 @@ func TestAgentCommand(t *testing.T) {
 		{"cursor-agent", "S", true, "cursor-agent --resume S || cursor-agent"},
 		// agy cannot resume by id: an id it was given changes nothing.
 		{"agy", "S", false, "agy"},
+		// qwen and droid resume like codex; droid, unhooked, names its settings.
+		{"qwen", "", true, "qwen"},
+		{"qwen", "", false, "qwen --continue || qwen"},
+		{"qwen", "S", true, "qwen --resume S || qwen"},
+		{"droid", "", true, droid},
+		{"droid", "", false, droid + " --last || " + droid},
+		{"droid", "S", false, droid + " --resume S || " + droid},
 	}
 	for _, c := range cases {
 		if got := agentCommand(c.kind, c.session, c.first, false, posixShell); got != c.want {
