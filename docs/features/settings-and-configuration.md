@@ -84,7 +84,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `layout.fileView` | Appearance | `"beside"` | `beside`, `tabs` | Files in a panel beside the terminals, or among the terminal tabs (agents page) |
 | `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
 | `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
-| `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent (`claude`, `codex`, `opencode`, `agy`, `cursor-agent`) |
+| `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent id in `agents.default`'s list |
 | `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
 | `terminal.fontFamily` | Terminal | `""` | CSS font stack | Terminal font |
 | `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
