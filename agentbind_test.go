@@ -352,3 +352,66 @@ func TestCopilotTitle(t *testing.T) {
 		}
 	}
 }
+
+// A copilot turn with a permission prompt drives its tab as Claude's does,
+// from copilot's own payloads: the first event binds the chat (punk0 hears
+// no SessionStart from copilot), the prompt's Notification shows needs-you,
+// the chat's name comes from copilot's workspace.yaml, and /clear's new chat
+// takes the tab over. Captured from copilot 1.0.63 under --plugin-dir with
+// punk0's keys (2026-11-02), trimmed; the report_intent PostToolUse copilot
+// sent beside the prompt is left out, as punk0's matcher keeps it from
+// running punk0's hook.
+func TestCopilotTurnDrivesTheTab(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	home := t.TempDir()
+	t.Setenv("COPILOT_HOME", home)
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := wb.records.AddTab(p.Workspaces[0].ID, tabShell, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := tab.Shell(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tab.close)
+	post := func(body string) {
+		t.Helper()
+		if w := reqJSON(t, wb, "POST", "/api/tabs/"+tab.ID+"/hook", string(slimHookEvent([]byte(body), "copilot"))); w.Code != 200 {
+			t.Fatalf("%s: %d %s", body, w.Code, w.Body.String())
+		}
+	}
+	first, second := "82df0e65-deca-416d-9628-c09f0e507b46", "3d70ee6f-b12d-4982-ac0f-8c90aa8e5f64"
+	dir := filepath.Join(home, "session-state", first)
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "workspace.yaml"), []byte("id: "+first+"\nname: Create hello.txt\nuser_named: false\n"), 0o644)
+
+	post(`{"hook_event_name":"` + agentStartEvent + `","punk0_agent":"copilot"}`)
+	for _, step := range []struct{ body, status string }{
+		{`{"hook_event_name":"UserPromptSubmit","session_id":"` + first + `","prompt":"Run the shell command: echo hi > hello.txt  - then reply with just DONE.","cwd":"/tmp/w"}`, statusWorking},
+		{`{"sessionId":"` + first + `","notification_type":"permission_prompt","cwd":"/tmp/w","hook_event_name":"Notification","message":"Run command: echo hi > hello.txt","title":"Permission needed"}`, statusWaiting},
+		{`{"hook_event_name":"PostToolUse","session_id":"` + first + `","tool_input":{"command":"echo hi > hello.txt","description":"Create hello.txt with the requested content","mode":"sync","initial_wait":10},"cwd":"/tmp/w","tool_name":"Bash"}`, statusWorking},
+		{`{"hook_event_name":"Stop","session_id":"` + first + `","stop_reason":"end_turn","cwd":"/tmp/w","transcript_path":"` + filepath.Join(dir, "events.jsonl") + `"}`, statusIdle},
+	} {
+		post(step.body)
+		if got := tab.Status(); got != step.status {
+			t.Fatalf("after %.60s…: status %q, want %q", step.body, got, step.status)
+		}
+		if tab.Session != first {
+			t.Fatalf("after %.60s…: chat %q, want %q", step.body, tab.Session, first)
+		}
+	}
+	waitFor(t, func() bool { return tab.view().Title == "Create hello.txt" })
+
+	// /clear: the old chat ends, the next prompt is a new one.
+	post(`{"hook_event_name":"SessionEnd","session_id":"` + first + `","reason":"user_exit","cwd":"/tmp/w"}`)
+	if got := tab.Status(); got != "" {
+		t.Fatalf("after SessionEnd: status %q", got)
+	}
+	post(`{"hook_event_name":"UserPromptSubmit","session_id":"` + second + `","prompt":"say ok","cwd":"/tmp/w"}`)
+	if v := tab.view(); tab.Session != second || v.Kind != "copilot" || tab.Status() != statusWorking {
+		t.Fatalf("new chat: kind %q chat %q status %q, want copilot %q working", v.Kind, tab.Session, tab.Status(), second)
+	}
+}
