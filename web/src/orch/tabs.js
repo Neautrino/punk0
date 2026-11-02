@@ -2,8 +2,8 @@
 // Tab bars of the selected workspace. In the split layout (split.js) the
 // terminals' bar holds shells and agent chats and the file group's bar the
 // open files; in the tabs layout the terminals' bar holds both. "+" offers a
-// new tab of every installed agent not in agents.hidden, a shell, or the
-// open file picker, agents.default first; the empty center's welcome view
+// shell and the open file picker, then below a rule a new tab of every
+// installed agent not in agents.hidden, agents.default first; the empty center's welcome view
 // offers the same, below the workspace's own tabs to open again, and the
 // file group's "+" opens the picker. Double-click renames a terminal tab
 // after what it is for. At the right end, the workspace's folder opens in
@@ -78,15 +78,19 @@ async function loadAgents() {
 }
 
 // renderAgents fills the "+" menu and the welcome view with the agents a new
-// tab can run, agents.default first.
+// tab can run, agents.default first. The menu puts the shell over Open file,
+// above the rule, and the agents below it.
 function renderAgents() {
   const visible = visibleAgents(agents);
   const first = defaultAgent(visible);
   visible.sort((a, b) => (b.id === first ? 1 : 0) - (a.id === first ? 1 : 0));
   const icon = a => agentIcon(a.id, 'o-menu-kind');
   const what = a => a.id === 'shell' ? 'your own shell, in a real terminal' : `runs <code>${esc(a.id)}</code> in this folder`;
-  $('#o-new-agents').innerHTML = visible.map(a =>
-    `<button type="button" role="menuitem" data-new-tab="${esc(a.id)}">${icon(a)}${esc(a.label)}</button>`).join('');
+  const item = a => `<button type="button" role="menuitem" data-new-tab="${esc(a.id)}">${icon(a)}${esc(a.label)}</button>`;
+  const chats = visible.filter(a => a.id !== 'shell');
+  $('#o-new-shell').innerHTML = visible.filter(a => a.id === 'shell').map(item).join('');
+  $('#o-new-sep').hidden = !chats.length;
+  $('#o-new-agents').innerHTML = chats.map(item).join('');
   $('#o-empty-agents').innerHTML = visible.map(a =>
     `<button type="button" data-new-tab="${esc(a.id)}">${icon(a)}<span>New ${esc(a.label)}${a.id === 'shell' ? '' : ' chat'}</span><span class="wb-faint">${what(a)}</span></button>`).join('');
 }
