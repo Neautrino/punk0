@@ -166,10 +166,11 @@ func terminalShell() string {
 // the tab; saving one is refused. A POSIX shell gets SHELL, which its launch
 // execs; elsewhere SHELL keeps what tools that read it expect. A shell punk0
 // can hook reads its agent functions (hookFor), the one left at the prompt
-// after command too.
+// after command too. The inherited environment loses what names the terminal
+// punk0 was started from (outerTerminalVar): the tab's terminal is the page's.
 func tabProcess(shell, command string, env []string) (args []string, cmdEnv []string) {
 	sx := syntaxOf(shell)
-	cmdEnv = os.Environ()
+	cmdEnv = slices.DeleteFunc(os.Environ(), outerTerminalVar)
 	if sx == posixShell {
 		cmdEnv = append(cmdEnv, "SHELL="+shell)
 	}
@@ -187,6 +188,27 @@ func tabProcess(shell, command string, env []string) (args []string, cmdEnv []st
 		args = append(args, sx.launch(command, stay)...)
 	}
 	return args, cmdEnv
+}
+
+// outerTerminalVar reports whether kv names or describes the terminal
+// emulator or multiplexer punk0 itself was started in. A tab's PTY is drawn
+// by the page's xterm.js, so a program reading these would draw for a
+// terminal that is not there: started from kitty, an agent sends kitty
+// graphics, which xterm.js shows as rows of unknown glyphs.
+func outerTerminalVar(kv string) bool {
+	k, _, _ := strings.Cut(kv, "=")
+	switch k {
+	case "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_FEATURES", "TERMINAL_EMULATOR",
+		"LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "WINDOWID",
+		"VTE_VERSION", "VSCODE_PID", "TMUX", "TMUX_PANE", "STY", "ZELLIJ":
+		return true
+	}
+	for _, p := range []string{"KITTY_", "GHOSTTY_", "WEZTERM_", "ITERM_", "ALACRITTY_", "KONSOLE_", "WT_", "ZELLIJ_"} {
+		if strings.HasPrefix(k, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // startShell runs shell interactively in dir, with env added to its

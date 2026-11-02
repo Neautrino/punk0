@@ -1077,6 +1077,10 @@ func TestAgentCommandArgs(t *testing.T) {
 func TestTabProcessShellAndEnv(t *testing.T) {
 	t.Setenv("SHELL", "/bin/fromenv")
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // no agent functions written yet
+	// punk0 started from kitty inside tmux: the tab is in neither.
+	t.Setenv("KITTY_WINDOW_ID", "1")
+	t.Setenv("TERM_PROGRAM", "tmux")
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,1,0")
 	useSettings(t, map[string]any{})
 	if sh := terminalShell(); sh != "/bin/fromenv" {
 		t.Fatalf("default shell %q, want $SHELL", sh)
@@ -1087,7 +1091,7 @@ func TestTabProcessShellAndEnv(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	useSettings(t, map[string]any{
 		"terminal.shell": "/bin/zsh",
-		"terminal.env":   "# work account\nCLAUDE_CONFIG_DIR=~/.claude-work\nPUNK0_HOOK_URL=mine\n",
+		"terminal.env":   "# work account\nCLAUDE_CONFIG_DIR=~/.claude-work\nPUNK0_HOOK_URL=mine\nTERM_PROGRAM=mine\n",
 	})
 	sh := terminalShell()
 	args, env := tabProcess(sh, "claude", []string{"PUNK0_HOOK_URL=punk0"})
@@ -1105,8 +1109,16 @@ func TestTabProcessShellAndEnv(t *testing.T) {
 	if last["PUNK0_HOOK_URL"] != "punk0" {
 		t.Fatalf("PUNK0_HOOK_URL=%q: the user's terminal.env beat punk0's own", last["PUNK0_HOOK_URL"])
 	}
+	if _, ok := last["KITTY_WINDOW_ID"]; ok || last["TMUX"] != "" || last["TERM"] != "xterm-256color" {
+		t.Fatalf("the terminal punk0 started in reached the tab: KITTY_WINDOW_ID=%q TMUX=%q TERM=%q", last["KITTY_WINDOW_ID"], last["TMUX"], last["TERM"])
+	}
+	if last["TERM_PROGRAM"] != "mine" {
+		t.Fatalf("TERM_PROGRAM=%q: terminal.env could not set what punk0 drops", last["TERM_PROGRAM"])
+	}
+	useSettings(t, map[string]any{})
+	_, plain := tabProcess("/bin/zsh", "", nil)
 	useSettings(t, map[string]any{"terminal.env": "not a pair"})
-	if _, env := tabProcess("/bin/zsh", "", nil); len(env) != len(os.Environ())+3 {
+	if _, env := tabProcess("/bin/zsh", "", nil); len(env) != len(plain) { // useSettings moves XDG_CONFIG_HOME, so count
 		t.Fatal("a terminal.env that does not parse still changed the environment")
 	}
 
