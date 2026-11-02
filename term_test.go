@@ -82,3 +82,35 @@ func TestTabSend(t *testing.T) {
 		t.Fatalf("typed %q, want %q", got, want)
 	}
 }
+
+// agy says what it is doing only in its terminal (OSC 7501): these are agy
+// 1.4.12's own reports, captured from a run that signed in, ran a tool behind
+// a permission prompt and finished (hookspike inject/agy/osc.raw). The
+// sign-in report fires at every launch, logged in or not, so it says nothing
+// about the chat.
+func TestAgyStatus(t *testing.T) {
+	for _, c := range []struct {
+		data string
+		want string
+		ok   bool
+	}{
+		{"state=blocked:kind=auth:app=antigravity:msg=U2lnbiBpbiByZXF1aXJlZA==", "", false},
+		{"state=idle:app=antigravity", statusIdle, true},
+		{"state=working:app=antigravity", statusWorking, true},
+		{"state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZSBSdW5Db21tYW5kOiBlY2hvIGhpID4gaGVsbG8udHh0", statusWaiting, true},
+		{"state=done:app=antigravity:msg=RE9ORQ==", statusIdle, true},
+		// AGY_CLI_OSC7501_MESSAGES=brief drops the message.
+		{"state=working:app=antigravity:msg=", statusWorking, true},
+		// Not agy, or not a state punk0 knows.
+		{"state=working:app=zed", "", false},
+		{"state=blocked:app=antigravity", "", false},
+		{"state=thinking:app=antigravity", "", false},
+		{"state=working", "", false},
+		{"", "", false},
+	} {
+		got, ok := agyStatus(c.data)
+		if got != c.want || ok != c.ok {
+			t.Errorf("agyStatus(%q) = %q, %v; want %q, %v", c.data, got, ok, c.want, c.ok)
+		}
+	}
+}

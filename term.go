@@ -262,6 +262,39 @@ func (s *Shell) pump() {
 	close(s.done)
 }
 
+// agyStatus is the status one OSC 7501 report means, and whether it means one
+// at all: agy prints blocked:kind=auth at every launch, signed in or not, and
+// a report naming another app is not the agent's. The fields are separated by
+// colons, which the base64 message cannot hold.
+func agyStatus(data string) (string, bool) {
+	var state, kind, app string
+	for _, f := range strings.Split(data, ":") {
+		k, v, _ := strings.Cut(f, "=")
+		switch k {
+		case "state":
+			state = v
+		case "kind":
+			kind = v
+		case "app":
+			app = v
+		}
+	}
+	if app != "antigravity" {
+		return "", false
+	}
+	switch state {
+	case "working":
+		return statusWorking, true
+	case "idle", "done":
+		return statusIdle, true
+	case "blocked":
+		if kind == "permission" {
+			return statusWaiting, true
+		}
+	}
+	return "", false
+}
+
 // Exited reports whether the shell has ended; a new attach then needs a new shell.
 func (s *Shell) Exited() bool {
 	s.mu.Lock()
