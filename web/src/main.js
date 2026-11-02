@@ -34,8 +34,10 @@ import { initPRScope } from './prscope.js';
 import { initEditView } from './editview.js';
 import { initNewItem } from './newitem.js';
 import { initTips, startTipsAsync } from './tips.js';
+import { watchSelects } from './selectbox.js';
 
 // Initialize all subsystems
+watchSelects(); // every <select> opens punk0's list, so before anything fills one
 initRenderer();
 initTabs();
 initEditView();

@@ -760,7 +760,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
   .o-hist-name { grid-area: name; }
   #o-hist-filter { grid-area: filter; display: inline-flex; }
   #o-hist-more { grid-area: more; }
-  #o-hist-agent { display: none; }
+  #o-hist-agent + .lb-button { display: none; } /* its button, selectbox.js */
   .o-hist-scope { grid-area: scope; margin-right: 4px; }
   .o-hist-scope button { flex: 1; }
   .o-hist-search { grid-area: search; max-width: none; margin: 0 4px 0 0; }

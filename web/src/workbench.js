@@ -30,6 +30,7 @@ import { initSplit, layoutCenter } from './orch/split.js';
 import { initPaneViews } from './orch/paneviews.js';
 import { initSettings } from './orch/settings.js';
 import { initNotify } from './orch/notify.js';
+import { watchSelects } from './selectbox.js';
 
 // Editor windows link back here by this name (main.js), so going back
 // reuses this window instead of opening another orchestrator.
@@ -41,6 +42,7 @@ const codeVp = $('#o-code-vp');
 const changesVp = $('#o-diff-vp');
 const emptyPane = $('#o-empty');
 
+watchSelects(); // every <select> opens punk0's list, so before anything fills one
 initResize(); // first: the panes take their widths before anything measures them
 initSplit();
 initPaneViews(); // before the views' modules, which ask paneView()
