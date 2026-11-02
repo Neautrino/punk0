@@ -880,6 +880,10 @@ func TestAgentCommand(t *testing.T) {
 		// Oh My Pi resumes by --resume, else the folder's latest with -c.
 		{"omp", "", false, ompExt + " -c || " + ompExt},
 		{"omp", "01a197b7-48d3-71b3-88ea-d8056f318c1a", true, ompExt + " --resume 01a197b7-48d3-71b3-88ea-d8056f318c1a || " + ompExt},
+		// crush resumes by -s <id>, else the folder's latest with -C; its
+		// config folder rides in the environment, not on the line.
+		{"crush", "", false, "crush -C || crush"},
+		{"crush", "S", true, "crush -s S || crush"},
 		// agy cannot resume by id: an id it was given changes nothing.
 		{"agy", "S", false, "agy"},
 		// qwen and droid resume like codex; droid, unhooked, names its settings.
