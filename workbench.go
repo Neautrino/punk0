@@ -470,6 +470,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("POST "+wb.route("/api/history/sync"), wb.handleHistorySync)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/history/{agent}/{id}"), wb.handleHistoryDelete)
 	wb.mux.HandleFunc(wb.route("/api/settings"), wb.handleSettings)
+	wb.mux.HandleFunc(wb.route("/api/fonts"), serveFonts)
 	wb.mux.HandleFunc("PATCH "+wb.route("/api/tabs/{id}"), wb.handleTabRename)
 	wb.mux.HandleFunc("DELETE "+wb.route("/api/tabs/{id}"), wb.handleTabRemove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)

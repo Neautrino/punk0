@@ -3032,6 +3032,44 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   border-color: var(--accent);
 }
 
+/* Font pickers: a name field with a dropdown of the installed fonts (each
+   drawn in itself), and a line drawn in the font the setting yields. */
+.settings-font-field {
+  position: relative;
+  display: flex;
+}
+.settings-font-field .settings-input {
+  padding-right: 26px;
+}
+.settings-font-toggle {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.settings-font-toggle:hover {
+  color: var(--fg);
+  background: var(--bg4);
+}
+.settings-font-preview {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
 /* Flat toggle switch: a square thumb sliding in a square track, not the iOS pill. */
 .settings-switch {
   position: relative;

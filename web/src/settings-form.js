@@ -1,9 +1,13 @@
 // web/src/settings-form.js
 // The settings modal, shared by the editor and the agents page: one schema
 // (GET api/settings), one settings.json. It knows neither page; each passes
-// apply(key, value) to put a value into effect. Only state.js is imported
-// (no imports of its own), so the agents page bundle stays free of the editor.
+// apply(key, value) to put a value into effect. Only state.js, fonts.js,
+// listbox.js and selectbox.js are imported (none imports anything else
+// but listbox.js), so the agents page bundle stays free of the editor.
 import { $, esc, withKeys } from './state.js';
+import { SERVED_FONTS, quoteFamily, termFontFamily, missingFont } from './fonts.js';
+import { openListbox, updateListbox, closeListbox, listboxOpenFor, listboxKey } from './listbox.js';
+import { enhanceSelect } from './selectbox.js';
 
 // Rendered when api/settings cannot be reached, so the modal still opens.
 // Mirrors settingsSchema in settings.go.
@@ -43,11 +47,12 @@ const BUILTIN_SCHEMA = [
   },
   {
     key: "workbench.uiFontFamily",
-    title: "Interface Font Family",
-    description: "The font of menus, lists and labels on both pages. Empty uses the theme's font.",
-    category: "Appearance",
+    title: "Interface Font",
+    description: "The font of menus, lists and labels on both pages, as a CSS font-family list. Empty uses the theme's font.",
+    category: "Fonts",
     type: "string",
-    default: ""
+    default: "",
+    font: "any"
   },
   {
     key: "layout.fileView",
@@ -215,11 +220,12 @@ const BUILTIN_SCHEMA = [
   },
   {
     key: "terminal.fontFamily",
-    title: "Font Family",
-    description: "The font of terminal tabs. Empty uses the code font.",
-    category: "Terminal",
+    title: "Terminal Font",
+    description: "The font of terminal tabs, as a CSS font-family list. Empty uses JetBrainsMono Nerd Font Mono, which punk0 serves itself. Icons that agents and prompts print come from it after any font named here that has none (a Nerd Font has them).",
+    category: "Fonts",
     type: "string",
-    default: ""
+    default: "",
+    font: "mono"
   },
   {
     key: "terminal.lineHeight",
@@ -403,11 +409,12 @@ const BUILTIN_SCHEMA = [
   },
   {
     key: "editor.fontFamily",
-    title: "Font Family",
-    description: "Controls the font family used in the code viewer.",
-    category: "Text Editor",
+    title: "Editor Font",
+    description: "The font of the code viewer, as a CSS font-family list. JetBrains Mono is served by punk0 itself; the others are used where installed.",
+    category: "Fonts",
     type: "string",
-    default: '"JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace'
+    default: '"JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+    font: "mono"
   },
   {
     key: "editor.lineHeight",
@@ -796,6 +803,171 @@ async function request(init) {
   return body;
 }
 
+// The installed fonts the pickers offer (GET api/fonts), as [{name, mono}],
+// read again each time the modal opens; null until they arrive. A failed
+// read leaves an empty list: the pickers then offer punk0's own fonts only
+// and warn about none.
+let installedFonts = null;
+let fontsRequest = null;
+
+function loadFonts() {
+  fontsRequest ||= fetch(new URL('api/fonts', document.baseURI))
+    .then(r => (r.ok ? r.json() : { fonts: [] }))
+    .catch(() => ({ fonts: [] }))
+    .then(d => {
+      installedFonts = Array.isArray(d.fonts) ? d.fonts.filter(f => f?.name) : [];
+      refreshFontCards();
+      if (fontMenu.input && listboxOpenFor(fontMenu.input)) updateListbox(fontListOpts(fontMenu.input));
+    });
+  return fontsRequest;
+}
+
+// The font fields' dropdown is punk0's list (listbox.js), opened under the
+// field being edited. Each name is drawn in its own font. Typing filters it;
+// the field still takes any CSS font-family list typed in full.
+const fontMenu = {
+  input: null, // the field it is open for
+  filtering: false, // the user typed since it opened: filter by the field's text
+};
+
+// Keys whose dropdown lists every installed font, not only monospaced ones.
+const fontsShowAll = new Set();
+
+// fontChoices are the dropdown's rows for input: the default, punk0's own
+// fonts, then the installed ones. A monospace setting lists monospaced fonts,
+// and the others too once Show all fonts is on or a name is typed, below
+// them; a typed name filters every group.
+function fontChoices(input, query) {
+  const mono = input.closest('[data-font-kind]')?.dataset.fontKind === 'mono';
+  const served = new Set(SERVED_FONTS.map(f => f.name.toLowerCase()));
+  const q = query.replace(/["']/g, '').trim().toLowerCase();
+  const match = f => !q || f.name.toLowerCase().includes(q);
+  const installed = (installedFonts || []).filter(f => !served.has(f.name.toLowerCase()) && match(f));
+  const groups = [{ label: 'Served by punk0', fonts: SERVED_FONTS.filter(match), tag: 'punk0' }];
+  const others = installed.filter(f => !f.mono);
+  if (!mono) groups.push({ label: 'Installed fonts', fonts: installed });
+  else {
+    groups.push({ label: 'Installed monospace fonts', fonts: installed.filter(f => f.mono) });
+    if (q || fontsShowAll.has(input.dataset.key)) groups.push({ label: 'Other installed fonts', fonts: others });
+  }
+  return { groups, showDefault: !q, scope: mono && !q ? others.length : 0, loading: installedFonts === null };
+}
+
+// FONT_DEFAULTS name what each font setting draws with when left at its
+// default, for the dropdown's Default row.
+const FONT_DEFAULTS = {
+  'terminal.fontFamily': 'JetBrainsMono Nerd Font Mono',
+  'editor.fontFamily': 'JetBrains Mono',
+  'workbench.uiFontFamily': "the theme's font",
+};
+
+// fontListOpts are the list's rows for input: a Default row, then
+// fontChoices' groups, and the footer that shows or hides the fonts that
+// are not monospaced.
+function fontListOpts(input) {
+  const key = input.dataset.key;
+  const { groups, showDefault, scope, loading } = fontChoices(input, fontMenu.filtering ? input.value : '');
+  const out = [];
+  if (showDefault) out.push({ items: [{ value: String(settingsData.defaults?.[key] ?? ''), label: `Default: ${FONT_DEFAULTS[key] || 'as shipped'}` }] });
+  for (const g of groups) {
+    out.push({
+      label: g.label,
+      count: g.fonts.length,
+      items: g.fonts.map(f => ({ value: quoteFamily(f.name), label: f.name, tag: g.tag || (f.mono ? 'mono' : ''), font: `${quoteFamily(f.name)}, var(--ui)` })),
+    });
+  }
+  return {
+    groups: out,
+    value: input.value.trim(),
+    active: fontMenu.filtering ? 0 : undefined,
+    empty: loading ? 'Reading installed fonts…' : 'No installed font matches; the text typed is used as written.',
+    footer: scope ? {
+      label: fontsShowAll.has(key) ? 'Show monospace fonts only' : `Show all installed fonts (${scope} more)`,
+      run: () => {
+        if (!fontsShowAll.delete(key)) fontsShowAll.add(key);
+        updateListbox(fontListOpts(input));
+      },
+    } : undefined,
+  };
+}
+
+function openFontMenu(input) {
+  if (fontMenu.input !== input) fontMenu.filtering = false;
+  fontMenu.input = input;
+  if (listboxOpenFor(input)) return updateListbox(fontListOpts(input));
+  openListbox(input, {
+    ...fontListOpts(input),
+    align: 'end',
+    minWidth: 300,
+    owner: input.parentElement,
+    onPick: it => pickFont(input, it.value),
+    onClose: () => {
+      if (fontMenu.input !== input) return;
+      fontMenu.input = null;
+      fontMenu.filtering = false;
+    },
+  });
+}
+
+function closeFontMenu() {
+  if (fontMenu.input && listboxOpenFor(fontMenu.input)) closeListbox();
+}
+
+// pickFont puts value into the field and saves it, as typing it and leaving
+// the field would.
+function pickFont(input, value) {
+  input.value = value;
+  delete pendingChanges[input.dataset.key];
+  updateFontCard(input.dataset.key, value);
+  handleSettingChange(input.dataset.key, value);
+}
+
+function onFontKey(e) {
+  const input = e.target;
+  if (listboxOpenFor(input)) listboxKey(e);
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    openFontMenu(input);
+  }
+}
+
+// FONT_PREVIEW is the line each font card draws in the font its setting
+// yields: the terminal's shows the icons agents and prompts print.
+const FONT_PREVIEW = {
+  'terminal.fontFamily': 'ls -la  0O 1lI {}[] => ─┼─ \ue0b6\uf418 main \ue0b0 \uf07b src \uf0e7',
+  'editor.fontFamily': 'const x = list.find(v => v != 0O1lI); // {}[]',
+  'workbench.uiFontFamily': 'Projects · Settings · The quick brown fox jumps over the lazy dog',
+};
+
+// fontStack is the font-family a value of a font setting draws with.
+function fontStack(key, value) {
+  const v = String(value ?? '').trim();
+  if (key === 'terminal.fontFamily') {
+    return termFontFamily(v, getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace');
+  }
+  if (key === 'editor.fontFamily') return v || String(settingsData.defaults?.[key] || 'monospace');
+  return v;
+}
+
+// updateFontCard draws key's preview in value's font and says when the font
+// it names first is not installed (the browser would skip it silently).
+function updateFontCard(key, value) {
+  const preview = modalEl?.querySelector(`[data-font-preview="${CSS.escape(key)}"]`);
+  if (preview) preview.style.fontFamily = fontStack(key, value);
+  const note = modalEl?.querySelector(`[data-font-missing="${CSS.escape(key)}"]`);
+  if (!note) return;
+  const known = new Set((installedFonts || []).map(f => String(f.name).toLowerCase()));
+  const missing = known.size ? missingFont(value, known) : '';
+  note.hidden = !missing;
+  note.textContent = missing ? `“${missing}” is not installed where punk0 runs; the next font in the list draws instead.` : '';
+}
+
+function refreshFontCards() {
+  for (const input of modalEl?.querySelectorAll('.settings-font input[data-key]') || []) {
+    updateFontCard(input.dataset.key, input.value);
+  }
+}
+
 const postSettings = payload => request({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
@@ -904,6 +1076,7 @@ export function openSettings(mode = 'ui', category = null, highlightKey = null) 
   viewMode = mode === 'json' ? 'json' : 'ui';
   modalEl.hidden = false;
   pendingChanges = {};
+  fontsRequest = null; // fonts installed since the last open show too
   setSaveStatus('saved', 'All changes saved');
 
   if (category && viewMode === 'ui') {
@@ -934,6 +1107,7 @@ function focusSettingCard(key) {
 }
 
 export function closeSettings() {
+  closeFontMenu();
   if (modalEl) modalEl.hidden = true;
 }
 
@@ -1022,6 +1196,7 @@ function notificationWarning(value) {
 }
 
 function renderSettingsList() {
+  closeListbox(); // the field it serves is about to be replaced
   const container = $('#settings-list');
   const q = filterQuery.trim().toLowerCase();
   const schema = settingsData.schema || [];
@@ -1049,6 +1224,12 @@ function renderSettingsList() {
   }
 
   container.innerHTML = items.map(item => renderCard(item, currentSettings, defaults)).join('');
+  // Now, not when watchSelects sees them: focus may be put back right after.
+  container.querySelectorAll('select').forEach(enhanceSelect);
+  if (items.some(item => item.font)) {
+    refreshFontCards();
+    loadFonts();
+  }
 }
 
 function renderCard(item, currentSettings, defaults) {
@@ -1135,6 +1316,22 @@ function renderCard(item, currentSettings, defaults) {
       ? 'Enter custom instructions for AI-written pull request merge messages (e.g. Follow Conventional Commits, reference issue key from branch)...'
       : 'Enter instructions...';
     controlHtml = `<textarea class="settings-input settings-textarea" data-key="${esc(key)}" rows="6" spellcheck="false" placeholder="${esc(placeholder)}">${esc(String(val || ''))}</textarea>`;
+  } else if (item.font) {
+    // A font-family value: a dropdown of the installed fonts (monospaced
+    // ones first for a monospace setting); typing any CSS list still works.
+    controlHtml = `
+      <div class="settings-font" data-font-kind="${item.font === 'mono' ? 'mono' : 'any'}">
+        <div class="settings-font-field">
+          <input type="text" class="settings-input" data-key="${esc(key)}" value="${esc(String(val || ''))}" placeholder="Default" spellcheck="false" autocomplete="off"
+            role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" aria-label="${esc(title)}">
+          <button type="button" class="settings-font-toggle" data-font-toggle tabindex="-1" aria-label="Show fonts">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+      </div>`;
+    aptValuesHtml = `
+      <div class="settings-font-preview" data-font-preview="${esc(key)}">${esc(FONT_PREVIEW[key] || FONT_PREVIEW['workbench.uiFontFamily'])}</div>
+      <div class="settings-card-note is-warning" data-font-missing="${esc(key)}" hidden></div>`;
   } else {
     const isSecret = item.secret;
     controlHtml = `<input type="${isSecret ? 'password' : 'text'}" class="settings-input" data-key="${esc(key)}" value="${esc(String(val || ''))}"${isSecret ? ' autocomplete="off"' : ''}>`;
@@ -1259,8 +1456,30 @@ async function handleSettingChange(key, value) {
     console.error(`Failed to save setting ${key}:`, err);
     setSaveStatus('error', 'Failed to save: ' + (err.message || 'unknown error'));
   }
+  // The save came from leaving a field, often by clicking the next one, or
+  // from a list picked by keyboard: keep that field focused, with what it
+  // holds, through the re-render. A select's button stands for its select.
+  const active = document.activeElement;
+  const field = active?.matches?.('.lb-button') ? active.previousElementSibling : active;
+  const focusKey = field?.closest?.('#settings-list') && field.dataset?.key;
+  const typed = focusKey && field.matches('input[type="text"], textarea')
+    ? { value: field.value, start: field.selectionStart, end: field.selectionEnd } : null;
+  const menuWasOpen = !!focusKey && fontMenu.input === active;
   renderSettingsList();
+  if (!focusKey) return;
+  const again = $('#settings-list').querySelector(`[data-key="${CSS.escape(focusKey)}"]`);
+  if (!again) return;
+  refocusing = true; // focus put back, not given: a font list stays shut
+  if (typed) {
+    again.value = typed.value;
+    again.focus();
+    try { again.setSelectionRange(typed.start, typed.end); } catch {}
+  } else (again.lbButton || again).focus();
+  refocusing = false;
+  if (menuWasOpen) openFontMenu(again);
 }
+
+let refocusing = false;
 
 async function handleResetSetting(key) {
   const def = settingsData.defaults?.[key];
@@ -1384,6 +1603,49 @@ function wireModal() {
     if (!key) return;
     pendingChanges[key] = target.type === 'number' ? parseFloat(target.value) : target.value;
     setSaveStatus('unsaved', 'Unsaved changes');
+    if (target.closest('.settings-font')) {
+      updateFontCard(key, target.value);
+      fontMenu.filtering = true;
+      openFontMenu(target);
+    }
+  });
+
+  // The font dropdown opens on click or focus of its field or the arrow,
+  // and closes when the field loses focus; a click in the list does not
+  // take the focus away.
+  let selectAll = null; // a font field focused by this click: keep it all selected
+  listEl.addEventListener('focusin', e => {
+    if (!e.target.matches('.settings-font input[data-key]') || refocusing) return;
+    openFontMenu(e.target);
+    e.target.select(); // typing replaces the value, so it searches the list
+    selectAll = e.target;
+  });
+  // The click that focused the field would put the caret where it landed.
+  listEl.addEventListener('mouseup', e => {
+    if (e.target === selectAll) e.preventDefault();
+    selectAll = null;
+  });
+  // A field still focused after a pick opens its list again when clicked.
+  listEl.addEventListener('click', e => {
+    const input = e.target.closest?.('.settings-font input[data-key]');
+    if (!input || fontMenu.input === input) return;
+    openFontMenu(input);
+    input.select();
+  });
+  listEl.addEventListener('focusout', e => {
+    if (e.target === fontMenu.input) closeFontMenu();
+  });
+  listEl.addEventListener('keydown', e => {
+    if (e.target.matches('.settings-font input[data-key]')) onFontKey(e);
+  });
+  listEl.addEventListener('mousedown', e => {
+    const toggle = e.target.closest('[data-font-toggle]');
+    if (!toggle) return;
+    e.preventDefault();
+    const input = toggle.parentElement.querySelector('input[data-key]');
+    if (fontMenu.input === input) return closeFontMenu();
+    input.focus();
+    openFontMenu(input);
   });
 
   listEl.addEventListener('change', e => {

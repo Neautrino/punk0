@@ -157,3 +157,6 @@ Mermaid fences render inside `.md-mermaid`, a tokenized, scrollable surface usin
 
 Repository-supplied SVG is still removed by the Markdown sanitizer. Only SVG generated after sanitization by the pinned, strict-mode Mermaid runtime reaches `.md-mermaid`.
 
+## 7. Dropdown Lists
+
+Every value picker opens one list, `#lb-menu` (`web/src/listbox.js`), styled in `style.css` under `.lb-*` with `--bg3`, `--line`, `--sel`, `--faint` and `--accent-fg`: rows (`.lb-opt`, `.sel` when highlighted, `.lb-disabled`), group headings (`.lb-group`), a right-hand tag (`.lb-tag`), a note when nothing matches (`.lb-note`) and an optional footer row (`.lb-foot`). The browser's own `<select>` popup is never shown: `web/src/selectbox.js` (`watchSelects`, run first by both pages) puts a button after each `<select>`, copying the select's classes, so a rule such as `.o-select` styles the button too. The select stays in the page as `.lb-native` (out of sight) and keeps being the control: picking sets its value and fires `input` and `change`, and code that sets `.value`, replaces its options, disables or hides it is followed. A rule that targets a select by id must name its button as well, e.g. `#o-hist-agent + .lb-button`. Mark a select `data-native` to keep the browser's control. The settings modal's font fields open the same list as a filterable combobox (`settings-form.js`).

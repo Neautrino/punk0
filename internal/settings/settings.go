@@ -111,6 +111,9 @@ type SchemaItem struct {
 	// in remote mode anyone reaching the port could otherwise plant a command
 	// that runs the next time a local tab or agent edit starts.
 	Exec bool `json:"exec,omitempty"`
+	// Font marks a font-family string: the modal offers the installed fonts
+	// (api/fonts) with a preview; "mono" lists the monospaced ones.
+	Font string `json:"font,omitempty"`
 }
 
 func numPtr(v float64) *float64 { return &v }
@@ -159,9 +162,10 @@ var Schema = []SchemaItem{
 	},
 	{
 		Key:         "workbench.uiFontFamily",
-		Title:       "Interface Font Family",
-		Description: "The font of menus, lists and labels on both pages. Empty uses the theme's font.",
-		Category:    "Appearance",
+		Title:       "Interface Font",
+		Description: "The font of menus, lists and labels on both pages, as a CSS font-family list. Empty uses the theme's font.",
+		Category:    "Fonts",
+		Font:        "any",
 		Type:        "string",
 		Default:     "",
 	},
@@ -331,9 +335,10 @@ var Schema = []SchemaItem{
 	},
 	{
 		Key:         "terminal.fontFamily",
-		Title:       "Font Family",
-		Description: "The font of terminal tabs. Empty uses the code font.",
-		Category:    "Terminal",
+		Title:       "Terminal Font",
+		Description: "The font of terminal tabs, as a CSS font-family list. Empty uses JetBrainsMono Nerd Font Mono, which punk0 serves itself. Icons that agents and prompts print come from it after any font named here that has none (a Nerd Font has them).",
+		Category:    "Fonts",
+		Font:        "mono",
 		Type:        "string",
 		Default:     "",
 	},
@@ -519,9 +524,10 @@ var Schema = []SchemaItem{
 	},
 	{
 		Key:         "editor.fontFamily",
-		Title:       "Font Family",
-		Description: "Controls the font family used in the code viewer.",
-		Category:    "Text Editor",
+		Title:       "Editor Font",
+		Description: "The font of the code viewer, as a CSS font-family list. JetBrains Mono is served by punk0 itself; the others are used where installed.",
+		Category:    "Fonts",
+		Font:        "mono",
 		Type:        "string",
 		Default:     `"JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Menlo, Consolas, ui-monospace, monospace`,
 	},

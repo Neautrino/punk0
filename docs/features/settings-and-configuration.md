@@ -19,6 +19,7 @@ punk0 stores all configuration in a single per-user global file (`~/.config/punk
 - **Instant Live Preview Without Reload**: Adjusting font sizes, line heights, themes, cursor animations, or diff modes takes effect immediately across all open tabs without requiring a page reload.
 - **One-Click Factory Reset**: Any setting that has been customized displays an amber `Modified` badge and an inline `Reset` button, allowing you to restore default settings individually.
 - **Lists and Card Notes**: A list setting such as `agents.hidden` shows one checkbox per choice. Exec-gated cards note that they can only be changed when punk0 listens on 127.0.0.1. Turning `notifications.desktop` on asks the browser for permission; when the page is not on https or localhost, or the browser blocked notifications, the card says so and the value is saved anyway. A refused save shows the server's reason in the footer and the card keeps the stored value.
+- **Fonts**: The Fonts section holds the interface, terminal and editor fonts. Each field opens a list of the fonts installed where punk0 runs (`GET api/fonts`: fontconfig's list where `fc-list` exists, else the system and user font folders), each name drawn in its own font: a Default row, punk0's own two, then the installed ones, monospaced only for the terminal and editor until **Show all installed fonts** at the bottom of the list. Typing searches every installed font; arrow keys and Enter pick, Escape closes the list, and any CSS font-family list can still be typed in full. A line under each card is drawn in the font the value yields, and a card whose first named font is not installed says so, since the browser would draw the next one silently. punk0 serves JetBrains Mono and JetBrainsMono Nerd Font Mono itself, fetched once from their pinned releases and cached, so the defaults look the same everywhere and work offline after the first use. With no terminal font set, terminals use JetBrainsMono Nerd Font Mono; a terminal font without Nerd Font icons gets it as a fallback, so agent and prompt icons draw instead of boxes. Opened from another machine, the list shows the fonts of the machine punk0 runs on.
 - **Clean Workspace Separation**: All configuration lives in your user directory. Your repository working trees, `.git` configs, and tracked files remain 100% pristine.
 
 ---
@@ -28,7 +29,7 @@ punk0 stores all configuration in a single per-user global file (`~/.config/punk
 | Setting Key | Category | Default | Allowed Values / Range | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `editor.fontSize` | Text Editor | `13.5` | `9.0` – `32.0` (px) | Font size in the code viewer |
-| `editor.fontFamily` | Text Editor | JetBrains Mono stack | CSS font stack string | Font family stack for viewer |
+| `editor.fontFamily` | Fonts | JetBrains Mono stack | CSS font stack string | Font family stack for viewer |
 | `editor.lineHeight` | Text Editor | `21.0` | `14.0` – `48.0` (px) | Line height for viewer rows |
 | `editor.tabSize` | Text Editor | `4` | `2`, `4`, `8` | Number of spaces per tab |
 | `editor.wordWrap` | Text Editor | `"on"` | `"on"`, `"off"` | Soft line wrapping at editor boundary (also applies to the edit view) |
@@ -80,13 +81,13 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `update.auto` | General | `true` | `true`, `false` | Check for and install releases in the background; `-no-update` overrides |
 | `tips.enabled` | General | `true` | `true`, `false` | Show tips in the interface |
 | `workbench.colorTheme` | Appearance | `"catppuccin-mocha"` | 14 built-in theme IDs | Color theme of both pages |
-| `workbench.uiFontFamily` | Appearance | `""` | CSS font stack | Interface font; empty uses the theme's |
+| `workbench.uiFontFamily` | Fonts | `""` | CSS font stack | Interface font; empty uses the theme's |
 | `layout.fileView` | Appearance | `"beside"` | `beside`, `tabs` | Files in a panel beside the terminals, or among the terminal tabs (agents page) |
 | `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
 | `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
 | `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent id in `agents.default`'s list |
 | `terminal.fontSize` | Terminal | `13` | `8` – `32` (px) | Terminal font size |
-| `terminal.fontFamily` | Terminal | `""` | CSS font stack | Terminal font |
+| `terminal.fontFamily` | Fonts | `""` | CSS font stack | Terminal font; empty uses JetBrainsMono Nerd Font Mono, which also draws the icons of a font without them |
 | `terminal.lineHeight` | Terminal | `1.0` | `1.0` – `2.0` | Terminal line height |
 | `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab, in the page and in punk0 for reopening the tab (applies to tabs started afterwards) |
 | `terminal.cursorStyle` | Terminal | `"block"` | `"block"`, `"bar"`, `"underline"` | Terminal cursor shape |
