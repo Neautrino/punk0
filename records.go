@@ -148,7 +148,7 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 				env = append(env, e...)
 			}
 		}
-		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env, nil)
+		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env, s.oscStatus)
 		if err != nil {
 			return nil, false, err
 		}
@@ -194,6 +194,19 @@ func (s *Satellite) Status() string {
 func (s *Satellite) setStatus(status string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.status = status
+}
+
+// oscStatus takes what the agent in the tab's terminal said about itself
+// (term.go). Only the shell the tab runs now is heard: one closed or
+// restarted may still have a status in hand. agy is the only agent that
+// reports this way, so a tab left at a shell prompt keeps none of it.
+func (s *Satellite) oscStatus(sh *Shell, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sh != sh || s.Kind != tabAgy {
+		return
+	}
 	s.status = status
 }
 

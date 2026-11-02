@@ -227,3 +227,74 @@ func TestShellCloseWhileReportingStatus(t *testing.T) {
 		t.Fatal("Close waited for the status report to finish")
 	}
 }
+
+// An agy tab's dot follows what agy prints in its terminal, which is the only
+// thing agy tells punk0: punk0 starts it with the switch that makes it report
+// (AGY_CLI_OSC7501), the permission prompt shows as needs-you, and DONE as
+// idle. The same reports in a tab that is not running agy say nothing.
+func TestAgyTabStatusFromItsTerminal(t *testing.T) {
+	newTestStore(t)
+	useSettings(t, map[string]any{})
+	t.Setenv("SHELL", "/bin/sh") // a shell punk0 cannot hook: the tab's own environment carries the switch
+	bin := t.TempDir()
+	writeExec(t, filepath.Join(bin, "agy"), "#!/bin/sh\n"+
+		"echo \"osc=$AGY_CLI_OSC7501\" > osc-env\n"+
+		"printf '\\033]7501;state=blocked:kind=auth:app=antigravity:msg=U2lnbiBpbiByZXF1aXJlZA==\\007'\n"+
+		"printf '\\033]7501;state=working:app=antigravity\\007'\n"+
+		"while [ ! -f ask ]; do sleep 0.05; done\n"+
+		"printf '\\033]7501;state=blocked:kind=permission:app=antigravity:msg=QXBwcm92ZQ==\\007'\n"+
+		"while [ ! -f stop ]; do sleep 0.05; done\n"+
+		"printf '\\033]7501;state=done:app=antigravity:msg=RE9ORQ==\\007'\n"+
+		"echo agy-finished\n"+
+		"sleep 60\n")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	_, ws, err := wb.records.Open(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := wb.records.AddTab(ws.ID, tabAgy, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := tab.Shell(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tab.close)
+	step := func(status string) {
+		t.Helper()
+		waitFor(t, func() bool { return tab.Status() == status })
+	}
+	step(statusWorking) // the sign-in report before it left the tab alone
+	if got, _ := os.ReadFile(filepath.Join(tab.dir, "osc-env")); strings.TrimSpace(string(got)) != "osc=on" {
+		t.Fatalf("punk0 started agy with %q, want osc=on", got)
+	}
+	for _, f := range []struct{ name, status string }{{"ask", statusWaiting}, {"stop", statusIdle}} {
+		if err := os.WriteFile(filepath.Join(tab.dir, f.name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		step(f.status)
+	}
+
+	// A shell tab running the same program is still a shell: nothing binds
+	// it to agy, so its reports are not its tab's.
+	shell, err := wb.records.AddTab(ws.ID, tabShell, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh, _, err := shell.Shell()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(shell.close)
+	waitShown(t, sh, "$ ") // typing before the shell is at its prompt is lost
+	sh.tty.Write([]byte("agy\r"))
+	waitShown(t, sh, "agy-finished")
+	if got := shell.Status(); got != "" {
+		t.Fatalf("shell tab took agy's status %q", got)
+	}
+	if got := tab.Status(); got != statusIdle {
+		t.Fatalf("agy tab's status became %q after another tab's agy ran", got)
+	}
+}
