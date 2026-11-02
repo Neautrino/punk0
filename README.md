@@ -41,7 +41,7 @@ install -d ~/.local/bin && install punk0 ~/.local/bin/
 # Open the agents page: projects, workspaces, terminal tabs
 punk0
 
-# Add a folder as a project and open its editor (hands it to a running punk0)
+# Add a folder as a project and open it (a file also opens in its editor); a running punk0 takes it in a new browser tab
 punk0 ~/workspace/project
 punk0 main.go:42
 
@@ -58,11 +58,11 @@ punk0 listens on <http://127.0.0.1:7777> by default. See [Agents Page](docs/feat
 
 **01 · Projects and workspaces** — A sidebar of projects; each workspace is the main checkout, a git worktree on its own branch, or a scratch folder.
 
-**02 · Terminal tabs** — Shell and Claude Code tabs beside your files; Claude tabs resume their own chat when reopened.
+**02 · Terminal tabs** — Shell and agent tabs beside your files: Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Antigravity, Cursor Agent, Qwen Code, Factory Droid, Kimi Code, Crush, Pi, Oh My Pi and Aider. A tab shows the agent running in it; most agents report their status to it and resume their chat when it reopens.
 
 **03 · Agents beside the code** — The editor's right side has the workspace's shell and agent tabs and, one icon over, this folder's earlier chats to resume (`Alt+T` focuses the terminal, `Cmd/Ctrl+J` hides or shows the side). Select code to get a pill: **Add to Chat** (`Alt+L`) sends it to the agent in the active tab, and **Quick Edit** (`Cmd/Ctrl+K`) has your coding harness rewrite the lines and shows a -/+ preview before anything is written. See [Editor Terminal & Quick Edit](docs/features/editor-terminal-and-quick-edit.md).
 
-**04 · Shells that outlive the browser** — Closing or reloading the page keeps every tab running; reconnecting replays recent output.
+**04 · Shells that outlive the browser** — Closing or reloading the page keeps every tab running; reconnecting redraws its screen and scrollback as they were.
 
 ## Everything from px0
 
@@ -87,6 +87,7 @@ punk0 listens on <http://127.0.0.1:7777> by default. See [Agents Page](docs/feat
 ```bash
 make test                          # run tests
 make web && go build -o punk0 .    # build
+make dev                           # dev build beside the installed punk0 (port 7800, .punk0-dev/)
 ```
 
 punk0 tracks px0 as a second remote:

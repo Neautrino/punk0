@@ -11,7 +11,7 @@ This directory houses the comprehensive documentation for punk0, split into user
 ### 1. [Feature Guides](features/README.md)
 Detailed walkthroughs of all punk0 features, capabilities, developer workflows, and configuration options without low-level implementation noise.
 - **[Features Overview & Catalog](features/README.md)**: Master index of all feature areas.
-- **[Agents Page (Orchestrator)](features/workbench.md)**: What `punk0` opens: projects, local / worktree / scratch workspaces, shell and Claude Code terminal tabs with agent status, per-folder editors and language servers, and worktree-backed PR reviews.
+- **[Agents Page (Orchestrator)](features/workbench.md)**: What `punk0` opens: projects, local / worktree / scratch workspaces, shell and agent terminal tabs (Claude Code, Codex, OpenCode and 11 more) with agent status, per-folder editors and language servers, and worktree-backed PR reviews.
 - **[Fuzzy File Search & Quick Open](features/fuzzy-file-search.md)**: Rapid multi-file discovery with recency weighting (`Cmd/Ctrl+P`, `Cmd/Ctrl+K`).
 - **[Workspace Text & Regex Search](features/workspace-search.md)**: Full-repository pattern matching and symbol exploration (`Cmd/Ctrl+Shift+F`).
 - **[Symbol Outline & Navigation](features/symbol-outline.md)**: In-file structural symbol trees with LSP and regex fallbacks (`Cmd/Ctrl+Shift+O`).

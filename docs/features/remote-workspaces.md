@@ -87,6 +87,7 @@ punk0 -base-path /rev-123/ -host 0.0.0.0 -port 7777 ~/workspace
 | `-quiet` | `false` | Suppress CLI narration on stdout |
 | `-update` | `false` | Check for updates and install latest release |
 | `-version` | `false` | Print version and architecture and exit |
+| `-dev` | off (on in a `make dev` build) | Run as a dev punk0 beside the installed one: own settings, projects and chats in `.punk0-dev/` beside the executable (or `-dev=/full/path`), port `7800`, no auto-update |
 
 ---
 
