@@ -446,6 +446,22 @@ func TestExtensionAgentsReportToTheirTab(t *testing.T) {
 			{name: "SessionEnd", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", title: "Spike chat A", status: ""},
 			{name: "SessionStart", session: "01a197bb-acad-722f-8079-369fb8aeb5b8", status: statusIdle},
 		}},
+		{"omp", "/home/u/.omp/agent/sessions/-w/", []step{
+			{name: "SessionStart", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", status: statusIdle},
+			{name: "UserPromptSubmit", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", prompt: "Run the shell command: echo hi > hello.txt", status: statusWorking},
+			{name: "PermissionRequest", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", status: statusWaiting},
+			{name: "PostToolUse", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", status: statusWorking},
+			// A subagent's approval prompt: needs-you, then working, and the
+			// tab keeps the main chat (agent_id set: no rebind).
+			{name: "PermissionRequest", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", agentID: "01a197b7-9a00-7000-8000-000000000001", status: statusWaiting},
+			{name: "PostToolUse", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", agentID: "01a197b7-9a00-7000-8000-000000000001", status: statusWorking},
+			{name: "Stop", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", status: statusIdle},
+			// omp titles the chat after the turn: the last status again, with it.
+			{name: "Stop", session: "01a197b7-48d3-71b3-88ea-d8056f318c1a", title: "\uf15c HELLO: Create hello test file", status: statusIdle},
+			// /new switches chats in the same omp: no SessionEnd, a SessionStart.
+			{name: "SessionStart", session: "01a197b8-0723-757e-92fe-7675ebd69c4e", status: statusIdle},
+			{name: "SessionEnd", session: "01a197b8-0723-757e-92fe-7675ebd69c4e", status: ""},
+		}},
 	} {
 		t.Run(c.agent, func(t *testing.T) {
 			tab, err := wb.records.AddTab(p.Workspaces[0].ID, tabShell, "")

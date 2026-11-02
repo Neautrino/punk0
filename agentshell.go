@@ -427,6 +427,11 @@ var opencodePlugin string
 //go:embed pi-extension.ts
 var piExtension string
 
+// ompExtension reports what an Oh My Pi run in a tab does (extension).
+//
+//go:embed omp-extension.ts
+var ompExtension string
+
 // opencodePluginDir is the plugin folder a tab's opencode loads (opencodeEnv).
 func opencodePluginDir() string { return filepath.Join(agentShellDir(), "opencode-plugin") }
 

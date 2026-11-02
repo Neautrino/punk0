@@ -850,6 +850,7 @@ func TestAgentCommand(t *testing.T) {
 	droid := "droid --settings " + shellQuote(filepath.Join(reportDir("droid"), "droid.json"))
 	copilot := reportLine("copilot", "copilot", posixShell) // carries --plugin-dir except on Windows
 	piExt := "pi -e " + posixShell.quote(filepath.Join(reportDir("pi"), "punk0.ts"))
+	ompExt := "omp -e " + posixShell.quote(filepath.Join(reportDir("omp"), "punk0.ts"))
 	cases := []struct {
 		kind, session string
 		first         bool
@@ -876,6 +877,9 @@ func TestAgentCommand(t *testing.T) {
 		{"pi", "", true, piExt},
 		{"pi", "", false, piExt + " -c || " + piExt},
 		{"pi", "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", false, piExt + " --session 01a197bb-4ce2-7bcb-b773-c5abb0ad2f65 || " + piExt},
+		// Oh My Pi resumes by --resume, else the folder's latest with -c.
+		{"omp", "", false, ompExt + " -c || " + ompExt},
+		{"omp", "01a197b7-48d3-71b3-88ea-d8056f318c1a", true, ompExt + " --resume 01a197b7-48d3-71b3-88ea-d8056f318c1a || " + ompExt},
 		// agy cannot resume by id: an id it was given changes nothing.
 		{"agy", "S", false, "agy"},
 		// qwen and droid resume like codex; droid, unhooked, names its settings.
