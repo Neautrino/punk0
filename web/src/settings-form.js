@@ -670,7 +670,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "agent.harness",
     title: "Coding Harness",
-    description: "Coding agent harness invoked for code edits (e.g. claude, gemini, cursor-agent, agy, opencode, codex, aider, goose).",
+    description: "Coding agent harness invoked for code edits: claude, codex, opencode, agy, cursor-agent, or a command template containing {prompt}.",
     category: "Agent / AI",
     type: "string",
     default: "",
@@ -1335,7 +1335,7 @@ function renderCard(item, currentSettings, defaults) {
   } else {
     const isSecret = item.secret;
     controlHtml = `<input type="${isSecret ? 'password' : 'text'}" class="settings-input" data-key="${esc(key)}" value="${esc(String(val || ''))}"${isSecret ? ' autocomplete="off"' : ''}>`;
-    const stringPresets = key === 'agent.harness' ? ['claude', 'gemini', 'cursor-agent', 'agy', 'aider'] : [];
+    const stringPresets = key === 'agent.harness' ? ['claude', 'codex', 'opencode', 'agy', 'cursor-agent'] : [];
     aptValuesHtml = stringPresets.length ? `
       <div class="settings-apt-bar">
         <span class="settings-apt-label">Suggestions:</span>

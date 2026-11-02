@@ -785,7 +785,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "agent.harness",
 		Title:       "Coding Harness",
-		Description: "Coding agent harness invoked for code edits (e.g. claude, gemini, cursor-agent, agy, opencode, codex, aider, goose).",
+		Description: "Coding agent harness invoked for code edits: claude, codex, opencode, agy, cursor-agent, or a command template containing {prompt}.",
 		Category:    "Agent / AI",
 		Type:        "string",
 		Default:     "",
