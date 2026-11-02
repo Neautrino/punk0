@@ -126,7 +126,7 @@ func runHook(args []string) {
 		if len(args) > 0 {
 			agent = args[0]
 		}
-		body = slimHookEvent(in, agent)
+		body = slimHookEvent(renameHookEvent(in, agent), agent)
 	}
 	var ev hookEvent
 	json.Unmarshal(body, &ev)
@@ -204,11 +204,42 @@ func slimHookEvent(body []byte, agent string) []byte {
 	return out
 }
 
+// renameHookEvent gives an agent's event the name punk0 reads it by, where
+// the agent's own differs (agentReport.events); a body that does not parse,
+// or an event punk0 does not rename, comes back as it came. It reads the
+// table, not agentReportOf: `punk0 hook` runs in a process of its own that
+// set nothing up, and a hook runs at all only where punk0 wrote it.
+func renameHookEvent(body []byte, kind string) []byte {
+	a, ok := tabAgents[kind]
+	if !ok || a.report == nil || a.report.events == nil {
+		return body
+	}
+	var ev map[string]json.RawMessage
+	if json.Unmarshal(body, &ev) != nil {
+		return body
+	}
+	var name string
+	if json.Unmarshal(ev["hook_event_name"], &name) != nil {
+		return body
+	}
+	to, ok := a.report.events[name]
+	if !ok {
+		return body
+	}
+	ev["hook_event_name"], _ = json.Marshal(to)
+	out, err := json.Marshal(ev)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 // hookEvent is the part of an agent's hook event punk0 uses: which agent
 // sent it, what the tab shows, the prompt a scratch chat is titled after, the
 // chat and its title, and the folders its agent works in. Claude Code and
-// Codex name their fields alike; OpenCode's plugin sends the same ones, and
-// the shell functions send only their name and agent.
+// Codex name their fields alike; OpenCode's plugin sends the same ones,
+// crush's hooks do once renamed (renameHookEvent), and the shell functions
+// send only their name and agent.
 type hookEvent struct {
 	Name         string          `json:"hook_event_name"`
 	Agent        string          `json:"punk0_agent"` // "" from a Claude started before hooks named their agent

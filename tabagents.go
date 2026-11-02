@@ -30,12 +30,13 @@ type tabAgent struct {
 }
 
 // agentReport is what punk0 learns from one agent while it runs: a mechanism
-// that gets punk0's reporting into a single run (agentshell.go), and where
-// the chat's title comes from (agentbind.go), for an agent whose events do
-// not carry it.
+// that gets punk0's reporting into a single run (agentshell.go), the agent's
+// own names for the events punk0 reads (hook.go), and where the chat's title
+// comes from (agentbind.go), for an agent whose events do not carry it.
 type agentReport struct {
-	via   reportVia
-	title titleSource
+	via    reportVia
+	events map[string]string // agent event name -> the Claude name punk0 reads it by; nil where they agree
+	title  titleSource       // nil: the agent's events carry the title
 }
 
 // reportOff names the agents punk0 could not set reporting up for this run
@@ -93,7 +94,7 @@ var tabAgents = map[string]tabAgent{
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},
 	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}, title: chatFileTitle{root: droidRoot, read: readDroidTitle}}},
-	"crush":        {Label: "Crush", bin: "crush", resume: []string{"-C"}, resumeID: []string{"-s"}, report: &agentReport{via: crushConfig{}}},
+	"crush":        {Label: "Crush", bin: "crush", resume: []string{"-C"}, resumeID: []string{"-s"}, report: &agentReport{via: crushConfig{}, events: crushEvents}},
 	"pi":           {Label: "Pi", bin: "pi", resume: []string{"-c"}, resumeID: []string{"--session"}, report: &agentReport{via: extension{piExtension}}},
 	"omp":          {Label: "Oh My Pi", bin: "omp", resume: []string{"-c"}, resumeID: []string{"--resume"}, report: &agentReport{via: extension{ompExtension}}},
 }
