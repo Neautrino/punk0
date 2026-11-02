@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -246,4 +248,66 @@ var droidTurn = []string{
 	// by hand
 	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Droid is waiting for your input"}`,
 	`{"session_id":"7f8dbc47-cde1-4007-90a9-ea517575555b","transcript_path":"/home/u/.factory/sessions/-tmp-w/7f8dbc47-cde1-4007-90a9-ea517575555b.jsonl","cwd":"/tmp/w","permission_mode":"auto-low","hook_event_name":"SessionEnd","reason":"other","session_duration_ms":338.795654296875,"message_count":10}`,
+}
+
+// A qwen or droid tab is titled from the transcript its hook names: qwen's
+// last title record (a /rename after the auto title wins), droid's first
+// line, where "New Session" is no title yet. A transcript outside the
+// agent's own folder, or an event whose chat id could not be one, gives none.
+func TestQwenAndDroidChatTitles(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("QWEN_HOME", "")
+	write := func(path string, lines ...string) string {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	// Records from ~/.qwen/projects/-tmp-hookspike-work-qwen/chats/33333333-….jsonl (qwen 0.26.5), trimmed.
+	qid := "33333333-4444-4555-8666-777777777777"
+	qwen := []string{
+		`{"uuid":"42bb48c2","sessionId":"` + qid + `","type":"user","cwd":"/tmp/w","message":{"role":"user","parts":[{"text":"say ok"}]}}`,
+		`{"uuid":"ae778d94","sessionId":"` + qid + `","type":"system","cwd":"/tmp/w","subtype":"custom_title","systemPayload":{"customTitle":"Stub auto title for spike","titleSource":"auto"}}`,
+		`{"uuid":"b2d54a17","sessionId":"` + qid + `","type":"system","cwd":"/tmp/w","subtype":"custom_title","systemPayload":{"customTitle":"Manual spike title 0265","titleSource":"manual"}}`,
+		`{"uuid":"c1","sessionId":"` + qid + `","type":"system","subtype":"ui_telemetry","systemPayload":{"uiEvent":{"event.name":"qwen-code.api_response"}}}`,
+	}
+	qwenFile := write(filepath.Join(home, ".qwen", "projects", "-tmp-w", "chats", qid+".jsonl"), qwen...)
+	qwenElsewhere := write(filepath.Join(home, "elsewhere", qid+".jsonl"), qwen...)
+
+	// First lines from ~/.factory/sessions/-tmp-hookspike-work-droid/ (droid 1.1.0).
+	did, newID := "2189db3c-b56c-45fe-a201-ee16e496fb97", "11111111-2222-3333-4444-555555555555"
+	sessions := filepath.Join(home, ".factory", "sessions", "-tmp-w")
+	droidFile := write(filepath.Join(sessions, did+".jsonl"),
+		`{"type":"session_start","id":"`+did+`","title":"say ok","owner":"u","version":2,"cwd":"/tmp/w"}`,
+		`{"type":"message","id":"m1"}`)
+	droidNew := write(filepath.Join(sessions, newID+".jsonl"),
+		`{"type":"session_start","id":"`+newID+`","title":"New Session","owner":"u","version":2,"cwd":"/tmp/w"}`)
+	droidElsewhere := write(filepath.Join(home, ".factory", did+".jsonl"),
+		`{"type":"session_start","id":"`+did+`","title":"say ok"}`)
+
+	for _, c := range []struct {
+		step, kind, session, transcript, want string
+	}{
+		{"qwen", "qwen", qid, qwenFile, "Manual spike title 0265"},
+		{"qwen outside ~/.qwen", "qwen", qid, qwenElsewhere, ""},
+		{"qwen climbing out of ~/.qwen", "qwen", qid, filepath.Join(home, ".qwen", "..", "elsewhere", qid+".jsonl"), ""},
+		{"qwen id like a flag", "qwen", "-rf", qwenFile, ""},
+		{"droid", "droid", did, droidFile, "say ok"},
+		{"droid untitled", "droid", newID, droidNew, ""},
+		{"droid outside its sessions", "droid", did, droidElsewhere, ""},
+		{"droid id with a slash", "droid", "a/b", droidFile, ""},
+	} {
+		src := tabAgents[c.kind].report.title
+		if src == nil {
+			t.Fatalf("%s: %s names no title source", c.step, c.kind)
+		}
+		if got := src.title(newChatHistory(), hookEvent{Session: c.session, Transcript: c.transcript}); got != c.want {
+			t.Errorf("%s: title %q, want %q", c.step, got, c.want)
+		}
+	}
 }

@@ -8,7 +8,10 @@ package main
 // so its next start resumes that chat (agentCommand).
 
 import (
+	"bufio"
+	"bytes"
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -124,9 +127,10 @@ type titleSource interface {
 
 // chatFileTitle reads the title from the chat file a hook named, through the
 // cache the Chats panel reads with. Only a file under the agent's own folder
-// is read: the path comes from a hook. titles, where the agent keeps one, is
-// its own list of chat names under that folder, which wins over the file's
-// (Codex records a renamed chat there).
+// is read, for a chat id that could be one (validSession): both come from a
+// hook. titles, where the agent keeps one, is its own list of chat names
+// under that folder, which wins over the file's (Codex records a renamed
+// chat there).
 type chatFileTitle struct {
 	root   func() string
 	read   func(string) (chatSession, bool)
@@ -135,7 +139,7 @@ type chatFileTitle struct {
 
 func (t chatFileTitle) title(h *chatHistory, ev hookEvent) string {
 	root := t.root()
-	if root == "" || ev.Transcript == "" || !within(root, ev.Transcript) {
+	if root == "" || ev.Transcript == "" || !within(root, ev.Transcript) || !validSession.MatchString(ev.Session) {
 		return ""
 	}
 	info, err := os.Stat(ev.Transcript)
@@ -155,6 +159,86 @@ func (t chatFileTitle) title(h *chatHistory, ev hookEvent) string {
 		return ""
 	}
 	return c.Title
+}
+
+// qwenRoot is where Qwen Code keeps its state: QWEN_HOME (a leading ~ is the
+// home folder, as qwen reads it), else ~/.qwen. Its chats are
+// projects/<folder>/chats/<id>.jsonl under it. A chat qwen keeps elsewhere
+// (QWEN_RUNTIME_DIR) gets no title: punk0 does not follow that variable.
+func qwenRoot() string {
+	if d := os.Getenv("QWEN_HOME"); strings.TrimSpace(d) != "" {
+		// A relative path stays relative, which within never matches.
+		d, err := expandPath(d, "")
+		if err != nil {
+			return ""
+		}
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".qwen")
+}
+
+var qwenTitleRecord = []byte(`"subtype":"custom_title"`)
+
+// readQwenTitle reads a qwen chat's title: the last title record, which
+// qwen appends for its own title and for each /rename.
+func readQwenTitle(path string) (chatSession, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return chatSession{}, false
+	}
+	defer f.Close()
+	var c chatSession
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), claudeLineMax)
+	for sc.Scan() {
+		if !bytes.Contains(sc.Bytes(), qwenTitleRecord) {
+			continue
+		}
+		var r struct {
+			Type    string `json:"type"`
+			Subtype string `json:"subtype"`
+			Payload struct {
+				Title string `json:"customTitle"`
+			} `json:"systemPayload"`
+		}
+		if json.Unmarshal(sc.Bytes(), &r) == nil && r.Type == "system" && r.Subtype == "custom_title" && r.Payload.Title != "" {
+			c.Title = r.Payload.Title
+		}
+	}
+	return c, true
+}
+
+// droidRoot is where droid keeps its chats: ~/.factory/sessions/<folder>/<id>.jsonl.
+func droidRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".factory", "sessions")
+}
+
+// readDroidTitle reads a droid chat's title from its first line, the
+// session_start record; "New Session" is droid's name for a chat with none.
+func readDroidTitle(path string) (chatSession, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return chatSession{}, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), claudeLineMax)
+	var r struct {
+		Type  string `json:"type"`
+		Title string `json:"title"`
+	}
+	if !sc.Scan() || json.Unmarshal(sc.Bytes(), &r) != nil || r.Type != "session_start" || r.Title == "New Session" {
+		return chatSession{}, false
+	}
+	return chatSession{Title: r.Title}, true
 }
 
 // within reports whether path is inside dir, both cleaned and absolute.

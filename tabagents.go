@@ -90,8 +90,8 @@ var tabAgents = map[string]tabAgent{
 	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, report: &agentReport{via: opencodeVia{}}},
 	"agy":          {Label: "Antigravity", bin: "agy"},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
-	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}}},
-	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}}},
+	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},
+	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}, title: chatFileTitle{root: droidRoot, read: readDroidTitle}}},
 }
 
 // resumeArgs are the arguments that resume session: resumeID, then the id, or
