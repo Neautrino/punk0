@@ -82,7 +82,7 @@ func reportLine(kind, bin string, sx shellSyntax) string {
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
-var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "copilot", "agy", "cursor-agent", "qwen", "droid"}
+var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "copilot", "agy", "cursor-agent", "qwen", "droid", "pi"}
 
 var tabAgents = map[string]tabAgent{
 	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}, title: chatFileTitle{root: claudeRoot, read: readClaudeChat}}},
@@ -93,6 +93,7 @@ var tabAgents = map[string]tabAgent{
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},
 	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}, title: chatFileTitle{root: droidRoot, read: readDroidTitle}}},
+	"pi":           {Label: "Pi", bin: "pi", resume: []string{"-c"}, resumeID: []string{"--session"}, report: &agentReport{via: extension{piExtension}}},
 }
 
 // resumeArgs are the arguments that resume session: resumeID, then the id, or

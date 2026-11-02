@@ -415,3 +415,76 @@ func TestCopilotTurnDrivesTheTab(t *testing.T) {
 		t.Fatalf("new chat: kind %q chat %q status %q, want copilot %q working", v.Kind, tab.Session, tab.Status(), second)
 	}
 }
+
+// Pi and Oh My Pi report through punk0's extension, which posts these bodies
+// itself (pi-extension.ts, omp-extension.ts; ids, paths and titles from live
+// runs): the tab follows the chat's status, shows the title the agent gives
+// the chat once a re-send carries it, and a new chat in the same agent
+// rebinds the tab.
+func TestExtensionAgentsReportToTheirTab(t *testing.T) {
+	wb, _, repo := historyWorkbench(t)
+	p, err := wb.records.AddProject(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type step struct {
+		name, session, title, prompt string
+		agentID                      string // a subagent's event (omp's approval prompts)
+		status                       string
+	}
+	for _, c := range []struct {
+		agent, transcripts string
+		steps              []step
+	}{
+		{"pi", "/home/u/.pi/agent/sessions/--w--/", []step{
+			{name: "SessionStart", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", status: statusIdle},
+			{name: "UserPromptSubmit", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", prompt: "Run the shell command: echo hi > hello.txt", status: statusWorking},
+			{name: "Stop", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", status: statusIdle},
+			// /name: the last status again, with the name.
+			{name: "Stop", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", title: "Spike chat A", status: statusIdle},
+			// /new: the old chat ends, the new one binds with no title yet.
+			{name: "SessionEnd", session: "01a197bb-4ce2-7bcb-b773-c5abb0ad2f65", title: "Spike chat A", status: ""},
+			{name: "SessionStart", session: "01a197bb-acad-722f-8079-369fb8aeb5b8", status: statusIdle},
+		}},
+	} {
+		t.Run(c.agent, func(t *testing.T) {
+			tab, err := wb.records.AddTab(p.Workspaces[0].ID, tabShell, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := tab.Shell(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(tab.close)
+			post := func(ev map[string]any) {
+				t.Helper()
+				body, _ := json.Marshal(ev)
+				if w := reqJSON(t, wb, "POST", "/api/tabs/"+tab.ID+"/hook", string(body)); w.Code != 200 {
+					t.Fatalf("%v: %d %s", ev, w.Code, w.Body.String())
+				}
+			}
+			post(map[string]any{"hook_event_name": agentStartEvent, "punk0_agent": c.agent})
+			for i, s := range c.steps {
+				ev := map[string]any{
+					"hook_event_name": s.name,
+					"punk0_agent":     c.agent,
+					"session_id":      s.session,
+					"transcript_path": c.transcripts + s.session + ".jsonl",
+					"title":           s.title,
+					"cwd":             repo,
+				}
+				if s.name == "UserPromptSubmit" {
+					ev["prompt"] = s.prompt
+				}
+				if s.agentID != "" {
+					ev["agent_id"] = s.agentID
+				}
+				post(ev)
+				if tab.view().Kind != c.agent || tab.Session != s.session || tab.Status() != s.status {
+					t.Fatalf("step %d %s: kind %q session %q status %q, want %q %q %q", i, s.name, tab.view().Kind, tab.Session, tab.Status(), c.agent, s.session, s.status)
+				}
+				waitFor(t, func() bool { return tab.view().Title == s.title })
+			}
+		})
+	}
+}

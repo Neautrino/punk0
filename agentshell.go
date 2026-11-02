@@ -161,6 +161,26 @@ func (opencodeVia) setup(exe, kind string) (argv, env []string, err error) {
 
 func (opencodeVia) unhooked(string) (argv, env []string) { return nil, nil }
 
+// extension reports through a TypeScript extension a pi or omp run loads with
+// -e, beside the user's own: source, embedded in punk0, posts to the tab's
+// PUNK0_HOOK_URL itself, so no hook process runs per event.
+type extension struct{ source string }
+
+func (v extension) setup(exe, kind string) (argv, env []string, err error) {
+	if err := writeBytesAtomic(extensionPath(kind), []byte(v.source)); err != nil {
+		return nil, nil, err
+	}
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+func (extension) unhooked(kind string) (argv, env []string) {
+	return []string{"-e", extensionPath(kind)}, nil
+}
+
+// extensionPath is the extension file one kind's runs load.
+func extensionPath(kind string) string { return filepath.Join(reportDir(kind), "punk0.ts") }
+
 // qwenHookEvents are the qwen events punk0 registers. Not Notification: qwen
 // 0.26.5 sends idle_prompt just before a permission prompt, and
 // PermissionRequest already says the agent waits for the user.
@@ -401,6 +421,11 @@ end
 //
 //go:embed opencode-plugin.js
 var opencodePlugin string
+
+// piExtension reports what a Pi run in a tab does (extension).
+//
+//go:embed pi-extension.ts
+var piExtension string
 
 // opencodePluginDir is the plugin folder a tab's opencode loads (opencodeEnv).
 func opencodePluginDir() string { return filepath.Join(agentShellDir(), "opencode-plugin") }
