@@ -889,6 +889,13 @@ func TestAgentCommand(t *testing.T) {
 		// a restart picks its latest conversation up.
 		{"agy", "", true, "agy"},
 		{"agy", "S", false, "agy -c || agy"},
+		// Launch-only agents resume the folder's latest chat their own way.
+		{"gemini", "", true, "gemini"},
+		{"gemini", "", false, "gemini --resume latest || gemini"},
+		{"kimi", "", false, "kimi -c || kimi"},
+		{"aider", "", false, "aider --restore-chat-history || aider"},
+		// None resumes by id: a new tab with an id still starts fresh.
+		{"aider", "S", true, "aider"},
 		// qwen and droid resume like codex; droid, unhooked, names its settings.
 		{"qwen", "", true, "qwen"},
 		{"qwen", "", false, "qwen --continue || qwen"},

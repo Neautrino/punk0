@@ -1,13 +1,12 @@
 package main
 
-// The coding agents a tab can run interactively, for scratch chats picked in
-// the New chat dialog. These are the agents px0's harness package knows (it
-// runs them headless for edits); here each starts in its own TUI instead.
-// Claude Code is the one punk0 follows closely: its hooks report what it is
-// doing. Every agent that can resume a chat by id does so when the tab knows
-// it (Satellite.Session: always for Claude, for the others when the tab was
-// opened on an existing chat); without an id, the others resume this folder's
-// most recent session after a restart where the agent can.
+// The coding agents a tab can run interactively, picked in the + menu or the
+// New chat dialog; each starts in its own TUI. An agent with a report
+// (agentReport) tells punk0 its chat and status through something punk0
+// hands that one run (agentshell.go); the launch-only ones (gemini, kimi,
+// aider, cursor-agent) only show starting and exiting. An agent that can
+// resume a chat by id does so when the tab knows it; without an id it
+// resumes the folder's latest chat after a restart, where it can.
 
 import (
 	"net/http"
@@ -83,20 +82,23 @@ func reportLine(kind, bin string, sx shellSyntax) string {
 }
 
 // tabAgentOrder is the dialog's order; tabAgents has every agent in it.
-var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "copilot", tabAgy, "cursor-agent", "qwen", "droid", "crush", "pi", "omp"}
+var tabAgentOrder = []string{tabClaude, "codex", tabOpenCode, "gemini", "copilot", tabAgy, "cursor-agent", "qwen", "droid", "kimi", "crush", "pi", "omp", "aider"}
 
 var tabAgents = map[string]tabAgent{
 	tabClaude:      {Label: "Claude Code", bin: "claude", report: &agentReport{via: claudeSettings{}, title: chatFileTitle{root: claudeRoot, read: readClaudeChat}}},
 	"codex":        {Label: "Codex", bin: "codex", resume: []string{"resume", "--last"}, resumeID: []string{"resume"}, report: &agentReport{via: codexOverrides{}, title: chatFileTitle{root: codexRoot, read: readCodexChat, titles: "session_index.jsonl"}}},
 	tabOpenCode:    {Label: "OpenCode", bin: "opencode", resume: []string{"--continue"}, resumeID: []string{"--session"}, report: &agentReport{via: opencodeVia{}}},
+	"gemini":       {Label: "Gemini CLI", bin: "gemini", resume: []string{"--resume", "latest"}},
 	"copilot":      {Label: "GitHub Copilot", bin: "copilot", resume: []string{"--continue"}, resumeID: []string{"--resume="}, joinID: true, report: &agentReport{via: pluginDir{}, title: copilotTitle{}}},
 	tabAgy:         {Label: "Antigravity", bin: "agy", resume: []string{"-c"}, report: &agentReport{via: osc7501{}}},
 	"cursor-agent": {Label: "Cursor Agent", bin: "cursor-agent", resumeID: []string{"--resume"}},
 	"qwen":         {Label: "Qwen Code", bin: "qwen", resume: []string{"--continue"}, resumeID: []string{"--resume"}, report: &agentReport{via: qwenDefaults{}, title: chatFileTitle{root: qwenRoot, read: readQwenTitle}}},
 	"droid":        {Label: "Factory Droid", bin: "droid", resume: []string{"--last"}, resumeID: []string{"--resume"}, report: &agentReport{via: droidSettings{}, title: chatFileTitle{root: droidRoot, read: readDroidTitle}}},
+	"kimi":         {Label: "Kimi Code", bin: "kimi", resume: []string{"-c"}},
 	"crush":        {Label: "Crush", bin: "crush", resume: []string{"-C"}, resumeID: []string{"-s"}, report: &agentReport{via: crushConfig{}, events: crushEvents, title: crushTitle{}}},
 	"pi":           {Label: "Pi", bin: "pi", resume: []string{"-c"}, resumeID: []string{"--session"}, report: &agentReport{via: extension{piExtension}}},
 	"omp":          {Label: "Oh My Pi", bin: "omp", resume: []string{"-c"}, resumeID: []string{"--resume"}, report: &agentReport{via: extension{ompExtension}}},
+	"aider":        {Label: "Aider", bin: "aider", resume: []string{"--restore-chat-history"}},
 }
 
 // resumeArgs are the arguments that resume session: resumeID, then the id, or
