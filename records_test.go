@@ -884,8 +884,11 @@ func TestAgentCommand(t *testing.T) {
 		// config folder rides in the environment, not on the line.
 		{"crush", "", false, "crush -C || crush"},
 		{"crush", "S", true, "crush -s S || crush"},
-		// agy cannot resume by id: an id it was given changes nothing.
-		{"agy", "S", false, "agy"},
+		// agy cannot resume by id (OSC 7501 carries none and an unknown
+		// --conversation is ignored), so an id it was given changes nothing:
+		// a restart picks its latest conversation up.
+		{"agy", "", true, "agy"},
+		{"agy", "S", false, "agy -c || agy"},
 		// qwen and droid resume like codex; droid, unhooked, names its settings.
 		{"qwen", "", true, "qwen"},
 		{"qwen", "", false, "qwen --continue || qwen"},

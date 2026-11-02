@@ -51,6 +51,7 @@ const (
 	tabShell    = "shell"
 	tabClaude   = "claude"
 	tabOpenCode = "opencode"
+	tabAgy      = "agy"
 )
 
 // dirName is a folder name punk0 makes under its state directory. The

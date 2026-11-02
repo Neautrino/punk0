@@ -181,6 +181,22 @@ func (extension) unhooked(kind string) (argv, env []string) {
 // extensionPath is the extension file one kind's runs load.
 func extensionPath(kind string) string { return filepath.Join(reportDir(kind), "punk0.ts") }
 
+// osc7501 reports agy's status through the tab's own terminal: with
+// AGY_CLI_OSC7501=on agy prints OSC 7501 on every change without waiting for
+// a terminal to ask for it, and the tab's screen reads it (term.go). agy has
+// no per-run hook punk0 may use, so this is all it says; there is no file to
+// write, and a tab in any shell gets it the same way.
+type osc7501 struct{}
+
+func (v osc7501) setup(exe, kind string) (argv, env []string, err error) {
+	argv, env = v.unhooked(kind)
+	return argv, env, nil
+}
+
+func (osc7501) unhooked(string) (argv, env []string) {
+	return nil, []string{"AGY_CLI_OSC7501=on"}
+}
+
 // qwenHookEvents are the qwen events punk0 registers. Not Notification: qwen
 // 0.26.5 sends idle_prompt just before a permission prompt, and
 // PermissionRequest already says the agent waits for the user.
