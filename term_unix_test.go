@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,7 +28,7 @@ func TestAttachDrawsScrolledAwayOutput(t *testing.T) {
 	const redraws = 30000 // about 480 KiB of cursor moves and frames
 	cmd := `awk 'BEGIN { for (i = 1; i <= 60; i++) print "line " i; ` +
 		`for (i = 1; i <= ` + strconv.Itoa(redraws) + `; i++) printf "\033[24;1Hframe %05d", i; print ""; print "end" }'`
-	sh, err := startShell(t.TempDir(), "/bin/sh", cmd, nil)
+	sh, err := startShell(t.TempDir(), "/bin/sh", cmd, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +87,7 @@ func TestAttachDrawsScrolledAwayOutput(t *testing.T) {
 // the next most recent one when that viewer leaves.
 func TestShellSizeFollowsLatestViewer(t *testing.T) {
 	useSettings(t, map[string]any{})
-	sh, err := startShell(t.TempDir(), "/bin/sh", "", nil)
+	sh, err := startShell(t.TempDir(), "/bin/sh", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,4 +156,74 @@ func TestShellSizeFollowsLatestViewer(t *testing.T) {
 	wide.Close(websocket.StatusNormalClosure, "")
 	time.Sleep(200 * time.Millisecond) // a viewer that is not current leaving changes nothing
 	waitCols("non-current viewer leaves", 120)
+}
+
+// What an agent prints about itself reaches the shell's owner while the shell
+// keeps running, in the order it was printed.
+func TestShellReportsAgentStatus(t *testing.T) {
+	useSettings(t, map[string]any{})
+	dir := t.TempDir()
+	got := make(chan string, 8)
+	cmd := `printf '\033]7501;state=blocked:kind=auth:app=antigravity:msg=U2lnbiBpbiByZXF1aXJlZA==\007'; ` +
+		`printf '\033]7501;state=working:app=antigravity\007'; ` +
+		`while [ ! -f go ]; do sleep 0.05; done; ` +
+		`printf '\033]7501;state=idle:app=antigravity\007'; sleep 60`
+	sh, err := startShell(dir, "/bin/sh", cmd, nil, func(_ *Shell, status string) { got <- status })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sh.Close)
+	next := func() string {
+		t.Helper()
+		select {
+		case s := <-got:
+			return s
+		case <-time.After(10 * time.Second):
+			t.Fatal("the shell reported no status")
+			return ""
+		}
+	}
+	// The sign-in report says nothing, so the first status is the next one.
+	if s := next(); s != statusWorking {
+		t.Fatalf("first status %q, want %q", s, statusWorking)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := next(); s != statusIdle {
+		t.Fatalf("second status %q, want %q", s, statusIdle)
+	}
+}
+
+// Closing a shell never waits on whoever is being told about it: a tab is
+// closed while holding its own lock, which is the lock a status report takes.
+func TestShellCloseWhileReportingStatus(t *testing.T) {
+	useSettings(t, map[string]any{})
+	reporting, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	report := func(*Shell, string) {
+		once.Do(func() { close(reporting) })
+		<-release
+	}
+	defer close(release)
+	sh, err := startShell(t.TempDir(), "/bin/sh",
+		`printf '\033]7501;state=working:app=antigravity\007'; sleep 60`, nil, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-reporting:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the shell reported no status")
+	}
+	closed := make(chan struct{})
+	go func() {
+		sh.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close waited for the status report to finish")
+	}
 }

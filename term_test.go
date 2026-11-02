@@ -58,7 +58,7 @@ func TestTabSend(t *testing.T) {
 	// it cannot end the paste.
 	dir := t.TempDir()
 	const want = "\x1b[200~fix it\nplease[201~\x1b[201~\r"
-	sh, err := startShell(dir, "/bin/sh", "stty raw -echo && touch ready && head -c "+strconv.Itoa(len(want))+" > got", nil)
+	sh, err := startShell(dir, "/bin/sh", "stty raw -echo && touch ready && head -c "+strconv.Itoa(len(want))+" > got", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

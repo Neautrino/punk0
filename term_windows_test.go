@@ -58,7 +58,7 @@ func TestConPTYShellsRunTabCommands(t *testing.T) {
 		{"powershell no fallback", "powershell.exe", powerShell.orElse("cmd /c exit 0", "Write-Output ('fell' + 'back')") + "; Write-Output ('end' + 'ed')", "ended"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			sh, err := startShell(t.TempDir(), c.shell, c.command, []string{"PUNK0_T=one", "punk0_t=two"})
+			sh, err := startShell(t.TempDir(), c.shell, c.command, []string{"PUNK0_T=one", "punk0_t=two"}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestConPTYShellsRunTabCommands(t *testing.T) {
 // Keystrokes reach the shell, and a resize changes the size programs see.
 func TestConPTYInputAndResize(t *testing.T) {
 	useSettings(t, map[string]any{})
-	sh, err := startShell(t.TempDir(), "powershell.exe", "", nil)
+	sh, err := startShell(t.TempDir(), "powershell.exe", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestConPTYHangupEndsProcessTree(t *testing.T) {
 	dir := t.TempDir()
 	pidFile := filepath.Join(dir, "child.txt")
 	sh, err := startShell(dir, "powershell.exe",
-		"(Start-Process ping -ArgumentList '-n','120','127.0.0.1' -NoNewWindow -PassThru).Id | Set-Content -Encoding ascii child.txt", nil)
+		"(Start-Process ping -ArgumentList '-n','120','127.0.0.1' -NoNewWindow -PassThru).Id | Set-Content -Encoding ascii child.txt", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestConPTYHangupEndsProcessTree(t *testing.T) {
 		t.Fatalf("child %d still runs after its tab closed", pid)
 	}
 
-	quits, err := startShell(t.TempDir(), "cmd.exe", "exit", nil)
+	quits, err := startShell(t.TempDir(), "cmd.exe", "exit", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

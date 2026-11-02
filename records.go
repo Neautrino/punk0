@@ -147,7 +147,7 @@ func (s *Satellite) Shell() (*Shell, bool, error) {
 				env = append(env, e...)
 			}
 		}
-		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env)
+		sh, err := startShell(s.dir, shell, s.command(syntaxOf(shell), hooked), env, nil)
 		if err != nil {
 			return nil, false, err
 		}

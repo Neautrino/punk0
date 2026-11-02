@@ -51,7 +51,7 @@ func TestAgentFunctionsReportStartAndExit(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			sh, err := startShell(home, path, "", nil)
+			sh, err := startShell(home, path, "", nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +157,7 @@ func TestAgentFunctionsCarryTheirReporting(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			sh, err := startShell(home, path, "", nil)
+			sh, err := startShell(home, path, "", nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

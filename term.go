@@ -60,6 +60,11 @@ type tty interface {
 type Shell struct {
 	tty  tty
 	done chan struct{} // closed once the shell is reaped and output drained
+	// status is what the agent in the shell last said about itself
+	// (oscAgentStatus), on its way to the shell's owner. It holds one: the
+	// report is parsed in the pump, under mu, where nothing may wait, and a
+	// status is a level — the newest is the whole truth.
+	status chan string
 
 	// lastIO is when the terminal last carried anything, in unix
 	// nanoseconds; the idle reaper stops a tab nobody and nothing has used.
@@ -186,8 +191,11 @@ func tabProcess(shell, command string, env []string) (args []string, cmdEnv []st
 
 // startShell runs shell interactively in dir, with env added to its
 // environment. A non-empty command, written in the shell's syntax, runs
-// first; quitting it leaves the shell's prompt.
-func startShell(dir, shell, command string, env []string) (*Shell, error) {
+// first; quitting it leaves the shell's prompt. status, where the caller
+// takes one, is called with everything the agent in the shell says about
+// itself (oscAgentStatus), from a goroutine of the shell's own and with no
+// lock of the shell held.
+func startShell(dir, shell, command string, env []string, status func(*Shell, string)) (*Shell, error) {
 	// Starting reports a missing working directory as a bare chdir failure;
 	// checking first says which folder is gone.
 	if _, err := os.Stat(dir); err != nil {
@@ -201,8 +209,13 @@ func startShell(dir, shell, command string, env []string) (*Shell, error) {
 	s := &Shell{
 		tty:     t,
 		done:    make(chan struct{}),
+		status:  make(chan string, 1),
 		screen:  xterm.New(xterm.WithCols(ttyCols), xterm.WithRows(ttyRows), xterm.WithScrollback(scrollbackLines())),
 		viewers: map[chan []byte]struct{}{},
+	}
+	if status != nil {
+		s.screen.RegisterOscHandler(oscAgentStatus, xterm.NewOscStringHandler(s.readStatus))
+		go s.reportStatus(status)
 	}
 	s.touch()
 	go s.pump()
@@ -260,6 +273,45 @@ func (s *Shell) pump() {
 	s.tty.Hangup()
 	<-reaped
 	close(s.done)
+}
+
+// oscAgentStatus is the OSC an agent says what it is doing in, as agy does
+// when it is told to (AGY_CLI_OSC7501, agentshell.go). agy is the only agent
+// punk0 runs that writes it.
+const oscAgentStatus = 7501
+
+// readStatus takes a report as the screen parses it, in the pump and under
+// mu: it only leaves the status for reportStatus, replacing one not yet
+// taken, so a tab's terminal never waits on what reads it.
+func (s *Shell) readStatus(data string) bool {
+	status, ok := agyStatus(data)
+	if !ok {
+		return true
+	}
+	select {
+	case <-s.status:
+	default:
+	}
+	select {
+	case s.status <- status:
+	default:
+	}
+	return true
+}
+
+// reportStatus hands each status the agent printed to report, holding no lock
+// of the shell's, until the shell ends. A status read as the shell is ending
+// may still be reported — the two are racing — which costs nothing: the tab
+// ignores anything from a shell it no longer runs (Satellite.oscStatus).
+func (s *Shell) reportStatus(report func(*Shell, string)) {
+	for {
+		select {
+		case status := <-s.status:
+			report(s, status)
+		case <-s.done:
+			return
+		}
+	}
 }
 
 // agyStatus is the status one OSC 7501 report means, and whether it means one
