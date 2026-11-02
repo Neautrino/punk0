@@ -50,10 +50,12 @@ function boot() {
     booting = Promise.all([
       import(parentURL('static/vendor/xterm.mjs')),
       import(parentURL('static/vendor/addon-fit.mjs')),
-    ]).then(([{ Terminal }, { FitAddon }]) => {
+      import(parentURL('static/vendor/addon-image.mjs')),
+    ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }]) => {
       const term = new Terminal({ ...termOptions(), theme: termColors() });
       const fit = new FitAddon();
       term.loadAddon(fit);
+      term.loadAddon(new ImageAddon()); // SIXEL and iTerm2 inline images, as in orch/term.js
       term.open(termEl);
 
       const fitNow = () => {

@@ -51,10 +51,14 @@ function boot() {
   booting ||= Promise.all([
     import(pageURL('static/vendor/xterm.mjs')),
     import(pageURL('static/vendor/addon-fit.mjs')),
-  ]).then(([{ Terminal }, { FitAddon }]) => {
+    import(pageURL('static/vendor/addon-image.mjs')),
+  ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }]) => {
     const term = new Terminal({ ...termOptions(), theme: termColors() });
     const fit = new FitAddon();
     term.loadAddon(fit);
+    // SIXEL and iTerm2 inline images: agents find SIXEL by asking
+    // (XTSMGRAPHICS) and size images by the cell size reports it turns on.
+    term.loadAddon(new ImageAddon());
     term.open(termEl);
     // A hidden pane has no size; fitting it would shrink the PTY to 2 columns.
     const fitNow = () => termEl.clientWidth && termEl.clientHeight && fit.fit();

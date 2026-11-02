@@ -256,7 +256,7 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 `ServeHTTP` sets a strict `Content-Security-Policy` header on all responses to mitigate Cross-Site Scripting (XSS) and data exfiltration in depth:
 
 - `default-src 'self';`
-- `script-src 'self';` (disallows inline scripts; blocks injected `<script>` tags and event handlers)
+- `script-src 'self' 'wasm-unsafe-eval';` (disallows inline scripts; blocks injected `<script>` tags and event handlers; `'wasm-unsafe-eval'` lets the terminals' image addon compile its SIXEL decoder and allows no JS `eval`)
 - `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;` (allows Google Fonts and dynamic UI styling)
 - `font-src 'self' https://fonts.gstatic.com;`
 - `img-src 'self' data: https: http:;` (supports icons, data URI previews, and external markdown images)
