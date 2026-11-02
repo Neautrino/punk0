@@ -2211,6 +2211,7 @@ kbd {
 .res-sub .res-name { padding-left: 15px; }
 .res-sub .res-label { color: var(--dim); }
 .res-ic { flex: none; display: inline-flex; color: var(--faint); }
+.res-ic.agent-ic svg { width: 12px; height: 12px; }
 .res-spark { display: block; color: var(--accent-fg); opacity: .8; }
 /* A running terminal, by agent status, as the agents page's tab dots. */
 .res-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--gi); }

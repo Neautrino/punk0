@@ -9,6 +9,7 @@
 // says how to get them. Depends only on state.js and format.js, which both
 // bundles carry.
 import { esc } from './state.js';
+import { agentIcon } from './agenticons.js';
 import { fmtBytes } from './format.js';
 
 const HISTORY = 40; // samples per sparkline: two minutes at the 3s poll
@@ -129,7 +130,7 @@ export function createResPanel(slot, load, onData) {
       for (const t of ws.tabs) {
         const agent = t.kind !== 'shell';
         out.push(`<div class="res-row res-sub" title="${agent ? `Agent (${esc(t.kind)})` : 'Shell'}, and everything running in it">
-          <span class="res-name"><span class="res-dot${t.status ? ' ' + esc(t.status) : ''}"></span><span class="res-ic">${svg(agent ? AGENT : TERM)}</span><span class="res-label">${esc(t.name || 'Terminal')}</span></span>
+          <span class="res-name"><span class="res-dot${t.status ? ' ' + esc(t.status) : ''}"></span>${agentIcon(t.kind, 'res-ic')}<span class="res-label">${esc(t.name || 'Terminal')}</span></span>
           <span></span>${figures(t)}</div>`);
       }
     }
