@@ -854,6 +854,27 @@ func RenderMarkdown(src []byte) (string, error) {
 	return buf.String(), nil
 }
 
+// safeConverter renders markdown punk0 shows as it is, without the browser's
+// allowlist pass (release notes from GitHub): without html.WithUnsafe,
+// goldmark drops raw HTML and dangerous link targets.
+var safeConverter = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+)
+
+// RenderSafeMarkdown renders src with raw HTML dropped; headings get GitHub's
+// anchors, as RenderMarkdown's do.
+func RenderSafeMarkdown(src []byte) (string, error) {
+	src = bytes.ReplaceAll(src, []byte("\r\n"), []byte("\n"))
+	var buf bytes.Buffer
+	buf.Grow(len(src) * 2)
+	ctx := parser.NewContext(parser.WithIDs(&headingIDs{seen: map[string]bool{}}))
+	if err := safeConverter.Convert(src, &buf, parser.WithContext(ctx)); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
 // headingIDs makes anchors the way GitHub does, so a table of contents written
 // for GitHub (#install, #api_reference, #überblick) works here too: lower case,
 // letters, digits, - and _ kept, spaces turned into -, everything else dropped.

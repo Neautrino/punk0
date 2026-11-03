@@ -446,6 +446,27 @@ func TestRenderMarkdown(t *testing.T) {
 	}
 }
 
+// Release notes come from GitHub and reach the page as they are: nothing in
+// them may run or load.
+func TestRenderSafeMarkdownDropsHTMLAndScriptLinks(t *testing.T) {
+	t.Parallel()
+	src := "### Added\r\n\r\n- **Fonts.** <img src=x onerror=alert(1)> [x](javascript:alert(1)) [ok](https://example.com)\n\n<details><summary>s</summary>hi</details>\n"
+	html, err := RenderSafeMarkdown([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`<h3 id="added">`, `<strong>Fonts.</strong>`, `href="https://example.com"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s in %s", want, html)
+		}
+	}
+	for _, bad := range []string{"<img", "onerror", "javascript:", "<details", "<summary"} {
+		if strings.Contains(html, bad) {
+			t.Errorf("kept %s in %s", bad, html)
+		}
+	}
+}
+
 func BenchmarkRenderMarkdown(b *testing.B) {
 	src := []byte("# Header\n\nParagraph with **bold** text and list:\n- item 1\n- item 2\n\n```go\npackage main\nfunc main() {}\n```\n")
 	b.ResetTimer()

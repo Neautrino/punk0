@@ -30,6 +30,7 @@ const (
 type githubRelease struct {
 	TagName string `json:"tag_name"`
 	Name    string `json:"name"`
+	Body    string `json:"body"` // the release notes, markdown
 	Assets  []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
@@ -114,12 +115,25 @@ func compareSemver(v1, v2 string) int {
 	return 0
 }
 
-// fetchLatestRelease queries the GitHub API or release redirect for the latest version.
+// fetchLatestRelease queries the GitHub API for the latest release.
 func fetchLatestRelease(repo string) (*githubRelease, error) {
-	apiURL := os.Getenv("PUNK0_UPDATE_URL")
-	if apiURL == "" {
-		apiURL = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	return fetchRelease(repo, "")
+}
+
+// releaseURL is the API address of release tag, or of the latest release
+// for "". PUNK0_UPDATE_URL, a test hook, answers every lookup.
+func releaseURL(repo, tag string) string {
+	if u := os.Getenv("PUNK0_UPDATE_URL"); u != "" {
+		return u
 	}
+	if tag == "" {
+		return fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	}
+	return fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", repo, tag)
+}
+
+func fetchRelease(repo, tag string) (*githubRelease, error) {
+	apiURL := releaseURL(repo, tag)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequest("GET", apiURL, nil)
@@ -136,6 +150,9 @@ func fetchLatestRelease(repo string) (*githubRelease, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
+		if tag != "" {
+			return nil, fmt.Errorf("no release %s found for %s", tag, repo)
+		}
 		return nil, fmt.Errorf("no published releases found for %s yet", repo)
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -222,12 +239,13 @@ func downloadVerifiedAsset(client *http.Client, assetURL, checksumURL, assetName
 // started listening, so punk0 never makes a network call before serving. It
 // reuses the cached daily-check state so it only hits the network once
 // every updateCheckPeriod; on the days it does check, a newer release is
-// installed in place and a notice is printed on the CLI instructing the user
-// to restart punk0. Any failure (network, permissions, verification) is non-fatal:
-// punk0 continues running on the current binary.
-func AutoUpdate(currentVersion string) {
+// installed in place, its notes are kept for the What's New tab, and the
+// version installed is returned so the agents page can offer a restart.
+// Any failure (network, permissions, verification) is non-fatal: punk0
+// continues running on the current binary and "" is returned.
+func AutoUpdate(currentVersion string) string {
 	if ui.Quiet {
-		return
+		return ""
 	}
 
 	state, _ := readUpdateState()
@@ -244,7 +262,7 @@ func AutoUpdate(currentVersion string) {
 		var err error
 		rel, err = fetchLatestRelease(getRepoName())
 		if err != nil {
-			return
+			return ""
 		}
 		latestVer = strings.TrimPrefix(rel.TagName, "v")
 		writeUpdateState(&updateState{LastChecked: now, LatestVer: latestVer})
@@ -254,7 +272,7 @@ func AutoUpdate(currentVersion string) {
 		if ui.Verbose {
 			ui.Status("ok", fmt.Sprintf("punk0 is up to date (v%s)", currentVersion), "", 0, os.Stdout)
 		}
-		return
+		return ""
 	}
 
 	// A cached "newer version" hint doesn't carry download URLs; fetch the
@@ -263,36 +281,38 @@ func AutoUpdate(currentVersion string) {
 		var err error
 		rel, err = fetchLatestRelease(getRepoName())
 		if err != nil {
-			return
+			return ""
 		}
 		latestVer = strings.TrimPrefix(rel.TagName, "v")
 		if compareSemver(latestVer, currentVersion) <= 0 {
 			if ui.Verbose {
 				ui.Status("ok", fmt.Sprintf("punk0 is up to date (v%s)", currentVersion), "", 0, os.Stdout)
 			}
-			return
+			return ""
 		}
 	}
 
 	execPath, err := os.Executable()
 	if err != nil {
-		return
+		return ""
 	}
 	execPath, err = filepath.EvalSymlinks(execPath)
 	if err != nil {
-		return
+		return ""
 	}
 
 	ui.Status("step", fmt.Sprintf("updating punk0 v%s -> v%s...", currentVersion, latestVer), "pass -no-update to skip", 0, os.Stdout)
 
 	if err := installUpdate(rel, latestVer, execPath); err != nil {
 		ui.Status("warn", fmt.Sprintf("auto-update failed: %v", err), "continuing with current version", 0, os.Stderr)
-		return
+		return ""
 	}
 
 	writeUpdateState(&updateState{LastChecked: time.Now(), LatestVer: latestVer})
+	saveReleaseNotes(latestVer, rel.Body)
 
 	ui.Status("ok", fmt.Sprintf("punk0 has been updated to v%s", latestVer), "restart punk0 to see the latest changes", 0, os.Stdout)
+	return latestVer
 }
 
 // RunSelfUpdate implements punk0 -update.
@@ -331,6 +351,7 @@ func RunSelfUpdate(currentVer string) error {
 		LastChecked: time.Now(),
 		LatestVer:   latestVer,
 	})
+	saveReleaseNotes(latestVer, rel.Body)
 
 	ui.Status("ok", fmt.Sprintf("punk0 successfully updated to v%s at %s", latestVer, execPath), "", 0, os.Stdout)
 	return nil
