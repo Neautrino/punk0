@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -75,6 +76,7 @@ func main() {
 		wbChild      = flag.Bool("workbench-child", false, "internal: run as a workspace of the punk0 workbench")
 		wbHost       = flag.String("workbench-host", "", "internal: the address the workbench that started this child listens on")
 		workspaceIDFlag = flag.String("workspace-id", "", "internal: workspace id when run under workbench")
+		restarted       = flag.Bool("restarted", false, "internal: started by Restart now on the agents page")
 		dev             = &devFlag{on: devBuild != ""}
 	)
 	flag.Var(dev, "dev", "run as a dev punk0 beside the installed one: own settings, projects, chats and worktrees in .punk0-dev beside this executable (or -dev=<full path>), port 7800, no auto-update; on by default in a `make dev` build")
@@ -171,7 +173,7 @@ func main() {
 			initial = target
 		}
 		// A dev build never updates itself: the update is the release.
-		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate && !dev.on && settings.SettingOr[bool]("update.auto"), childArgs, initial)
+		runWorkbench(*host, *port, *basePathFlag, !*noOpen, !*noUpdate && !dev.on && settings.SettingOr[bool]("update.auto"), *restarted, childArgs, initial)
 		return
 	}
 
@@ -415,13 +417,18 @@ func main() {
 // runWorkbench serves the orchestrator until interrupted, then stops every
 // terminal and workspace it started. initial is the folder or file
 // `punk0 <target>` named: it is registered as a project and the agents page
-// opens on it; a file also opens in the folder's editor.
-func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate bool, childArgs []string, initial string) {
+// opens on it; a file also opens in the folder's editor. Restart now on the
+// page ends it the same way, then runs the installed binary in its place;
+// restarted says this process is that run.
+func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate, restarted bool, childArgs []string, initial string) {
 	// One orchestrator per machine: a second punk0 hands its folder to the
-	// one already running instead of serving a rival page.
-	if u := runningWorkbench(); u != "" {
-		handOff(u, initial, port, open)
-		return
+	// one already running instead of serving a rival page. A restart never
+	// does: whatever answers now started while this one restarted.
+	if !restarted {
+		if u := runningWorkbench(); u != "" {
+			handOff(u, initial, port, open)
+			return
+		}
 	}
 	startLog()
 	exe, err := os.Executable()
@@ -442,15 +449,23 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		basePath = cleanBasePath(*cfg.ServerBasePath)
 	}
 
-	ln, addr, err := listen(host, port)
+	ln, addr, err := listenFor(host, port, restarted)
 	if err != nil {
 		fatal(err)
 	}
 	slog.Info("punk0 started", startupAttrs(addr)...)
+	// Decided before anything writes records.json: its absence is what
+	// tells a first install, which shows no release notes, from an upgrade.
+	whatsNew := ""
+	if paths.Dev() == "" {
+		_, err := os.Stat(filepath.Join(workbenchStateDir(), "records.json"))
+		whatsNew = update.WhatsNewPending(version, errors.Is(err, os.ErrNotExist))
+	}
 	wb, err := newWorkbench(basePath, cwd, exe, append(childArgs, "-workbench-host", host))
 	if err != nil {
 		fatal(err)
 	}
+	wb.upd.setPendingNotes(whatsNew)
 	wb.localOnly = loopbackBind(host)
 	srv := &http.Server{Handler: wb}
 
@@ -529,23 +544,35 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		}
 	}
 	if doAutoUpdate {
-		go update.AutoUpdate(version)
+		go func() {
+			if v := update.AutoUpdate(version); v != "" {
+				wb.upd.setInstalled(v)
+			}
+		}()
 	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	interrupted := false
+	var interrupted, restarting atomic.Bool
+	shutDown := make(chan struct{}) // closes once Shutdown has drained every request
 	go func() {
-		<-stop
-		interrupted = true
-		slog.Info("punk0 stopped", "reason", "interrupted")
-		fmt.Print("\r")
-		ui.Status("info", "punk0 stopped", "", 0, os.Stderr)
-		go func() {
-			<-stop
-			restoreEcho()
-			os.Exit(130)
-		}()
+		defer close(shutDown)
+		select {
+		case <-stop:
+			interrupted.Store(true)
+			slog.Info("punk0 stopped", "reason", "interrupted")
+			fmt.Print("\r")
+			ui.Status("info", "punk0 stopped", "", 0, os.Stderr)
+			go func() {
+				<-stop
+				restoreEcho()
+				os.Exit(130)
+			}()
+		case <-wb.upd.restart:
+			restarting.Store(true)
+			slog.Info("punk0 restarting")
+			ui.Status("info", "restarting punk0...", "", 0, os.Stderr)
+		}
 		// Children first: their open event streams would hold Shutdown up.
 		wb.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -554,7 +581,19 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 	}()
 	err = srv.Serve(ln)
 	wb.Close()
-	if interrupted {
+	if restarting.Load() {
+		// The exec runs here, not in the goroutine: main returning would
+		// end the process with nothing started in its place.
+		<-shutDown
+		signal.Stop(stop)
+		removeWorkbenchLock()
+		restoreEcho()
+		err := restartSelf(exe, restartArgv(os.Args, flag.NArg(), boundPort))
+		slog.Error("restart failed", "err", err)
+		ui.Status("warn", fmt.Sprintf("restart failed: %v", err), "start punk0 again", 0, os.Stderr)
+		os.Exit(1)
+	}
+	if interrupted.Load() {
 		removeWorkbenchLock()
 		restoreEcho()
 		os.Exit(130)
@@ -565,6 +604,21 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 		fatal(err)
 	}
 	slog.Info("punk0 stopped")
+}
+
+// listenFor is listen, except for a restart: the page that asked for it
+// waits on that very port, so the old process's port is retried for a
+// while before walking on to another.
+func listenFor(host string, port int, restarted bool) (net.Listener, string, error) {
+	if restarted && port != 0 {
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+			if ln, err := net.Listen("tcp", addr); err == nil {
+				return ln, addr, nil
+			}
+		}
+	}
+	return listen(host, port)
 }
 
 // handOff gives a folder to the punk0 that is already running, so

@@ -354,6 +354,8 @@ type workbench struct {
 
 	attr worktreeAttribution // agents' worktrees seen in hooks, and gone ones (attribution.go)
 
+	upd wbUpdate // an installed update, What's New and Restart now (wbupdate.go)
+
 	mux *http.ServeMux
 }
 
@@ -371,6 +373,7 @@ func newWorkbench(basePath, cwd, exe string, childArgs []string) (*workbench, er
 		exe:       exe,
 		childArgs: childArgs,
 		children:  map[string]*wbChild{},
+		upd:       wbUpdate{restart: make(chan struct{}, 1)},
 		mux:       http.NewServeMux(),
 	}
 	wb.routes()
@@ -430,6 +433,9 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc(wb.route("/static/themes.css"), (&Server{}).handleThemes)
 	wb.mux.HandleFunc(wb.route("/api/wb/ping"), wb.handlePing)
 	wb.mux.HandleFunc(wb.route("/api/wb/state"), wb.handleState)
+	wb.mux.HandleFunc("GET "+wb.route("/api/wb/whats-new"), wb.handleWhatsNew)
+	wb.mux.HandleFunc(wb.route("/api/wb/whats-new/seen"), wb.handleWhatsNewSeen)
+	wb.mux.HandleFunc(wb.route("/api/wb/restart"), wb.handleRestart)
 	wb.mux.HandleFunc(wb.route("/api/wb/complete"), wb.handleComplete)
 	wb.mux.HandleFunc(wb.route("/api/resources"), wb.handleResources)
 	wb.mux.HandleFunc(wb.route("/api/wb/open"), wb.handleOpen)
@@ -983,7 +989,7 @@ func (wb *workbench) handleState(w http.ResponseWriter, r *http.Request) {
 		views = append(views, wb.view(it))
 	}
 	home, _ := os.UserHomeDir()
-	writeJSON(w, map[string]any{
+	state := map[string]any{
 		"cwd":     wb.cwd,
 		"home":    home,
 		"sep":     string(filepath.Separator),
@@ -994,7 +1000,16 @@ func (wb *workbench) handleState(w http.ResponseWriter, r *http.Request) {
 		// with no selection of its own opens (Records.UseTab).
 		"lastWorkspace": wb.records.LastWorkspace(),
 		"items":         views,
-	})
+	}
+	// An update installed in place, waiting for Restart now, and the
+	// version whose notes the page should open once (wbupdate.go).
+	if v := wb.upd.installed(); v != "" {
+		state["update"] = v
+	}
+	if v := wb.upd.pendingNotes(); v != "" {
+		state["whatsNew"] = v
+	}
+	writeJSON(w, state)
 }
 
 type wbEntry struct {
