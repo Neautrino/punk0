@@ -9,7 +9,7 @@
 // tabs in the middle (terminals from the parent, files from the folder's
 // editor backend, side by side or as tabs: split.js), its files on the right.
 import { $, esc } from './state.js';
-import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel, takePick } from './orch/store.js';
+import { state, subscribe, reload, workspace, activeTab, termTab, projectOf, tildify, wsLabel, takePick, WHATSNEW_TAB } from './orch/store.js';
 import { initStatusBar } from './orch/statusbar.js';
 import { initSidebar } from './orch/sidebar.js';
 import { initNewChat } from './orch/newchat.js';
@@ -24,6 +24,8 @@ import { initHistory } from './orch/history.js';
 import { initPicker } from './orch/picker.js';
 import { initViewer, showFile, hideFile, forgetClosed } from './orch/viewer.js';
 import { initChanges, showChanges, hideChanges } from './orch/changes.js';
+import { initWhatsNew, showWhatsNew, hideWhatsNew } from './orch/whatsnew.js';
+import { initUpdate } from './orch/update.js';
 import { initTerm, attachTerm, focusTerm } from './orch/term.js';
 import { initResize } from './orch/resize.js';
 import { initSplit, layoutCenter } from './orch/split.js';
@@ -40,6 +42,7 @@ const termPane = $('#o-term');
 const viewerPane = $('#o-viewer');
 const codeVp = $('#o-code-vp');
 const changesVp = $('#o-diff-vp');
+const notesVp = $('#o-notes-vp');
 const emptyPane = $('#o-empty');
 
 watchSelects(); // every <select> opens punk0's list, so before anything fills one
@@ -61,8 +64,10 @@ initTree();
 initPicker();
 initViewer();
 initChanges();
+initWhatsNew();
 initTerm(termPane, reload);
 initNotify();
+initUpdate();
 
 // Reloads re-render everything; the center only switches what it shows when
 // that changes, so a refresh never drops a terminal or an open file. A
@@ -93,14 +98,19 @@ subscribe(() => {
 
   // A file tab shows its text, or its diff as the Changes tab shows all of
   // them; switching between the two is a different key. A file's diff keeps
-  // its details in the status bar; the Changes tab is no one file.
-  const diff = !!(v.file?.changes || v.file?.diff);
-  const fileKey = v.file ? `${w.id}\n${v.file.id}\n${diff}` : null;
+  // its details in the status bar; the Changes tab is no one file, and the
+  // What's New tab no file at all.
+  const notes = v.file?.id === WHATSNEW_TAB;
+  const diff = !notes && !!(v.file?.changes || v.file?.diff);
+  const fileKey = v.file ? `${w?.id || ''}\n${v.file.id}\n${diff}\n${v.file.whatsNew || ''}` : null;
   if (fileKey !== shownFile) {
     shownFile = fileKey;
-    codeVp.hidden = diff;
+    codeVp.hidden = diff || notes;
     changesVp.hidden = !diff;
-    if (v.file && !v.file.changes) showFile(w, v.file.path, diff);
+    notesVp.hidden = !notes;
+    if (notes) showWhatsNew(v.file.whatsNew);
+    else hideWhatsNew();
+    if (v.file && !v.file.changes && !notes) showFile(w, v.file.path, diff);
     else hideFile();
     if (!diff) hideChanges();
   }

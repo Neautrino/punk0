@@ -225,6 +225,13 @@ export const DEFAULT_TIPS = [
     content: "On the agents page, tick a changed file in the files pane to stage it. The branch bar under the tree shows staged files and commits to push; click it to open the editor on its git panel."
   },
   {
+    id: "workbench-whats-new",
+    title: "Restart Into an Update",
+    category: "Workbench",
+    tag: "Updates",
+    content: "When punk0 installs a new version while it runs, the agents page offers **Restart now**: agent tabs resume their chats. After the restart the What's New tab lists what changed; the help sheet's **What's new** button opens it again."
+  },
+  {
     id: "remote-dev",
     title: "Zero-Setup Remote & Cloud Workspaces",
     category: "Terminal",

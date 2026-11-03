@@ -56,6 +56,7 @@ export const state = {
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
   diffs: loadJSON('punk0.fileDiff', {}), // workspace id -> open file paths shown as their diff
   changes: loadJSON('punk0.changes', {}), // workspace id -> true while its Changes tab is open
+  whatsNew: loadText('punk0.whatsNew'), // version the What's New tab shows, '' while it is closed
   // The split layout's collapsed group: '', 'term' (files maximized) or
   // 'file' (file panel hidden). Selecting a tab of that group shows it again.
   collapsed: loadText('punk0.splitCollapsed'),
@@ -109,7 +110,7 @@ export function reload() {
       saveJSON('punk0.ws', '');
       moved = true;
     }
-    const sig = JSON.stringify([state.projects, state.reviews, state.wb.version]);
+    const sig = JSON.stringify([state.projects, state.reviews, state.wb.version, state.wb.update, state.wb.whatsNew]);
     if (sig !== lastSig || moved) {
       lastSig = sig;
       rerender();
@@ -176,18 +177,23 @@ export const wsLabel = w => w.title || w.name;
 export const fileTabId = path => `file:${path}`;
 // The Changes tab (changes.js): the workspace's diff, first in the file group.
 export const CHANGES_TAB = 'changes';
-const kindOf = id => (id === CHANGES_TAB || id.startsWith('file:') ? 'file' : 'term');
+// The What's New tab (whatsnew.js): one version's release notes. It belongs
+// to the page, not a workspace: first in the file group of whatever
+// workspace is shown, or the whole center with none, until it is closed.
+export const WHATSNEW_TAB = 'whatsnew';
+const kindOf = id => (id === CHANGES_TAB || id === WHATSNEW_TAB || id.startsWith('file:') ? 'file' : 'term');
 
 // tabsOf lists a workspace's tabs: its shells and Claude chats from the
 // server, then its Changes tab and the files open in it, which only this
-// browser remembers.
+// browser remembers. With no workspace only the page's own tab is there.
 export function tabsOf(w) {
-  if (!w) return [];
+  if (!w) return fileTabsOf(null);
   return [...w.tabs, ...fileTabsOf(w)];
 }
 
-// fileTabsOf lists the file group's tabs. The Changes tab is one of them,
-// with changes set and no path; a file shown as its diff has diff set.
+// fileTabsOf lists the file group's tabs: the What's New tab (whatsNew set
+// to its version), the Changes tab (changes set, no path), then the files; a
+// file shown as its diff has diff set.
 export function fileTabsOf(w) {
   const diffs = state.diffs[w?.id] || [];
   const files = (state.files[w?.id] || []).map(path => ({
@@ -197,7 +203,10 @@ export function fileTabsOf(w) {
     name: path.slice(path.lastIndexOf('/') + 1),
     diff: diffs.includes(path),
   }));
-  return state.changes[w?.id] ? [{ id: CHANGES_TAB, kind: 'file', changes: true, name: 'Changes' }, ...files] : files;
+  const lead = [];
+  if (state.whatsNew) lead.push({ id: WHATSNEW_TAB, kind: 'file', whatsNew: state.whatsNew, name: "What's New" });
+  if (state.changes[w?.id]) lead.push({ id: CHANGES_TAB, kind: 'file', changes: true, name: 'Changes' });
+  return [...lead, ...files];
 }
 
 // used is the remembered tabs of workspace id; an entry stored in another
@@ -241,8 +250,12 @@ export function selectWorkspace(id) {
 
 export function selectTab(id) {
   const kind = kindOf(id);
-  Object.assign(used(state.ws), { [kind]: id, front: kind });
-  saveJSON('punk0.tabs', state.tabs);
+  // With no workspace selected only the page's own tab is there to select,
+  // and no workspace to remember it for.
+  if (state.ws) {
+    Object.assign(used(state.ws), { [kind]: id, front: kind });
+    saveJSON('punk0.tabs', state.tabs);
+  }
   picked ||= kind === 'term';
   if (state.collapsed === kind) return setCollapsed('');
   rerender();
@@ -299,6 +312,20 @@ export function closeFile(path) {
 export function closeChanges() {
   delete state.changes[state.ws];
   saveJSON('punk0.changes', state.changes);
+  closedFileTab();
+}
+
+// openWhatsNew shows the release notes of version ver in the page's one
+// What's New tab.
+export function openWhatsNew(ver) {
+  state.whatsNew = ver;
+  saveJSON('punk0.whatsNew', ver);
+  selectTab(WHATSNEW_TAB);
+}
+
+export function closeWhatsNew() {
+  state.whatsNew = '';
+  saveJSON('punk0.whatsNew', '');
   closedFileTab();
 }
 

@@ -23,7 +23,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "update.auto",
     title: "Update Automatically",
-    description: "Check for a newer punk0 release in the background on start and install it. The -no-update flag turns it off regardless.",
+    description: "Check for a newer punk0 release in the background on start and install it; the agents page then offers to restart into it. The -no-update flag turns it off regardless.",
     category: "General",
     type: "boolean",
     default: true

@@ -379,6 +379,7 @@
           </div>
         </div>
         <div id="o-diff-vp" hidden></div>
+        <div id="o-notes-vp" hidden></div>
       </main>
       <!-- The welcome view, behind the tabs: what the center shows when the
            selected workspace has no tab open (a new project starts so, and a
@@ -543,6 +544,8 @@
       <span id="st-lsp" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" hidden>LSP</span>
     </span>
     <span class="status-end">
+    <!-- An installed update waiting for a restart (update.js) -->
+    <button type="button" id="st-update" class="mini" title="Restart to use it" hidden></button>
     <!-- The resource button; respanel.js fills it and adds its panel -->
     <span id="st-res"></span>
     </span>
@@ -551,6 +554,17 @@
   <form id="o-goto" class="o-goto" role="dialog" aria-label="Go to line" hidden>
     <input id="o-goto-in" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" aria-label="Line, or line:column">
   </form>
+</div>
+<!-- An update auto-update installed while punk0 runs (update.js): stays
+     until restarted, or put off for this tab with Later. -->
+<div id="o-update" class="o-update" role="status" hidden>
+  <p class="o-update-title"></p>
+  <p class="o-update-text wb-faint">Restart to use it. Agent tabs resume their chats.</p>
+  <div class="o-update-acts">
+    <button type="button" class="wb-btn wb-primary" data-act="restart">Restart now</button>
+    <button type="button" class="wb-btn" data-act="notes">What's new</button>
+    <button type="button" class="wb-btn" data-act="later">Later</button>
+  </div>
 </div>
 <div id="helpsheet" hidden></div>
 <div id="toast" hidden></div>

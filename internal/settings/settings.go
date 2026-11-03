@@ -132,7 +132,7 @@ var Schema = []SchemaItem{
 	{
 		Key:         "update.auto",
 		Title:       "Update Automatically",
-		Description: "Check for a newer punk0 release in the background on start and install it. The -no-update flag turns it off regardless.",
+		Description: "Check for a newer punk0 release in the background on start and install it; the agents page then offers to restart into it. The -no-update flag turns it off regardless.",
 		Category:    "General",
 		Type:        "boolean",
 		Default:     true,

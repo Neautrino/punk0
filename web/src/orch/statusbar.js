@@ -1,16 +1,17 @@
 // web/src/orch/statusbar.js
 // The status bar under the three panes. Left: version, then help (the
-// keyboard shortcuts sheet, whose foot opens the logs folder and copies
-// diagnostics), GitHub and settings (settings.js). Middle: the
-// agents needing you and working, each a button to the next such tab; the
-// open file's details are viewer.js's. Right: the resource button and panel
+// keyboard shortcuts sheet, whose foot opens the logs folder, copies
+// diagnostics and opens this version's What's New), GitHub and settings
+// (settings.js). Middle: the agents needing you and working, each a button
+// to the next such tab; the open file's details are viewer.js's. Right: an
+// installed update's item (update.js), the resource button and panel
 // (resources.js, respanel.js).
 import { $, esc, keyCaps } from '../state.js';
 import { showToast, copyToClipboard } from '../ui.js';
 import { call, failed } from './api.js';
 import { drawAgentStates } from '../statusparts.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
-import { state, subscribe, termTab, selectWorkspace, selectTab } from './store.js';
+import { state, subscribe, termTab, selectWorkspace, selectTab, openWhatsNew } from './store.js';
 import { initResources, refreshResources } from './resources.js';
 
 // The agents page's own keys; the editor's live in shortcuts.js.
@@ -38,9 +39,14 @@ function showHelp() {
       '<dd>' + esc(v) + '</dd>').join('') + '</dl>' + legacyNotice() +
     '<div class="help-foot"><button type="button" class="wb-btn" id="help-logs">Open logs folder</button>' +
     '<button type="button" class="wb-btn" id="help-diag">Copy diagnostics</button>' +
+    (state.wb.version ? `<button type="button" class="wb-btn" id="help-news">What's new in v${esc(state.wb.version)}</button>` : '') +
     '<span class="help-foot-note">The log never holds terminal output or prompts.</span></div></div>';
   $('#help-logs').addEventListener('click', openLogs);
   $('#help-diag').addEventListener('click', copyDiagnostics);
+  $('#help-news')?.addEventListener('click', () => {
+    helpSheet.hidden = true;
+    openWhatsNew(state.wb.version);
+  });
   $('#help-migrate')?.addEventListener('click', e =>
     copyToClipboard(MIGRATE_CMD, 'Command copied', e.currentTarget));
   helpSheet.hidden = false;

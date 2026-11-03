@@ -205,14 +205,14 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 /* The viewer's path row and code sit in the grid themselves. */
 #o-viewer { display: contents; }
 #o-view-head { grid-area: 2 / 1; }
-#o-code-vp, #o-diff-vp { grid-area: 3 / 1 / 5 / 2; }
+#o-code-vp, #o-diff-vp, #o-notes-vp { grid-area: 3 / 1 / 5 / 2; }
 #o-split-resizer { grid-area: 1 / 2 / 5 / 3; display: none; }
 #o-file-head { grid-area: 1 / 5 / 2 / 6; border-left: 1px solid var(--line); }
 #o-center.files-open:not(.file-off) #o-file-head { grid-column: 3 / -1; }
 #wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-file-head { display: none; }
 #o-file-bar { grid-area: 2 / 3; display: none; }
 #o-center.files-open #o-view-head { grid-area: 3 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open :is(#o-code-vp, #o-diff-vp) { grid-area: 4 / 3; border-left: 1px solid var(--line); }
+#o-center.files-open :is(#o-code-vp, #o-diff-vp, #o-notes-vp) { grid-area: 4 / 3; border-left: 1px solid var(--line); }
 #o-center.files-open #o-file-bar { display: flex; border-left: 1px solid var(--line); }
 #o-center.files-open #o-split-resizer { display: block; }
 .o-resizer[data-side="right"] { grid-area: 2 / 4 / 5 / 5; }
@@ -230,7 +230,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-center.term-off > :is(#o-tab-head, #o-term, #o-empty),
 #o-center.file-off > :is(#o-file-bar, #o-viewer),
 #o-center:is(.term-off, .file-off):not(.dragging) > #o-split-resizer { display: none; }
-#o-center.term-off :is(#o-file-head, #o-file-bar, #o-view-head, #o-code-vp, #o-diff-vp) { border-left: 0; }
+#o-center.term-off :is(#o-file-head, #o-file-bar, #o-view-head, #o-code-vp, #o-diff-vp, #o-notes-vp) { border-left: 0; }
 #o-file-max .o-ic-restore, #o-center.term-off #o-file-max .o-ic-max { display: none; }
 #o-center.term-off #o-file-max .o-ic-restore { display: inline; }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
@@ -507,6 +507,46 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-diff-vp .diff-hunk-head { top: 28px; }
 #o-diff-vp.o-diff-one .diff-hunk-head { top: 0; }
 #o-diff-vp .o-note { font-family: var(--ui); }
+
+/* The What's New tab (whatsnew.js): a sticky list of the release's sections
+   and entries beside the notes; a narrow tab drops the list. */
+#o-notes-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); container: notes / inline-size; }
+.wn { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 32px; padding: 24px 28px 48px; font: 13px/1.6 var(--ui); color: var(--fg); }
+.wn.wn-bare { grid-template-columns: minmax(0, 1fr); }
+.wn-nav { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 140px); overflow: auto; font-size: 12px; }
+.wn-nav p { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.wn-nav ul { margin: 0; padding: 0; list-style: none; }
+.wn-nav ul ul { margin: 2px 0 8px; padding-left: 10px; border-left: 1px solid var(--line); }
+.wn-nav a { display: block; padding: 2px 6px; border-radius: var(--r); color: var(--dim); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wn-nav > ul > li > a { color: var(--fg); font-weight: 600; }
+.wn-nav a:hover { background: var(--bg3); color: var(--fg); }
+.wn-nav a[aria-current] { color: var(--accent-fg); background: var(--bg2); }
+.wn-body { max-width: 76ch; min-width: 0; }
+.wn-body h1 { margin: 0 0 4px; font-size: 20px; }
+.wn-links { margin: 0 0 20px; color: var(--faint); font-size: 12px; }
+.wn-body a { color: var(--accent-fg); }
+.wn-notes h2, .wn-notes h3 { margin: 24px 0 8px; font-size: 15px; scroll-margin-top: 12px; }
+.wn-notes ul { padding-left: 20px; }
+.wn-notes li { margin: 6px 0; scroll-margin-top: 12px; }
+.wn-notes code { font: 12px var(--mono); padding: 0 3px; border-radius: 3px; background: var(--bg2); }
+@container notes (max-width: 576px) {
+  .wn { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .wn-nav { display: none; }
+}
+
+/* An update installed while punk0 runs (update.js): stays until acted on. */
+.o-update {
+  position: fixed; right: 16px; bottom: 36px; z-index: 60; width: 300px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--accent); border-radius: var(--r-lg);
+  background: var(--bg2); color: var(--fg); box-shadow: 0 8px 24px rgb(0 0 0 / .35); font-size: 12.5px;
+}
+.o-update[hidden] { display: none; }
+.o-update p { margin: 0; }
+.o-update-title { font-weight: 600; }
+.o-update-acts { display: flex; gap: 6px; margin-top: 4px; }
+.o-update-acts .wb-btn:disabled { opacity: .5; cursor: default; }
+#st-update { width: auto; padding: 0 6px; color: var(--accent-fg); font: 11px var(--mono); }
+#st-update[hidden] { display: none; }
 
 /* Files pane: changed files only. Folders carry the backend's dirty flag,
    so a clean one hides even before it is listed. */

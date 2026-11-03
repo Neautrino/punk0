@@ -51,9 +51,11 @@ export function view() {
   const files = split && fileTabsOf(w).length > 0;
   // Files mode collapses a group only while the file group has files;
   // Chats mode maximizes the chats over the terminals while they show: in
-  // the file group's columns, or in the pane's while it is not hidden.
+  // the file group's columns, or in the pane's while it is not hidden. With
+  // no workspace the file group can only hold the What's New tab, and there
+  // are no terminals to show beside it.
   const chatsMax = state.collapsed === 'term' && paneView() === 'chats' && (files || !isHidden('right'));
-  const collapsed = chatsMax ? 'term' : files ? state.collapsed : '';
+  const collapsed = chatsMax || (!w && files) ? 'term' : files ? state.collapsed : '';
   if (!split) {
     const file = !collapsed && front?.kind === 'file' ? front : null;
     return { split: false, files: false, term: collapsed || file ? null : front, file, welcome: !collapsed && !front, collapsed };
