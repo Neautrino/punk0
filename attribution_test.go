@@ -95,7 +95,7 @@ func TestAgentWorktreesNestAndGoWithTheirFolder(t *testing.T) {
 		t.Fatal("its worker's chat is still listed")
 	}
 	var l historyList
-	getJSON(t, wb, "/api/history?scope=workspace&removed=1&ws="+wbItemID("dir", repo), &l)
+	getJSON(t, wb, "/api/history?scope=workspace&removed=1&ws="+wbDirID(repo), &l)
 	if l.workspaceOf(worker) != hmm.ID {
 		t.Fatalf("its hidden chat lists under %q, want hmm %s", l.workspaceOf(worker), hmm.ID)
 	}

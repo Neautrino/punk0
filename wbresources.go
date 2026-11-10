@@ -173,7 +173,7 @@ func (wb *workbench) resources() resources {
 	}
 	var shown []wsKeys
 	for _, rw := range running {
-		id := wbItemID("dir", rw.dir)
+		id := wbDirID(rw.dir)
 		editor := ""
 		if pid, ok := editorOf[id]; ok {
 			delete(editorOf, id) // local workspaces of a project share one child

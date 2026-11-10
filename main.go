@@ -493,7 +493,7 @@ func runWorkbench(host string, port int, basePathFlag string, open, doAutoUpdate
 			fatal(err)
 		}
 		if file != "" {
-			editor = editorURL(u, wb.childHref(wbItemID("dir", ws.Dir)), file, line)
+			editor = editorURL(u, wb.childHref(wbDirID(ws.Dir)), file, line)
 		}
 		target = agentsURL(u, ws.ID)
 		project = wb.records.WorkspaceLabel(ws.ID) + "  " + ui.Dim(tildePath(ws.Dir), os.Stdout)

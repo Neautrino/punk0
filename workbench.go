@@ -94,9 +94,14 @@ func wbItemID(kind, key string) string {
 	return hex.EncodeToString(h[:6])
 }
 
+// wbDirID is the id of the child serving dir. The folder is cleaned first, so
+// one folder spelled two ways (C:/x and C:\x on Windows, a trailing slash) is
+// one child, whichever spelling asked for it.
+func wbDirID(dir string) string { return wbItemID("dir", filepath.Clean(dir)) }
+
 func wbDirItem(root string) wbItem {
 	root = filepath.Clean(root)
-	return wbItem{ID: wbItemID("dir", root), Kind: "dir", Path: root, Title: filepath.Base(root)}
+	return wbItem{ID: wbDirID(root), Kind: "dir", Path: root, Title: filepath.Base(root)}
 }
 
 func wbPRItem(pt PRTarget) wbItem {
@@ -1283,7 +1288,7 @@ func (wb *workbench) restartNewRepos(views []projectView) {
 	}
 	for _, pv := range views {
 		if was, ok := wb.gitSeen[pv.Dir]; ok && !was && pv.Git {
-			stale = append(stale, wbItemID("dir", pv.Dir))
+			stale = append(stale, wbDirID(pv.Dir))
 		}
 		wb.gitSeen[pv.Dir] = pv.Git
 	}
@@ -1296,7 +1301,7 @@ func (wb *workbench) restartNewRepos(views []projectView) {
 // fillWorkspace adds what only the workbench knows: where the folder's editor
 // view is, and whether its child is running.
 func (wb *workbench) fillWorkspace(wv *workspaceView) {
-	id := wbItemID("dir", wv.Dir)
+	id := wbDirID(wv.Dir)
 	wv.Href, wv.Backend = wb.childHref(id), wb.childState(id)
 }
 
@@ -1336,7 +1341,7 @@ func (wb *workbench) openFolder(w http.ResponseWriter, dir string, owned bool) {
 			return
 		}
 	}
-	writeJSON(w, map[string]any{"project": p.ID, "workspace": ws.ID, "href": wb.childHref(wbItemID("dir", ws.Dir))})
+	writeJSON(w, map[string]any{"project": p.ID, "workspace": ws.ID, "href": wb.childHref(wbDirID(ws.Dir))})
 }
 
 // handleProjectRemove takes the Remove project dialog's answers:
@@ -1575,7 +1580,7 @@ func (wb *workbench) handleLSP(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	wb.stop(wbItemID("dir", ws.Dir))
+	wb.stop(wbDirID(ws.Dir))
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -1621,7 +1626,7 @@ func (wb *workbench) handleWorkspaceMove(w http.ResponseWriter, r *http.Request)
 		fail(w, http.StatusNotFound, "workspace not found")
 		return
 	}
-	wb.stop(wbItemID("dir", ws.Dir))
+	wb.stop(wbDirID(ws.Dir))
 	old, err := wb.records.MoveWorktree(id)
 	if err != nil {
 		if errors.Is(err, errNotFound) {
@@ -1685,7 +1690,7 @@ func (wb *workbench) handleChatUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.Archived != nil && *u.Archived {
 		if ws := wb.records.Workspace(id); ws != nil {
-			wb.stop(wbItemID("dir", ws.Dir))
+			wb.stop(wbDirID(ws.Dir))
 		}
 	}
 	writeJSON(w, map[string]any{"ok": true})

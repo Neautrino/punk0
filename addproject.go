@@ -72,7 +72,7 @@ func (wb *workbench) handleProjectRefresh(w http.ResponseWriter, r *http.Request
 		return
 	}
 	gitForget(dir)
-	wb.stop(wbItemID("dir", dir))
+	wb.stop(wbDirID(dir))
 	writeJSON(w, map[string]any{"ok": true})
 }
 

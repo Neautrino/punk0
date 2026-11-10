@@ -323,7 +323,7 @@ func codeRoot() (string, error) {
 // code root's workspaces folder, or under an old install's <state>/worktrees.
 // root comes from codeRootPath, resolved once by the caller.
 func (r *Records) ownWorktree(dir, root string) bool {
-	dir = filepath.Clean(filepath.FromSlash(dir)) // git prints C:/... on Windows
+	dir = filepath.Clean(dir)
 	if root != "" && strings.HasPrefix(dir, filepath.Join(root, "workspaces")+string(filepath.Separator)) {
 		return true
 	}
@@ -358,8 +358,19 @@ func OpenRecords(home string) (*Records, error) {
 	if r.chatWorkspaces == nil {
 		r.chatWorkspaces = map[string]string{}
 	}
+	// Folders are keyed by their clean form (wbDirID, byDir, this lsp map);
+	// records written before keep Git for Windows' C:/x spelling.
+	for _, p := range r.projects {
+		p.Dir = cleanDir(p.Dir)
+		for _, w := range p.Workspaces {
+			w.Dir = cleanDir(w.Dir)
+		}
+	}
+	for i := range r.removed {
+		r.removed[i].Dir = cleanDir(r.removed[i].Dir)
+	}
 	for k, v := range f.LSP {
-		r.lsp[k] = v
+		r.lsp[cleanDir(k)] = v
 	}
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
@@ -1206,7 +1217,7 @@ func (r *Records) WorkspaceAt(id string) *Workspace {
 		return p.Workspaces[i]
 	}
 	for _, p := range r.projects {
-		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return wbItemID("dir", w.Dir) == id }); i >= 0 {
+		if i := slices.IndexFunc(p.Workspaces, func(w *Workspace) bool { return wbDirID(w.Dir) == id }); i >= 0 {
 			return p.Workspaces[i]
 		}
 	}
@@ -1245,7 +1256,7 @@ func (r *Records) WorkspaceLabel(id string) string {
 	defer r.mu.Unlock()
 	for _, p := range r.projects {
 		for _, w := range p.Workspaces {
-			if w.ID == id || wbItemID("dir", w.Dir) == id {
+			if w.ID == id || wbDirID(w.Dir) == id {
 				return workspaceLabel(p, w)
 			}
 		}
@@ -1574,11 +1585,11 @@ func (r *Records) Folder(id string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, p := range r.projects {
-		if wbItemID("dir", p.Dir) == id {
+		if wbDirID(p.Dir) == id {
 			return p.Dir
 		}
 		for _, w := range p.Workspaces {
-			if wbItemID("dir", w.Dir) == id {
+			if wbDirID(w.Dir) == id {
 				return w.Dir
 			}
 		}
@@ -1721,7 +1732,7 @@ func listWorktrees(repo string) ([]worktreeInfo, error) {
 		case line == "":
 			cur = -1
 		case key == "worktree":
-			wts = append(wts, worktreeInfo{Path: val, Main: len(wts) == 0})
+			wts = append(wts, worktreeInfo{Path: cleanDir(val), Main: len(wts) == 0})
 			cur = len(wts) - 1
 		case cur < 0:
 		case key == "HEAD":
@@ -1737,6 +1748,15 @@ func listWorktrees(repo string) ([]worktreeInfo, error) {
 		}
 	}
 	return wts, nil
+}
+
+// cleanDir is dir in the one spelling punk0 keys a folder by: filepath.Clean,
+// which on Windows also turns Git's C:/x into C:\x. "" stays "", not ".".
+func cleanDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Clean(dir)
 }
 
 // sameDir reports whether a and b name one folder: equal once cleaned, or

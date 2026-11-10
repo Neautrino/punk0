@@ -222,7 +222,7 @@ func (r *Records) TabsAt(id string) ([]tabView, bool) {
 		found := false
 		for _, p := range r.projects {
 			for _, w := range p.Workspaces {
-				if wbItemID("dir", w.Dir) != id {
+				if wbDirID(w.Dir) != id {
 					continue
 				}
 				found = true

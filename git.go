@@ -78,7 +78,7 @@ func gitProbe(root string) gitInfo {
 			}
 		}
 		if err == nil {
-			top := strings.TrimSpace(string(out))
+			top := cleanDir(strings.TrimSpace(string(out))) // Git for Windows prints C:/x
 			gd := filepath.Join(top, ".git")
 			var gdCmd *exec.Cmd
 			if safeDir {
@@ -89,7 +89,7 @@ func gitProbe(root string) gitInfo {
 			if gdOut, err := gdCmd.Output(); err == nil {
 				rawGd := strings.TrimSpace(string(gdOut))
 				if filepath.IsAbs(rawGd) {
-					gd = rawGd
+					gd = filepath.Clean(rawGd)
 				} else {
 					gd = filepath.Join(top, rawGd)
 				}

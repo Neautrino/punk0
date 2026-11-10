@@ -567,7 +567,7 @@ func (wb *workbench) historyWorkspaces(refs []wsRef, here map[string]bool, rows 
 	out := []historyWorkspace{}
 	for _, x := range refs {
 		if want[x.ID] {
-			out = append(out, historyWorkspace{wsRef: x, Here: here[x.ID], Href: wb.childHref(wbItemID("dir", x.Dir))})
+			out = append(out, historyWorkspace{wsRef: x, Here: here[x.ID], Href: wb.childHref(wbDirID(x.Dir))})
 		}
 	}
 	return out

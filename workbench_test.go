@@ -611,7 +611,7 @@ func TestWorkbenchProjectRoutes(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &opened)
 	json.Unmarshal(reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+filepath.Join(repo, "sub")+`"}`).Body.Bytes(), &again)
-	if opened["href"] != wb.childHref(wbItemID("dir", repo)) {
+	if opened["href"] != wb.childHref(wbDirID(repo)) {
 		t.Fatalf("href %v", opened["href"])
 	}
 	if again["project"] != opened["project"] || again["workspace"] != opened["workspace"] {
@@ -720,7 +720,7 @@ func TestWorkbenchHandsOverWorktreeFolder(t *testing.T) {
 		t.Fatalf("hand over worktree: %d %s", w.Code, w.Body.String())
 	}
 	json.Unmarshal(w.Body.Bytes(), &out)
-	if out["project"] != p.ID || out["workspace"] != wt.ID || out["href"] != wb.childHref(wbItemID("dir", wt.Dir)) {
+	if out["project"] != p.ID || out["workspace"] != wt.ID || out["href"] != wb.childHref(wbDirID(wt.Dir)) {
 		t.Fatalf("worktree folder opened %v", out)
 	}
 }
@@ -966,8 +966,8 @@ func TestWorkspaceTabsList(t *testing.T) {
 		t.Fatalf("expected 1 shell tab, got %+v", res.Tabs)
 	}
 
-	// In editor mode, the client queries using wbItemID("dir", dir):
-	dirID := wbItemID("dir", repo)
+	// In editor mode, the client queries using wbDirID(dir):
+	dirID := wbDirID(repo)
 	var resDir struct {
 		Tabs []struct {
 			ID   string `json:"id"`

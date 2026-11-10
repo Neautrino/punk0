@@ -93,7 +93,7 @@ func TestHistoryListScopesAndSearch(t *testing.T) {
 	// The editor knows only its folder's backend id (/w/<id>/), and lists the
 	// same chats by it.
 	var editor historyList
-	getJSON(t, wb, "/api/history?scope=workspace&ws="+wbItemID("dir", ws.Dir), &editor)
+	getJSON(t, wb, "/api/history?scope=workspace&ws="+wbDirID(ws.Dir), &editor)
 	if len(editor.Sessions) != 1 || editor.Sessions[0].ID != mine.Sessions[0].ID {
 		t.Fatalf("scope=workspace by backend id listed %+v", editor.Sessions)
 	}
@@ -223,7 +223,7 @@ func TestHistoryFilesChatsUnderTheirWorkspace(t *testing.T) {
 	if err := wb.records.RemoveTab(tab.ID); err != nil {
 		t.Fatal(err)
 	}
-	folder := wbItemID("dir", repo)
+	folder := wbDirID(repo)
 	list := func() historyList {
 		t.Helper()
 		var l historyList

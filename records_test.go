@@ -168,8 +168,8 @@ func TestWorkspacesShareOneBackendPerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := wbItemID("dir", repo)
-	if wbItemID("dir", second.Dir) != id {
+	id := wbDirID(repo)
+	if wbDirID(second.Dir) != id {
 		t.Fatal("two local workspaces of one project got different backends")
 	}
 	if rec.Folder(id) != repo {
@@ -179,14 +179,66 @@ func TestWorkspacesShareOneBackendPerFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wbItemID("dir", wt.Dir) == id {
+	if wbDirID(wt.Dir) == id {
 		t.Fatal("a worktree workspace shares the project's backend")
 	}
-	if rec.Folder(wbItemID("dir", wt.Dir)) != wt.Dir {
+	if rec.Folder(wbDirID(wt.Dir)) != wt.Dir {
 		t.Fatalf("worktree backend not found: %q", wt.Dir)
 	}
 	if rec.Folder("000000000000") != "" {
 		t.Fatal("unknown backend id resolved to a folder")
+	}
+}
+
+// records.json written before folders were cleaned holds them as git printed
+// them: C:/x on Windows (a trailing slash stands in for it elsewhere). Loaded,
+// they are the folder again: same backend, same LSP setting, and adding it
+// back finds the project instead of registering a second one.
+func TestRecordsCleanFoldersOnLoad(t *testing.T) {
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	p, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := p.Dir
+
+	file := filepath.Join(home, "records.json")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f recordsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	raw := filepath.ToSlash(repo) + "/"
+	for _, q := range f.Projects {
+		if q.ID == p.ID {
+			q.Dir, q.Workspaces[0].Dir = raw, raw
+		}
+	}
+	f.LSP = map[string]bool{raw: true}
+	if data, err = json.Marshal(f); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = openRecords(t, home)
+	if got := rec.Folder(wbDirID(raw)); got != repo {
+		t.Fatalf("backend of %s resolves to %q", raw, got)
+	}
+	if rec.ProjectAt(repo) != p.ID {
+		t.Fatalf("project not found at %s after reload", repo)
+	}
+	again, err := rec.AddProject(repo)
+	if err != nil || again.ID != p.ID {
+		t.Fatalf("re-adding %s gave %v, %v; want project %s", repo, again, err, p.ID)
+	}
+	if !rec.LSPOn(repo) {
+		t.Fatal("the folder's LSP setting was lost")
 	}
 }
 
