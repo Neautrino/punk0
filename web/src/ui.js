@@ -56,6 +56,26 @@ export function flashActionSuccess(el, text = 'Done', duration = 1200) {
   }, duration);
 }
 
+let noteTimer = 0;
+
+// setStatusNote shows msg in the status bar's #st-note, on the editor and the
+// agents page alike, for timeoutMs (0: until replaced). ok colours it as a
+// success, e.g. a terminal copy.
+export function setStatusNote(msg, timeoutMs = 0, ok = false) {
+  clearTimeout(noteTimer);
+  const el = $('#st-note');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('st-note-ok', !!msg && ok);
+  if (msg && timeoutMs > 0) {
+    noteTimer = setTimeout(() => {
+      if (el.textContent !== msg) return;
+      el.textContent = '';
+      el.classList.remove('st-note-ok');
+    }, timeoutMs);
+  }
+}
+
 export async function copyToClipboard(text, notify = 'Copied', triggerEl = null) {
   let ok = false;
   try {

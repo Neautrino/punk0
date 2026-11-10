@@ -4,6 +4,8 @@
 //
 //   - terminal.copyOnSelect: a selection goes to the clipboard once it
 //     settles, as in gnome-terminal, Orca or Windows Terminal's option.
+//   - Every copy says "✓ Copied" in the status bar's note (#st-note); a
+//     failed one says why in a toast.
 //   - Windows / Linux: Ctrl+C with a selection copies it (without one it is
 //     still ^C), Ctrl+Insert copies, Ctrl+Shift+V and Shift+Insert paste.
 //     Ctrl+V is left to the program: Claude Code pastes images with it.
@@ -14,7 +16,7 @@
 //
 // The clipboard needs a secure context (localhost or https).
 import { isMac } from './state.js';
-import { showToast } from './ui.js';
+import { showToast, setStatusNote } from './ui.js';
 import { getSetting } from './settings-form.js';
 import { trimGutter } from './term-util.js';
 
@@ -22,16 +24,12 @@ import { trimGutter } from './term-util.js';
 // takes it, so a drag is copied once rather than at every cell.
 const selectSettle = 100;
 
-async function copy(text, announce) {
+async function copy(text) {
   try {
     await navigator.clipboard.writeText(text);
-    if (announce) {
-      const n = text.split('\n').length;
-      showToast('✓', n === 1 ? 'Copied' : `Copied ${n} lines`, 1500);
-    }
+    setStatusNote('✓ Copied', 1000, true);
   } catch {
-    // A failed copy on select leaves the selection to copy another way.
-    if (announce) showToast('!', 'The browser would not let punk0 write to the clipboard', 4000);
+    showToast('!', 'The browser would not let punk0 write to the clipboard', 4000);
   }
 }
 
@@ -42,7 +40,7 @@ export function installClipboard(term, el) {
   term.onSelectionChange(() => {
     clearTimeout(settle);
     if (!getSetting('terminal.copyOnSelect') || !term.hasSelection()) return;
-    settle = setTimeout(() => term.hasSelection() && copy(trimGutter(term.getSelection()), false), selectSettle);
+    settle = setTimeout(() => term.hasSelection() && copy(trimGutter(term.getSelection())), selectSettle);
   });
   // Captured above xterm's own copy handler, which would copy untrimmed.
   el.addEventListener('copy', e => {
@@ -50,6 +48,7 @@ export function installClipboard(term, el) {
     e.clipboardData.setData('text/plain', trimGutter(term.getSelection()));
     e.preventDefault();
     e.stopImmediatePropagation();
+    setStatusNote('✓ Copied', 1000, true);
   }, true);
 }
 
@@ -63,7 +62,7 @@ export function clipboardKey(term, e) {
   const copyKey = e.ctrlKey && !e.shiftKey && (key === 'insert' || (key === 'c' && term.hasSelection()));
   if (copyKey) {
     if (e.type === 'keydown') {
-      if (term.hasSelection()) copy(trimGutter(term.getSelection()), true);
+      if (term.hasSelection()) copy(trimGutter(term.getSelection()));
       term.clearSelection();
     }
     e.preventDefault();

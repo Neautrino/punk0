@@ -2054,6 +2054,8 @@ kbd {
 /* Agents needing you and working, each a button to the next one; the open
    file's details (statusparts.js). Both status bars have them. */
 .agent-states { flex: none; display: flex; align-items: center; gap: 2px; }
+/* A status note reporting success (setStatusNote's ok), e.g. "✓ Copied". */
+#st-note.st-note-ok { color: var(--gi); white-space: nowrap; }
 .agent-state, .st-btn {
   display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 6px;
   border: 0; border-radius: var(--r); background: none; cursor: pointer;

@@ -1,7 +1,8 @@
 // web/src/lsp.js
 import { $, S, doc_, api } from './state.js';
 import { paint } from './renderer.js';
-import { updateStatus, setStatusNote, setLspState } from './status.js';
+import { updateStatus, setLspState } from './status.js';
+import { setStatusNote } from './ui.js';
 import { openFile } from './tabs.js';
 import { renderResults, runSearch } from './search.js';
 import { inspectReferences } from './refs.js';

@@ -71,8 +71,8 @@
   flex: 1 !important; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 12px;
   padding: 0 6px; overflow: hidden; container-type: inline-size;
 }
-/* The agent states (style.css) at the middle's left. */
-.wb-status-mid .agent-states { margin-right: auto; }
+/* The agent states (style.css) and the status note at the middle's left. */
+.wb-status-mid #st-note { margin-right: auto; }
 /* Shed the least useful first as the middle narrows. */
 @container (max-width: 520px) { #st-tabsize, #st-eol, #st-lines, #st-size { display: none; } }
 @container (max-width: 420px) { #st-enc { display: none; } }

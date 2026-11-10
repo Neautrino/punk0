@@ -3,7 +3,8 @@
 // symbol at the caret, from the language server, else a whole-word text
 // search. calls.js fills the same mode's call trail.
 import { $, $$, esc, S, doc_, api } from './state.js';
-import { updateStatus, setStatusNote } from './status.js';
+import { updateStatus } from './status.js';
+import { setStatusNote } from './ui.js';
 import { openFile } from './tabs.js';
 import { displayPath } from './search.js';
 import { groupHits, flashFind, canAskServer, lspCall, positionNow } from './lsp.js';

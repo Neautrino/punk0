@@ -504,7 +504,8 @@
 
   <!-- The status bar, in the panes' columns: under the projects, logo,
        version and the help / GitHub / settings buttons; in the middle, the
-       agents working and needing you (statusbar.js), then, while a file tab
+       agents working and needing you (statusbar.js) and the status note
+       (#st-note, setStatusNote in ui.js), then, while a file tab
        is in front, its cursor, line count, size, tab size, encoding and line
        endings (viewer.js; all but the cursor while it shows its diff), and at
        the right corner the selected folder's language servers (lsp.js, like
@@ -533,6 +534,7 @@
         <button type="button" id="st-waiting" class="agent-state waiting" hidden></button>
         <button type="button" id="st-working" class="agent-state working" hidden></button>
       </span>
+      <span id="st-note"></span>
       <span id="st-file" hidden>
         <button type="button" id="st-pos" class="st-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="o-goto"></button>
         <span id="st-lines" title="Lines in the file"></span>

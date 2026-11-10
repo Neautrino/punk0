@@ -1,9 +1,9 @@
 // web/src/tabs.js
 import { $, esc, S, doc_, api, apiPost, LH, CHUNK, withKeys } from './state.js';
 import { emit } from './bus.js';
-import { vp, sizer, rowsEl, editor } from './ui.js';
+import { vp, sizer, rowsEl, editor, setStatusNote } from './ui.js';
 import { render, layout, refineChunk, getLH, lineTopY } from './renderer.js';
-import { updateStatus, setStatusNote, refreshResources } from './status.js';
+import { updateStatus, refreshResources } from './status.js';
 import { pushHistory } from './history.js';
 import { warmLSP } from './lsp.js';
 import { loadOutline } from './outline.js';

@@ -6,9 +6,9 @@
 // bounded in size, so a plain DOM render is simple and fast enough.
 import { $, S, doc_, esc, api, apiPostJson, MOD } from './state.js';
 import { on } from './bus.js';
-import { showToast } from './ui.js';
+import { showToast, setStatusNote } from './ui.js';
 import { syncPreview } from './markdown.js';
-import { setStatusNote, updateStatus } from './status.js';
+import { updateStatus } from './status.js';
 import { wordAtPoint } from './cursor.js';
 import { gotoDefinition } from './lsp.js';
 import { hoverAt } from './hover.js';

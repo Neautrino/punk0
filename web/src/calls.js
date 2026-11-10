@@ -1,6 +1,7 @@
 // web/src/calls.js
 import { $, $$, esc, S, doc_, api, keyLabel } from './state.js';
-import { updateStatus, setStatusNote, setLspState } from './status.js';
+import { updateStatus, setLspState } from './status.js';
+import { setStatusNote } from './ui.js';
 import { openFile } from './tabs.js';
 import { showSideView, setRefsMode } from './sideviews.js';
 import { positionNow, flashFind } from './lsp.js';
