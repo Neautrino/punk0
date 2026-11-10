@@ -58,6 +58,21 @@ func TestTreeSumsDescendantsOnly(t *testing.T) {
 	}
 }
 
+// Windows hands an exited process's pid to the next one and leaves its
+// children's parent pid alone: a process older than its "parent" is an orphan
+// of the pid's earlier owner, not part of the new process's tree.
+func TestTreeSkipsReusedParentPID(t *testing.T) {
+	tbl := Table{
+		10: {PPID: 1, RSS: 1, start: 500},
+		11: {PPID: 10, RSS: 10, start: 600}, // started after 10: its child
+		12: {PPID: 10, RSS: 100, start: 100}, // older than 10: an orphan of a previous pid 10
+		13: {PPID: 10, RSS: 1000},            // start unknown: trusted
+	}
+	if got := tbl.Tree(10); got.RSS != 1011 {
+		t.Fatalf("Tree(10).RSS = %d, want 1011", got.RSS)
+	}
+}
+
 func TestProcessesSeesThisProcess(t *testing.T) {
 	tbl := Processes()
 	if tbl == nil {

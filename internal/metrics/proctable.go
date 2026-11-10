@@ -16,10 +16,16 @@ type Proc struct {
 	// n processes counted 1/n, so the PSS of several processes adds up to what
 	// they really use (one agent binary run by three tabs is counted once, not
 	// three times). Tree and One read it from /proc/<pid>/smaps_rollup; where
-	// that cannot be read (macOS, another user's process) it is the RSS.
+	// that cannot be read (macOS, Windows, another user's process) it is the
+	// RSS.
 	PSS uint64
 	CPU time.Duration // user + system time consumed so far
 
+	// start is when the process started, in nanoseconds, where the table
+	// knows it (Windows); 0 otherwise. Windows reuses a pid as soon as its
+	// process exits and leaves the children's parent pid as it was, so a
+	// process that started before its "parent" is not its child.
+	start   int64
 	pssRead bool
 }
 
@@ -30,10 +36,13 @@ type Table map[int]Proc
 // is 100 on every Linux architecture Go supports.
 const clkTck = 100
 
-// Processes snapshots the process table: /proc on Linux, ps(1) elsewhere. It
-// returns nil where neither is available (Windows).
+// Processes snapshots the process table: /proc on Linux, Toolhelp32 on
+// Windows, ps(1) elsewhere. It returns nil where none of them answers.
 func Processes() Table {
 	if t := procfsTable(); t != nil {
+		return t
+	}
+	if t := nativeTable(); t != nil {
 		return t
 	}
 	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,rss=,time=").Output()
@@ -47,6 +56,9 @@ func Processes() Table {
 func (t Table) Tree(pid int) Proc {
 	kids := make(map[int][]int, len(t))
 	for p, proc := range t {
+		if parent, ok := t[proc.PPID]; ok && proc.start != 0 && parent.start != 0 && proc.start < parent.start {
+			continue // its parent exited and the pid went to a later process
+		}
 		kids[proc.PPID] = append(kids[proc.PPID], p)
 	}
 	var sum Proc
