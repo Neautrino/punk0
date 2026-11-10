@@ -92,7 +92,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `terminal.scrollback` | Terminal | `10000` | `1000` – `100000` lines | Scrollback kept per tab, in the page and in punk0 for reopening the tab (applies to tabs started afterwards) |
 | `terminal.cursorStyle` | Terminal | `"block"` | `"block"`, `"bar"`, `"underline"` | Terminal cursor shape |
 | `terminal.cursorBlink` | Terminal | `true` | `true`, `false` | Blink the terminal cursor |
-| `terminal.copyOnSelect` | Terminal | `false` | `true`, `false` | Copy terminal text as soon as it is selected, in both terminals (see [Tabs](workbench.md#tabs)) |
+| `terminal.copyOnSelect` | Terminal | `true` | `true`, `false` | Copy terminal text as soon as it is selected, in both terminals (see [Tabs](workbench.md#tabs)) |
 | `terminal.confirmCloseRunning` | Terminal | `true` | `true`, `false` | Ask before closing a tab that is still running |
 | `terminal.shell` ⚿ | Terminal | `""` | program path | Program new tabs run; empty uses `$SHELL`, else `/bin/sh`; on Windows `pwsh`, else `powershell`, else `cmd`. In zsh, bash and fish punk0 also sees agents typed at the prompt |
 | `terminal.env` ⚿ | Terminal | `""` | `KEY=VALUE` per line | Added to every tab's environment; `~/` expands to the home folder, `#` lines are comments |

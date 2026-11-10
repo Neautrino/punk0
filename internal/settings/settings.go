@@ -387,7 +387,7 @@ var Schema = []SchemaItem{
 		Description: "Copy terminal text to the clipboard as soon as it is selected with the mouse, on the agents page and in the editor. Needs the page on localhost or https.",
 		Category:    "Terminal",
 		Type:        "boolean",
-		Default:     false,
+		Default:     true,
 	},
 	{
 		Key:         "terminal.confirmCloseRunning",

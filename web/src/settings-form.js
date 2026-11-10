@@ -272,7 +272,7 @@ const BUILTIN_SCHEMA = [
     description: "Copy terminal text to the clipboard as soon as it is selected with the mouse, on the agents page and in the editor. Needs the page on localhost or https.",
     category: "Terminal",
     type: "boolean",
-    default: false
+    default: true
   },
   {
     key: "terminal.confirmCloseRunning",
