@@ -307,9 +307,12 @@ export function refreshResources() {
   return resPanel?.refresh();
 }
 
-// initResources polls every 3 s while the page is visible, like the agents page.
+// initResources polls every 3 s while the page is visible, like the agents
+// page. Opened from the agents page, its terminals can be stopped here too.
 export function initResources() {
-  resPanel = createResPanel($('#st-res'), loadResources);
+  resPanel = createResPanel($('#st-res'), loadResources, {
+    workbench: () => S.meta?.workbench ? new URL(S.meta.workbench, location.origin).href : '',
+  });
   const tick = () => { if (!document.hidden) refreshResources(); };
   setInterval(tick, 3000);
   document.addEventListener('visibilitychange', tick);

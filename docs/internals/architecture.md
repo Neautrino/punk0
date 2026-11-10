@@ -169,6 +169,7 @@ The editor's Terminal tab talks to the parent `punk0` (the orchestrator), not to
 | `/api/tabs/{id}`               | `DELETE` | Close a tab                                                   | JSON                                       |
 | `/api/tabs/{id}/term`          | `GET`  | Websocket to the tab's PTY (loopback only)                      | websocket                                  |
 | `/api/tabs/{id}/send`          | `POST` | Type `{text}` into the tab's agent prompt (Add to Chat)          | JSON (`{ok: true}`), `409` when busy or not running |
+| `/api/tabs/{id}/stop`          | `POST` | Stop the tab's shell and agent, keeping the tab (`?force=1` skips the check) | JSON (`{ok: true}`), `409 {error, confirm}` when the stop would lose work |
 
 ## 4. Memory Management & Proactive Scavenging
 

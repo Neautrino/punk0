@@ -83,6 +83,96 @@ func TestTabSend(t *testing.T) {
 	}
 }
 
+// A stop by hand hangs the tab's shell up and keeps the tab, to start again
+// when opened. One that would lose something is refused with what until it
+// is forced.
+func TestTabStop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell")
+	}
+	newTestStore(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	_, ws, err := wb.records.Open(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wb.localOnly = true
+	useSettings(t, map[string]any{})
+	t.Setenv("SHELL", "/bin/sh")
+	if w := postJSON(t, wb, "/api/tabs/nope/stop", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown tab: %d %s", w.Code, w.Body.String())
+	}
+	tab, err := wb.records.AddTab(ws.ID, tabClaude, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := postJSON(t, wb, "/api/tabs/"+tab.ID+"/stop", ""); w.Code != http.StatusOK {
+		t.Fatalf("stopped tab: %d %s", w.Code, w.Body.String())
+	}
+	sh, err := startShell(t.TempDir(), "/bin/sh", "sleep 30", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab.mu.Lock()
+	tab.sh = sh
+	tab.mu.Unlock()
+	tab.setStatus(statusWorking)
+	if w := postJSON(t, wb, "/api/tabs/"+tab.ID+"/stop", ""); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "working") {
+		t.Fatalf("working agent: %d %s", w.Code, w.Body.String())
+	}
+	if !tab.running() {
+		t.Fatal("a refused stop stopped the tab")
+	}
+	if w := postJSON(t, wb, "/api/tabs/"+tab.ID+"/stop?force=1", ""); w.Code != http.StatusOK {
+		t.Fatalf("forced stop: %d %s", w.Code, w.Body.String())
+	}
+	if tab.running() || tab.Status() != "" {
+		t.Fatalf("after the stop: running %v, status %q", tab.running(), tab.Status())
+	}
+	if wb.records.Tab(tab.ID) == nil {
+		t.Fatal("the stop removed the tab")
+	}
+}
+
+func TestStopLoss(t *testing.T) {
+	for _, c := range []struct {
+		name, kind, status string
+		foreground, resumes bool
+		lost               bool
+	}{
+		{"shell at its prompt", tabShell, "", true, true, false},
+		{"shell running a command", tabShell, "", false, true, true},
+		{"idle agent", tabClaude, statusIdle, false, true, false},
+		{"agent without status", "codex", "", false, true, false},
+		{"working agent", tabClaude, statusWorking, false, true, true},
+		{"agent waiting for an answer", tabClaude, statusWaiting, false, true, true},
+		{"agent that cannot resume", "cursor-agent", "", false, false, true},
+	} {
+		if got := stopLoss(c.kind, c.status, c.foreground, c.resumes); (got != "") != c.lost {
+			t.Errorf("%s: %q", c.name, got)
+		}
+	}
+}
+
+// An agent tab picks its chat up again on its next start unless its agent
+// resumes only by id and the tab has none.
+func TestTabResumes(t *testing.T) {
+	for _, c := range []struct {
+		kind, session string
+		want          bool
+	}{
+		{tabShell, "", true},
+		{tabClaude, "S", true},
+		{"gemini", "", true},
+		{"cursor-agent", "S", true},
+		{"cursor-agent", "", false},
+	} {
+		if got := (&Satellite{Kind: c.kind, Session: c.session}).resumes(); got != c.want {
+			t.Errorf("%s with session %q: %v, want %v", c.kind, c.session, got, c.want)
+		}
+	}
+}
+
 // agy says what it is doing only in its terminal (OSC 7501): these are agy
 // 1.4.12's own reports, captured from a run that signed in, ran a tool behind
 // a permission prompt and finished (hookspike inject/agy/osc.raw). The

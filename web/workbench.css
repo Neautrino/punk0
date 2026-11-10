@@ -465,6 +465,10 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 }
 /* A scratch chat's ⋯ menu, placed at its button wherever the list scrolls. */
 .o-chat-menu { position: fixed; z-index: 70; }
+/* A terminal tab's right-click menu: Stop, and what opening the tab then does. */
+.o-tab-menu { max-width: 240px; }
+.o-tab-menu .o-menu-label { white-space: normal; padding-bottom: 4px; }
+.o-tab-menu button:disabled { color: var(--faint); cursor: default; background: none; }
 .o-menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
 .o-menu-label { padding: 2px 12px; font-size: 11px; color: var(--faint); }
 .o-menu button[role="menuitemradio"][aria-checked="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; color: var(--accent-fg); }

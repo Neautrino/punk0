@@ -2215,6 +2215,15 @@ kbd {
 .res-ic { flex: none; display: inline-flex; color: var(--faint); }
 .res-ic.agent-ic svg { width: 12px; height: 12px; }
 .res-spark { display: block; color: var(--accent-fg); opacity: .8; }
+/* A terminal row's stop button (tabstop.js), in the sparkline's column; it
+   shows while the row is hovered or the button focused. */
+.res-stop {
+  justify-self: end; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r);
+  background: none; color: var(--faint); cursor: pointer; opacity: 0;
+}
+.res-row:hover .res-stop, .res-stop:focus-visible { opacity: 1; }
+.res-stop:hover, .res-stop:focus-visible { color: var(--gd); background: color-mix(in srgb, var(--gd) 14%, transparent); outline: none; }
 /* A running terminal, by agent status, as the agents page's tab dots. */
 .res-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--gi); }
 .res-dot.working { background: var(--accent-fg); }

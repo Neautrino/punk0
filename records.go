@@ -164,6 +164,15 @@ func (s *Satellite) command(sx shellSyntax, hooked bool) string {
 	return agentCommand(s.Kind, s.Session, s.newChat, hooked, sx)
 }
 
+// resumes reports whether the tab's next start picks its agent's chat up
+// again (agentCommand); a shell has none to lose.
+func (s *Satellite) resumes() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := tabAgents[s.Kind]
+	return !ok || s.Kind == tabClaude || a.resume != nil || (s.Session != "" && a.resumeID != nil)
+}
+
 func (s *Satellite) running() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

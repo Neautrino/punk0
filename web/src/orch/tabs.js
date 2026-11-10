@@ -6,8 +6,9 @@
 // installed agent not in agents.hidden, agents.default first; the empty center's welcome view
 // offers the same, below the workspace's own tabs to open again, and the
 // file group's "+" opens the picker. Double-click renames a terminal tab
-// after what it is for. At the right end, the workspace's folder opens in
-// the full editor.
+// after what it is for; a right click offers to stop it (tabstop.js), which
+// keeps the tab to start again when opened. At the right end, the
+// workspace's folder opens in the full editor.
 import { $, $$, esc } from '../state.js';
 import { emit, on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
@@ -19,13 +20,14 @@ import { isSplit } from './split.js';
 import { scrollTabsOnWheel } from '../tabwheel.js';
 import { agentIcon } from '../agenticons.js';
 import { getTabLabel } from '../term-util.js';
+import { stopTab } from '../tabstop.js';
 
 const ICON_CLOSE = '<svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>';
 const ICON_CHANGES = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v8M8 9h8M8 18h8"/></svg>';
 const ICON_NEWS = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/></svg>';
 const TAB_STATUS = { working: 'working', waiting: 'waiting for you', idle: 'idle' };
 
-let barEl, fileBarEl, addEl, menuEl;
+let barEl, fileBarEl, addEl, menuEl, tabMenuEl;
 let agents = []; // GET api/agents
 
 export function initTabs() {
@@ -33,6 +35,7 @@ export function initTabs() {
   fileBarEl = $('#o-file-tabs');
   addEl = $('#o-new-tab');
   menuEl = $('#o-new-menu');
+  tabMenuEl = $('#o-tab-menu');
   if (addEl) {
     addEl.addEventListener('click', e => {
       e.stopPropagation();
@@ -57,13 +60,19 @@ export function initTabs() {
   });
   document.addEventListener('mousedown', e => {
     if (!menuEl.contains(e.target) && !addEl.contains(e.target)) closeNewMenu();
+    if (!tabMenuEl.contains(e.target)) closeTabMenu();
   });
   menuEl.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeNewMenu();
   });
+  tabMenuEl.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeTabMenu();
+  });
+  tabMenuEl.addEventListener('click', onTabMenu);
   for (const el of [barEl, fileBarEl]) {
     el.addEventListener('click', onTabClick);
     el.addEventListener('dblclick', onRename);
+    el.addEventListener('contextmenu', openTabMenu);
     scrollTabsOnWheel(el);
   }
   $('#o-file-new').addEventListener('click', () => openPicker());
@@ -155,6 +164,36 @@ function toggleNewMenu() {
 
 function closeNewMenu() {
   menuEl.hidden = true;
+}
+
+// openTabMenu is a terminal tab's right-click menu at the pointer: Stop while
+// it runs, and what opening it again does.
+function openTabMenu(e) {
+  const t = tabAt(e);
+  if (!t || t.kind === 'file' || t.whatsNew || t.changes) return;
+  e.preventDefault();
+  const note = t.kind === 'shell'
+    ? 'Opening the tab again starts a new shell.'
+    : 'Opening the tab again starts it; the agent picks its chat up where it can.';
+  tabMenuEl.dataset.tab = t.id;
+  tabMenuEl.innerHTML = `<button type="button" role="menuitem" data-act="stop"${t.running ? '' : ' disabled'}>${t.running ? 'Stop' : 'Stopped'}</button>
+    <div class="o-menu-sep" role="separator"></div>
+    <div class="o-menu-label">${note}</div>`;
+  tabMenuEl.hidden = false;
+  tabMenuEl.style.left = `${Math.max(4, Math.min(e.clientX, innerWidth - tabMenuEl.offsetWidth - 4))}px`;
+  tabMenuEl.style.top = `${Math.max(4, Math.min(e.clientY, innerHeight - tabMenuEl.offsetHeight - 4))}px`;
+  tabMenuEl.querySelector('button:not(:disabled)')?.focus();
+}
+
+function closeTabMenu() {
+  tabMenuEl.hidden = true;
+}
+
+async function onTabMenu(e) {
+  if (!e.target.closest('[data-act=stop]')) return;
+  closeTabMenu();
+  const t = tabsOf(workspace()).find(x => x.id === tabMenuEl.dataset.tab);
+  if (t?.running && await stopTab(document.baseURI, { id: t.id, name: label(t) })) reload();
 }
 
 function tabAt(e) {

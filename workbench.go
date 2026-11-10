@@ -482,6 +482,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("GET "+wb.route("/api/tabs/{id}/term"), wb.handleTerm)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/hook"), wb.handleHook)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/send"), wb.handleTabSend)
+	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/stop"), wb.handleTabStop)
 	wb.mux.HandleFunc("GET "+wb.route("/api/diagnostics"), wb.handleDiagnostics)
 	wb.mux.HandleFunc("POST "+wb.route("/api/logs/open"), wb.handleLogsOpen)
 	wb.mux.HandleFunc(wb.route("/w/"), wb.handleWorkspace)
@@ -903,6 +904,28 @@ func stopIdleTab(kind, status string, foregroundIsShell bool, idleFor, limit tim
 		return foregroundIsShell
 	}
 	return status != statusWorking && status != statusWaiting
+}
+
+// stopLoss says what stopping a running tab by hand loses, "" for nothing: a
+// command running in a shell, an agent's turn or the answer it waits for, or
+// the chat of an agent that cannot pick it up again (resumes).
+func stopLoss(kind, status string, foregroundIsShell, resumes bool) string {
+	if kind == tabShell {
+		if foregroundIsShell {
+			return ""
+		}
+		return "A command is running in it and will be killed."
+	}
+	switch status {
+	case statusWorking:
+		return "Its agent is working; the turn stops."
+	case statusWaiting:
+		return "Its agent is waiting for your answer."
+	}
+	if !resumes {
+		return "Its agent cannot pick this chat up again: opening the tab starts a new one."
+	}
+	return ""
 }
 
 /* ---------- HTTP ---------- */
@@ -1784,6 +1807,40 @@ func (wb *workbench) handleTabRemove(w http.ResponseWriter, r *http.Request) {
 		failRecord(w, err)
 		return
 	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleTabStop serves POST /api/tabs/{id}/stop: the tab's shell, and the
+// agent in it, stop as an idle stop stops them; the tab stays, and opening it
+// again starts it, an agent picking its chat up where it can. A stop that
+// would lose something (stopLoss) answers 409 with what; the page asks and
+// repeats it with ?force=1.
+func (wb *workbench) handleTabStop(w http.ResponseWriter, r *http.Request) {
+	if !localOrigin(w, r) {
+		return
+	}
+	id := r.PathValue("id")
+	t := wb.records.Tab(id)
+	if t == nil {
+		fail(w, http.StatusNotFound, "no such tab")
+		return
+	}
+	sh := t.shell()
+	if sh == nil {
+		writeJSON(w, map[string]any{"ok": true})
+		return
+	}
+	kind := t.kind()
+	if r.URL.Query().Get("force") != "1" {
+		if loss := stopLoss(kind, t.Status(), sh.Foreground(), t.resumes()); loss != "" {
+			writeConflict(w, map[string]any{"error": loss, "confirm": true})
+			return
+		}
+	}
+	name := wb.records.TabLabel(id)
+	ui.Event("stop", kind, name, "stopped by you", os.Stdout)
+	slog.Info("tab stop", "tab", id, "kind", kind, "name", name)
+	t.close()
 	writeJSON(w, map[string]any{"ok": true})
 }
 

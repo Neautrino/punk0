@@ -4,11 +4,13 @@
 // reads running terminals · running agents · total RAM; the panel is a table
 // of CPU and RAM per workspace, its editor, its language servers and each
 // terminal, pull request reviews and punk0 itself, with the goroutines of
-// every punk0 process, as px0's metrics showed them. The figures and names
+// every punk0 process, as px0's metrics showed them. Each terminal's row has
+// a stop button (tabstop.js) where it has no sparkline. The figures and names
 // come from the workbench's GET /api/resources (wbresources.go); each page
-// says how to get them. Depends only on state.js and format.js, which both
-// bundles carry.
+// says how to get them. Depends only on state.js, format.js, agenticons.js
+// and tabstop.js, which both bundles carry.
 import { esc } from './state.js';
+import { stopTab } from './tabstop.js';
 import { agentIcon } from './agenticons.js';
 import { fmtBytes } from './format.js';
 
@@ -26,6 +28,7 @@ const ICON_EDITOR = svg('<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>');
 const ICON_LSP = svg('<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>');
 const ICON_PR = svg('<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/>');
 const CHEVRON = '<svg viewBox="0 0 10 10" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2l3 3-3 3"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
 
 const BUTTON = `
   <span class="res-count">${svg(TERM, 2, 13)}<span data-res="terms">0</span></span>
@@ -61,15 +64,18 @@ const figures = u => `<span class="res-num">${fmtCPU(u.cpu)}</span><span class="
 
 /**
  * createResPanel puts the button into slot and the panel into the page.
- * load() returns the /api/resources payload, or null when it failed; onData,
- * when given, sees every payload (the agents page's LSP item uses it).
+ * load() returns the /api/resources payload, or null when it failed.
+ * Options: onData sees every payload (the agents page's LSP item uses it);
+ * workbench() is the URL the workbench's API paths resolve against, "" where
+ * there is none (a review run on its own), which leaves out the terminals'
+ * stop buttons; onStopped runs after one of them stopped a tab.
  * The returned refresh() runs one poll: the sparklines need every sample, so
  * call it on the page's poll, not only while the panel is open.
  * @param {HTMLElement} slot
  * @param {() => Promise<any>} load
- * @param {(data: any) => void} [onData]
+ * @param {{ onData?: (data: any) => void, workbench?: () => string, onStopped?: () => void }} [opts]
  */
-export function createResPanel(slot, load, onData) {
+export function createResPanel(slot, load, { onData, workbench, onStopped } = {}) {
   slot.innerHTML = `<button type="button" class="res-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="res-panel">${BUTTON}</button>`;
   const btn = /** @type {HTMLElement} */ (slot.firstElementChild);
   const panel = document.createElement('section');
@@ -129,9 +135,13 @@ export function createResPanel(slot, load, onData) {
       }
       for (const t of ws.tabs) {
         const agent = t.kind !== 'shell';
+        const name = t.name || 'Terminal';
+        const stop = workbench?.()
+          ? `<button type="button" class="res-stop" data-stop="${esc(t.id)}" title="Stop it: opening the tab starts it again" aria-label="Stop ${esc(name)}">${ICON_STOP}</button>`
+          : '<span></span>';
         out.push(`<div class="res-row res-sub" title="${agent ? `Agent (${esc(t.kind)})` : 'Shell'}, and everything running in it">
-          <span class="res-name"><span class="res-dot${t.status ? ' ' + esc(t.status) : ''}"></span>${agentIcon(t.kind, 'res-ic')}<span class="res-label">${esc(t.name || 'Terminal')}</span></span>
-          <span></span>${figures(t)}</div>`);
+          <span class="res-name"><span class="res-dot${t.status ? ' ' + esc(t.status) : ''}"></span>${agentIcon(t.kind, 'res-ic')}<span class="res-label">${esc(name)}</span></span>
+          ${stop}${figures(t)}</div>`);
       }
     }
     for (const r of last.reviews) {
@@ -206,8 +216,18 @@ export function createResPanel(slot, load, onData) {
     setOpen(panel.hidden);
   });
   part('refresh').addEventListener('click', () => refresh());
-  rowsEl.addEventListener('click', e => {
-    const row = /** @type {HTMLElement|null} */ (/** @type {HTMLElement} */ (e.target).closest('.res-group'));
+  rowsEl.addEventListener('click', async e => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const stop = /** @type {HTMLElement|null} */ (target.closest('[data-stop]'));
+    if (stop) {
+      const t = last?.workspaces.flatMap(w => w.tabs).find(x => x.id === stop.dataset.stop);
+      if (t && await stopTab(workbench(), { id: t.id, name: t.name || 'Terminal' })) {
+        await refresh();
+        onStopped?.();
+      }
+      return;
+    }
+    const row = /** @type {HTMLElement|null} */ (target.closest('.res-group'));
     if (row) toggleGroup(row);
   });
   rowsEl.addEventListener('keydown', e => {

@@ -450,7 +450,12 @@ func (s *Shell) Attach(ctx context.Context, conn *websocket.Conn, onUse func()) 
 		case p, ok := <-v:
 			if !ok {
 				if s.Exited() {
-					conn.Close(websocket.StatusNormalClosure, "shell exited")
+					// A shell punk0 hung up (a stop, by hand or idle) says so.
+					reason := "shell exited"
+					if s.closed.Load() {
+						reason = "stopped"
+					}
+					conn.Close(websocket.StatusNormalClosure, reason)
 				} else {
 					conn.Close(websocket.StatusTryAgainLater, "viewer fell behind")
 				}
