@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"px0/internal/ui"
 )
@@ -77,35 +76,6 @@ func TestFetchLatestRelease(t *testing.T) {
 	}
 	if len(rel.Assets) != 1 || rel.Assets[0].Name != "punk0-0.2.0-linux-amd64" {
 		t.Errorf("unexpected assets: %+v", rel.Assets)
-	}
-}
-
-func TestUpdateStatePersistence(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", tmpDir)
-
-	statePath := filepath.Join(tmpDir, "punk0", "update_check.json")
-	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
-		t.Fatalf("expected state file to not exist yet")
-	}
-
-	now := time.Now().Truncate(time.Second)
-	s := &updateState{
-		LastChecked: now,
-		LatestVer:   "0.2.0",
-	}
-	writeUpdateState(s)
-
-	readState, err := readUpdateState()
-	if err != nil {
-		t.Fatalf("readUpdateState failed: %v", err)
-	}
-
-	if readState.LatestVer != "0.2.0" {
-		t.Errorf("read LatestVer = %q, want 0.2.0", readState.LatestVer)
-	}
-	if readState.LastChecked.Unix() != now.Unix() {
-		t.Errorf("read LastChecked = %v, want %v", readState.LastChecked, now)
 	}
 }
 
@@ -290,30 +260,15 @@ func TestInstallUpdate(t *testing.T) {
 	}
 }
 
-// TestAutoUpdateFastPathSkipsNetwork verifies that when the cached state was
-// checked recently and shows no newer version, AutoUpdate never touches the
-// network (and so never reaches the os.Executable()-based install
-// path, which would be unsafe to exercise against the test binary).
-func TestAutoUpdateFastPathSkipsNetwork(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", tmpDir)
-	t.Setenv("PUNK0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
+// TestAutoUpdateChecksOnEveryStart verifies that each start asks for the
+// latest release, even right after another start found nothing newer, and
+// that an up-to-date answer returns without reaching the install path.
+func TestAutoUpdateChecksOnEveryStart(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
-	writeUpdateState(&updateState{LastChecked: time.Now(), LatestVer: "0.1.0"})
-
-	AutoUpdate("0.1.0")
-	// No panic/hang means the cached "up to date" state short-circuited
-	// before any network call.
-}
-
-// TestAutoUpdateDueCheckSkipsInstallWhenUpToDate verifies that a due daily
-// check that finds no newer release just refreshes the cache and returns,
-// again without reaching the install path.
-func TestAutoUpdateDueCheckSkipsInstallWhenUpToDate(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", tmpDir)
-
+	hits := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
 		rel := githubRelease{TagName: "v0.1.0"}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rel)
@@ -321,14 +276,13 @@ func TestAutoUpdateDueCheckSkipsInstallWhenUpToDate(t *testing.T) {
 	defer ts.Close()
 	t.Setenv("PUNK0_UPDATE_URL", ts.URL)
 
-	AutoUpdate("0.1.0")
-
-	state, err := readUpdateState()
-	if err != nil {
-		t.Fatalf("readUpdateState failed: %v", err)
+	for range 2 {
+		if v := AutoUpdate("0.1.0"); v != "" {
+			t.Fatalf("AutoUpdate installed %q, want nothing", v)
+		}
 	}
-	if state.LatestVer != "0.1.0" {
-		t.Fatalf("LatestVer = %q, want 0.1.0", state.LatestVer)
+	if hits != 2 {
+		t.Fatalf("release lookups = %d, want 2 (one per start)", hits)
 	}
 }
 
@@ -352,8 +306,7 @@ func captureAutoUpdateStdout(t *testing.T, fn func()) string {
 }
 
 // TestAutoUpdateVerbosePrintsUpToDate verifies that -verbose surfaces an
-// explicit "up to date" line on stdout when the daily check finds nothing
-// newer, both when the check actually hits the network...
+// explicit "up to date" line on stdout when the check finds nothing newer.
 func TestAutoUpdateVerbosePrintsUpToDate(t *testing.T) {
 	origVerbose := ui.Verbose
 	defer func() { ui.Verbose = origVerbose }()
@@ -369,24 +322,6 @@ func TestAutoUpdateVerbosePrintsUpToDate(t *testing.T) {
 	}))
 	defer ts.Close()
 	t.Setenv("PUNK0_UPDATE_URL", ts.URL)
-
-	out := captureAutoUpdateStdout(t, func() { AutoUpdate("0.1.0") })
-	if !strings.Contains(out, "up to date") {
-		t.Fatalf("expected an up-to-date message in verbose output, got %q", out)
-	}
-}
-
-// ...and when the cached state from an earlier check already says so.
-func TestAutoUpdateVerbosePrintsUpToDateFromCache(t *testing.T) {
-	origVerbose := ui.Verbose
-	defer func() { ui.Verbose = origVerbose }()
-	ui.Verbose = true
-
-	tmpDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", tmpDir)
-	t.Setenv("PUNK0_UPDATE_URL", "http://127.0.0.1:1/should-not-be-hit")
-
-	writeUpdateState(&updateState{LastChecked: time.Now(), LatestVer: "0.1.0"})
 
 	out := captureAutoUpdateStdout(t, func() { AutoUpdate("0.1.0") })
 	if !strings.Contains(out, "up to date") {

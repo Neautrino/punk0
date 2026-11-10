@@ -187,7 +187,7 @@ While the agents page is open, even in a background browser tab, punk0 can tell 
 
 ## Updates
 
-With **Update Automatically** on (`update.auto`, the default), punk0 checks for a newer release once a day and installs it in place while it runs. The agents page then shows a card, **punk0 vX is installed**, with three buttons:
+With **Update Automatically** on (`update.auto`, the default), punk0 checks for a newer release each time it starts and installs it in place while it runs. The agents page then shows a card, **punk0 vX is installed**, with three buttons:
 
 - **Restart now** stops every tab and editor and starts the new punk0 in the same terminal, on the same port, without opening another browser window. With tabs running it asks first: agent tabs resume their chat after the restart, while a command running in a shell tab is killed and the tab comes back as a fresh shell. The restart takes a few seconds; every open agents page reloads by itself once the new punk0 answers, keeping what it showed. Editor windows keep the old page until you reload them.
 - **What's new** opens the new version's release notes (see below) before you restart.
@@ -275,7 +275,6 @@ punk0 keeps settings, its own bookkeeping and your code apart, each in the folde
 | `sessions/` | Open files and review drafts per workspace |
 | `claude-hooks.json` | The hook settings Claude tabs start with |
 | `workbench.lock` | The running punk0's address |
-| `update_check.json` | When punk0 last looked for a release, and the newest it found |
 | `whats_new.json` | The last version whose What's New the agents page opened |
 | `release-notes/` | Release notes saved by updates, one `v<version>.md` each |
 | `logs/` | `punk0.log` and its older parts, `crash.log` (see [Logs and diagnostics](#logs-and-diagnostics)) |
