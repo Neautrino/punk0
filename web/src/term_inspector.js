@@ -52,12 +52,14 @@ function boot() {
       import(parentURL('static/vendor/xterm.mjs')),
       import(parentURL('static/vendor/addon-fit.mjs')),
       import(parentURL('static/vendor/addon-image.mjs')),
+      import(parentURL('static/vendor/addon-web-links.mjs')),
       loadTermFonts(termOptions(), () => late()),
-    ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }]) => {
+    ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }, { WebLinksAddon }]) => {
       const term = new Terminal({ ...termOptions(), theme: termColors() });
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.loadAddon(new ImageAddon()); // SIXEL and iTerm2 inline images, as in orch/term.js
+      term.loadAddon(new WebLinksAddon()); // clickable URLs, as in orch/term.js
       term.open(termEl);
 
       const fitNow = () => {
