@@ -33,7 +33,7 @@ import { initPaneViews } from './orch/paneviews.js';
 import { initSettings } from './orch/settings.js';
 import { initNotify } from './orch/notify.js';
 import { watchSelects } from './selectbox.js';
-import { initWelcomeTips } from './orch/welcometips.js';
+import { mountTipBox } from './tips.js';
 
 // Editor windows link back here by this name (main.js), so going back
 // reuses this window instead of opening another orchestrator.
@@ -59,7 +59,7 @@ initNewWorkspace();
 initRemoveDialog();
 initLsp();
 initTabs();
-initWelcomeTips();
+mountTipBox($('#o-empty-tip'), 'agents');
 initGit();
 initHistory();
 initTree();

@@ -30,8 +30,8 @@ const BUILTIN_SCHEMA = [
   },
   {
     key: "tips.enabled",
-    title: "Show Tips in Interface",
-    description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",
+    title: "Show Tips",
+    description: "Shows one tip in empty views (the agents page's welcome, the editor with no file open) and in the command palette. Every tip stays listed in Help › Tips.",
     category: "General",
     type: "boolean",
     default: true
@@ -1017,6 +1017,24 @@ function applyAll() {
   for (const k of keys) page.apply(k, getSetting(k));
 }
 
+// saveSetting stores one value the way the modal's own saves do, so the page
+// applies it and getSetting returns it at once. False when the server refused.
+export async function saveSetting(key, value) {
+  try {
+    commit(await postSettings({ [key]: value }), { [key]: value });
+    return true;
+  } catch (err) {
+    page.toast?.('!', `Could not save ${key}: ${err.message}`);
+    return false;
+  }
+}
+
+// settingsLoaded settles once the first load has been applied (or failed and
+// left the defaults): what a page waits for before showing anything a setting
+// decides.
+let loaded = () => {};
+export const settingsLoaded = new Promise(resolve => { loaded = resolve; });
+
 /**
  * Builds the modal once, loads settings and applies every value.
  * @param {{
@@ -1033,7 +1051,7 @@ export function initSettingsModal(opts) {
   // is looked at again.
   addEventListener('focus', refreshSettings);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refreshSettings());
-  return loadSettings().then(applyAll);
+  return loadSettings().then(applyAll).finally(loaded);
 }
 
 const REFRESH_GAP = 3000; // ms: a focus storm makes at most one request

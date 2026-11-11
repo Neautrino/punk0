@@ -1,60 +1,45 @@
-# Tips & Tricks System
+# Tips
 
-punk0 includes an interactive tips and tricks system designed to introduce developers to powerful keyboard shortcuts, Git workflows, review capabilities, and editor features without obstructing startup.
+punk0 shows short tips about its features on both pages, the agents page and the editor. They come from one list that ships with punk0 (`web/src/tipsdata.js`): nothing is fetched, and every tip describes the version you run.
 
----
+## Where tips show
 
-## Overview & Architecture
+A tip shows only where you are idle or looking for something. Nothing pops up, nothing changes on a timer, and nothing covers code or a terminal.
 
-Unlike heavy IDEs that display large intrusive modals on startup, punk0 loads tips asynchronously in the background.
+| Page | Where | When |
+|---|---|---|
+| Agents page | The welcome view, under its buttons | A workspace is picked or selected and has no tab open. One tip per page load. |
+| Editor | Under the shortcut list shown with no file open | No file is open. One tip per page load. |
+| Editor | The command palette's footer (`Mod+Shift+P`) | Each time the palette opens in command mode, a new tip, kept while you type. Other palette modes keep their usage hint. |
+| Both | **Help › Tips** (the **?** button at the bottom left) | On demand: every tip of both pages, this page's first, with a filter. In the editor, the command palette's **Help: Tips** opens it too. |
 
-- **Non-Intrusive Floating Widget**: Appears gently in the bottom-right corner after an initial delay (~1.8 seconds), presenting one tip at a time with previous/next navigation and automatic progression.
-- **Tips Tab in the Help Card**: The help card (`#helpsheet`) has tabs **Shortcuts | Tips | Vim**. The Tips tab lists all tips in a two-column grid (`#tips-list`) with a filter (`#tips-filter`), a count, a reload button and a **Show tip popups** checkbox.
-- **Left Bottom Bar Help Button**: The `#btn-help` button in the status bar's first section (`.status-side`, under the sidebar) opens the help card on its Tips tab.
-- **Public URL Delivery**: Tips are loaded live from `https://px0.ai/tips.json` (px0's site; the list is not part of this repo) and cached locally, with built-in offline fallbacks (`web/src/tips-util.js`).
-- **Permanent Dismissal**: Users can permanently hide the floating tip popups at any time via the "Don't show tips" button, the Tips tab's **Show tip popups** checkbox, or the `tips.enabled` preference in Settings (`Cmd/Ctrl+,`).
+A tip box has **‹** and **›** to step through the page's tips, its place in them (`3/25`), and **×**, which turns tips off.
 
----
+## On and off
 
-## How to Access Tips
+One setting decides it on both pages: **Show Tips** (`tips.enabled`, on by default) in Settings (`Mod+,`). **×** on a tip and the **Show tips** checkbox in Help › Tips change that same setting. The page you change it on follows at once; another open page follows when you switch to it, as it does for every setting. Help › Tips stays available with tips off.
 
-1. **Floating Tip Widget**: Automatically appears shortly after opening punk0 unless permanently hidden. Use **‹** and **›** to browse tips one after another.
-2. **Help Button**: Click the question mark icon in the left bottom bar (beside the theme and settings buttons) to open the help card on its Tips tab.
-3. **Tip Widget**: Click **All Tips** on the floating tip widget.
-4. **Command Palette**: Press **`Cmd/Ctrl + Shift + P`** and choose **Help: Tips & Tricks (All Tips)** or **Help: Show Tip**.
-5. **Keyboard Shortcuts Sheet**: Press **`?`** to open the keyboard cheat sheet, then click the **Tips** tab.
+## Which tip
 
----
+- **Not seen yet first.** A tip counts as seen once it is shown. Both pages share the list of seen tips (`punk0.tips.seen` in the browser's storage, kept per address), so a tip for both pages seen on one is not shown again on the other. When a page has shown all its tips, it starts over.
+- **Only what applies.** A tip about turning something on (Desktop Notifications, Vim keys) is left out once that setting is changed, and a tip about Windows/Linux keys is not shown on a Mac.
+- An empty view that never comes on screen uses no tip up: the editor picks its tip only once its empty view is visible.
 
-## Keeping Tips Updated (Agent & Contributor Guidelines)
+## Adding a tip
 
 > [!IMPORTANT]
-> Whenever rolling out a new user-facing feature, shortcut, command, or workflow improvement, add a corresponding tip entry so users can discover it.
+> A new user-facing feature, shortcut or command gets a tip.
 
-### Tip Entry Schema
+Add an entry to `TIPS` in `web/src/tipsdata.js`:
 
-Each tip is a JSON object with the following fields:
-
-```json
-{
-  "id": "feature-slug",
-  "title": "Clear and Concise Title",
-  "category": "Navigation | Git | AI | Editing | Viewer | Workbench | Performance",
-  "tag": "ShortTag",
-  "content": "Short markdown description of the feature. Supports **bold**, `code`, links, and <kbd> tags.",
-  "shortcut": "Mod+Key" // optional keyboard shortcut combo
-}
+```js
+{ id: 'e-diff', page: 'editor', text: '{Mod+D} switches the open file between its source and its diff against HEAD.' },
 ```
 
-### Steps to Add or Update a Tip
+- `id`: stable and unique; the rotation remembers tips by it.
+- `page`: `'agents'`, `'editor'` or `'both'`.
+- `text`: at most 160 characters, true of this version, with UI labels written as the UI shows them. `{Mod+K}` is a key combination, drawn as the reader's keyboard labels it (⌘K on a Mac, Ctrl+K elsewhere); `**Label**` is a UI label, in bold.
+- `only: [key, value]` (optional): shown only while that setting has that value, which must be its default.
+- `os: 'mac' | 'other'` (optional): shown only there.
 
-1. **Public List**:
-   The live list is served from px0's site (`https://px0.ai/tips.json`), outside this repo, so punk0 cannot publish tips there.
-
-2. **Add to Built-in Fallbacks**:
-   Add the identical entry to `DEFAULT_TIPS` in `web/src/tips-util.js` so the tip is available offline.
-
-3. **Verify and Rebuild**:
-   - Run `bun test web/src/` to run the frontend unit tests.
-   - Run `bun ./scripts/check-web.js` and `bun ./scripts/build-web.js` to rebuild `web/app.js`.
-   - Run `go test ./...` and `make build`.
+Then run `bun scripts/check-web.js` (its tests check every tip's fields, length, markup and `only` setting) and `bun scripts/build-web.js`.

@@ -387,7 +387,7 @@
            in the split layout when it has no terminal. It starts the default
            agent; the other agents are one menu away (#o-agent-menu). Its tabs
            are offered, never started for the user: showing a tab starts it.
-           A tip from welcometips.js closes it. -->
+           A tip (tips.js) closes it. -->
       <div id="o-empty" data-ws="none">
         <div class="o-welcome">
           <div class="o-welcome-mark">punk<span>[0]</span><small id="o-empty-ver"></small></div>
@@ -406,15 +406,7 @@
           <p class="o-empty-pick">Pick a workspace or chat on the left.</p>
           <p class="o-empty-pick wb-faint">Nothing starts until you open it.</p>
           <p class="o-empty-missing">The folder of this workspace is gone.</p>
-          <div id="o-empty-tip" class="o-welcome-tip" hidden>
-            <div class="o-welcome-tip-head">
-              <span class="o-welcome-tip-tag">Tip</span>
-              <button type="button" data-tip="-1" title="Previous tip" aria-label="Previous tip">‹</button>
-              <span id="o-empty-tip-n" class="wb-faint"></span>
-              <button type="button" data-tip="1" title="Next tip" aria-label="Next tip">›</button>
-            </div>
-            <div id="o-empty-tip-text"></div>
-          </div>
+          <div id="o-empty-tip" class="tipbox" hidden></div>
         </div>
       </div>
       <div id="o-picker" hidden>
@@ -531,7 +523,7 @@
     <a class="status-logo" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub">punk<span>[0]</span></a>
     <span id="st-ver" class="status-ver" title="punk0 version"></span>
     <span class="side-actions">
-      <button class="mini" id="btn-help" title="Keyboard shortcuts" aria-label="Keyboard shortcuts" aria-haspopup="dialog">
+      <button class="mini" id="btn-help" title="Help & Tips" aria-label="Help & Tips" aria-haspopup="dialog">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </button>
       <a class="mini" href="https://github.com/Neautrino/punk0" target="_blank" rel="noopener" title="punk0 on GitHub" aria-label="punk0 on GitHub">
@@ -581,7 +573,31 @@
     <button type="button" class="wb-btn" data-act="later">Later</button>
   </div>
 </div>
-<div id="helpsheet" hidden></div>
+<!-- Help (the ? button): Shortcuts | Tips over one card (statusbar.js; the
+     Tips tab is tips.js's), and a foot for the logs folder, diagnostics and
+     this version's What's New. -->
+<div id="helpsheet" hidden>
+  <div class="help-card help-tabbed" role="dialog" aria-modal="true" aria-label="Help">
+    <header class="help-header">
+      <span class="help-tabs" role="tablist" aria-label="Help">
+        <button type="button" role="tab" data-view="keys">Shortcuts</button>
+        <button type="button" role="tab" data-view="tips">Tips</button>
+      </span>
+      <span id="help-ver" class="help-version" hidden></span>
+      <button id="help-close" type="button" class="mini" title="Close (Esc)" aria-label="Close"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </header>
+    <div class="help-body">
+      <section data-pane-view="keys" aria-label="Keyboard shortcuts"><dl class="help-grid" id="help-keys"></dl><div id="help-legacy"></div></section>
+      <section data-pane-view="tips" aria-label="Tips" class="help-tips" hidden></section>
+    </div>
+    <div class="help-foot">
+      <button type="button" class="wb-btn" id="help-logs">Open logs folder</button>
+      <button type="button" class="wb-btn" id="help-diag">Copy diagnostics</button>
+      <button type="button" class="wb-btn" id="help-news" hidden></button>
+      <span class="help-foot-note">The log never holds terminal output or prompts.</span>
+    </div>
+  </div>
+</div>
 <!-- A terminal tab's right-click menu: Stop (orch/tabs.js). In the body, so
      no pane's containment moves where position: fixed puts it. -->
 <div id="o-tab-menu" class="o-menu o-chat-menu o-tab-menu" role="menu" aria-label="Tab actions" hidden></div>

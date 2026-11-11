@@ -574,6 +574,9 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 #o-empty .o-welcome-tag { display: block; }
 #o-empty[data-ws="yes"] .o-welcome-acts { display: flex; }
 #o-empty[data-ws="yes"] .o-welcome-acts:empty { display: none; }
+/* The tip (tips.js) speaks of a workspace's tabs and panes: not shown before
+   there is a project, nor for a folder that is gone. */
+#o-empty[data-ws="none"] .tipbox, #o-empty[data-ws="missing"] .tipbox { display: none; }
 .o-welcome {
   width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 24px 20px 16px; border: 1px solid var(--line); border-radius: var(--r-lg);
@@ -600,14 +603,6 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-welcome-head { padding: 0 10px 2px; text-align: left; font-size: 11.5px; color: var(--faint); }
 #o-empty-tabs { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 #o-empty .o-welcome-cta { margin-top: 10px; }
-/* The tip: left-aligned under a rule, ‹ › at the right of its head. */
-.o-welcome-tip { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); text-align: left; font-size: 12px; line-height: 1.5; color: var(--dim); }
-.o-welcome-tip-head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
-.o-welcome-tip-tag { margin-right: auto; font: 600 10.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); }
-.o-welcome-tip-head button { width: 20px; height: 20px; border-radius: var(--r); color: var(--dim); font-size: 14px; line-height: 1; }
-.o-welcome-tip-head button:hover, .o-welcome-tip-head button:focus-visible { background: var(--bg3); color: var(--fg); outline: none; }
-#o-empty .o-welcome-tip .wb-faint { font: 10.5px var(--mono); }
-.o-welcome-tip kbd { font-size: 10px; padding: 1px 4px; }
 /* Another agent…: every agent but the default, under its button. */
 .o-agent-menu { min-width: 200px; max-height: 60vh; overflow-y: auto; }
 

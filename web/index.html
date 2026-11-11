@@ -285,6 +285,8 @@
             <dt data-caps="Mod+,"></dt><dd>settings</dd>
             <dt data-caps="?"></dt><dd>all shortcuts</dd>
           </dl>
+          <!-- One tip (tips.js), while tips are on. -->
+          <div id="empty-tip" class="tipbox" hidden></div>
         </div>
       </div>
 
@@ -378,31 +380,6 @@
 
     <!-- LSP management menu, opened from LSP status bar button -->
     <div id="lsp-menu" role="menu" hidden></div>
-
-    <!-- Floating Async Tip Widget (web/src/tips.js) -->
-    <div id="tip-widget" class="tip-widget" hidden>
-      <div class="tip-widget-head">
-        <div class="tip-widget-tag-group">
-          <svg class="tip-widget-bulb" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/></svg>
-          <span class="tip-widget-label">Tip</span>
-          <button id="tip-widget-tag" class="tip-tag-pill" type="button" title="Filter tips by this category"></button>
-          <span id="tip-widget-count" class="tip-count-chip"></span>
-        </div>
-        <button id="tip-widget-close" class="tip-btn-close" type="button" title="Dismiss tip">&times;</button>
-      </div>
-      <div class="tip-widget-body">
-        <h4 id="tip-widget-title" class="tip-widget-title"></h4>
-        <div id="tip-widget-content" class="tip-widget-content"></div>
-      </div>
-      <div class="tip-widget-foot">
-        <button id="tip-widget-hide-perm" class="tip-btn-link" type="button" title="Permanently hide tips in the interface">Don't show tips</button>
-        <div class="tip-widget-actions">
-          <button id="tip-widget-prev" class="tip-btn-nav" type="button" title="Previous tip">&lsaquo;</button>
-          <button id="tip-widget-next" class="tip-btn-nav" type="button" title="Next tip">&rsaquo;</button>
-          <button id="tip-widget-all" class="tip-btn-all" type="button" title="View all tips in IDE">All Tips</button>
-        </div>
-      </div>
-    </div>
 
   </main>
 
@@ -531,9 +508,9 @@
   </div>
 </div>
 
-<!-- SECTION: Help (?, the status bar's help, All Tips): Shortcuts | Tips |
-     Vim over one card. shortcuts.js opens it; tips.js and vim.js fill their
-     tabs. -->
+<!-- SECTION: Help (?, the status bar's version, Help: Tips): Shortcuts |
+     Tips | Vim over one card. shortcuts.js opens it; tips.js and vim.js
+     fill their tabs. -->
 <div id="helpsheet" hidden>
   <div class="help-card help-tabbed" role="dialog" aria-modal="true" aria-label="Help">
     <header class="help-header">
@@ -547,22 +524,8 @@
     </header>
     <div class="help-body">
       <section data-pane-view="keys" aria-label="Keyboard shortcuts"><dl class="help-grid" id="help-keys"></dl></section>
-      <!-- Every tip, searchable (tips.js). -->
-      <section data-pane-view="tips" aria-label="Tips" class="help-tips" hidden>
-        <div class="tips-header-bar">
-          <div class="tips-search-wrap">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="tips-filter" placeholder="Filter tips..." autocomplete="off" spellcheck="false">
-          </div>
-          <span id="tips-count-badge" class="inspector-badge">0 tips</span>
-          <button id="btn-refresh-tips" type="button" class="side-btn" title="Reload tips from px0.ai" aria-label="Reload tips"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg></button>
-          <label class="tips-setting-toggle" title="Toggle automatic tip popups in interface">
-            <input type="checkbox" id="tips-toggle-popup" checked>
-            <span>Show tip popups</span>
-          </label>
-        </div>
-        <div id="tips-list"></div>
-      </section>
+      <!-- Every tip, a filter and the Show tips switch (tips.js). -->
+      <section data-pane-view="tips" aria-label="Tips" class="help-tips" hidden></section>
       <!-- Vim keybindings and the on/off switch (vim.js renderVimHelp). -->
       <section data-pane-view="vim" aria-label="Vim keybindings" class="help-vim" hidden></section>
     </div>

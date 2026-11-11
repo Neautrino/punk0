@@ -11,7 +11,7 @@ import { gotoDefinition, findReferences } from './lsp.js';
 import { showSideView, toggleSide } from './sideviews.js';
 import { showTerminal } from './term_inspector.js';
 import { paneViews } from './paneviews.js';
-import { emit } from './bus.js';
+import { initTipsHelp } from './tips.js';
 import { overlay, openPalette, closePalette } from './palette.js';
 import { moveCursor, moveCol, moveWord, caretToEdge } from './cursor.js';
 import { showCalls } from './calls.js';
@@ -26,7 +26,6 @@ import { handleVimKeyDown, isVimEnabled, getVimMode, renderVimHelp } from './vim
 import { handleImageKey } from './imageview.js';
 import { reindexWorkspace } from './panels.js';
 import { enterEditMode, exitEditMode, saveActiveFile, editTextarea } from './editview.js';
-import { navigateToTips } from './tips.js';
 
 /* Each entry lists alternative combos, written as for keyLabel in state.js so
    they show as ⌘/⌥/⇧ on a Mac and Ctrl/Alt/Shift elsewhere. Browsers keep
@@ -61,11 +60,12 @@ export const SHORTCUTS = [
 ];
 
 let helpViews = null;
+let tipsHelp = null;
 
 // fillHelp draws the help card's tab view as it comes to the front: tips.js
 // lists the tips, vim.js draws its keys and on/off switch.
 function fillHelp(view) {
-  if (view === 'tips') emit('tips:shown');
+  if (view === 'tips') tipsHelp.refresh();
   if (view === 'vim') renderVimHelp($('#helpsheet [data-pane-view="vim"]'));
 }
 
@@ -92,10 +92,11 @@ export function initShortcuts() {
   // Ln / Col, as on the agents page, opens Go to; an image's zoom there does not.
   $('#st-pos')?.addEventListener('click', () => { if (!doc_()?.isImage) openPalette('line'); });
   $('#btn-settings')?.addEventListener('click', () => openSettings('ui'));
-  $('#btn-help')?.addEventListener('click', () => navigateToTips());
+  $('#btn-help')?.addEventListener('click', () => showHelp('tips'));
   $('#st-ver')?.addEventListener('click', () => showHelp());
   $('#help-keys').innerHTML = SHORTCUTS.map(([combos, v]) =>
     '<dt>' + combos.map(keyCaps).filter(Boolean).join('<span class="key-or">/</span>') + '</dt><dd>' + esc(v) + '</dd>').join('');
+  tipsHelp = initTipsHelp($('#helpsheet [data-pane-view="tips"]'), 'editor');
   helpViews = paneViews({
     host: $('#helpsheet .help-body'),
     bars: [$('#helpsheet .help-tabs')],

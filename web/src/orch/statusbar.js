@@ -1,11 +1,11 @@
 // web/src/orch/statusbar.js
-// The status bar under the three panes. Left: version, then help (the
-// keyboard shortcuts sheet, whose foot opens the logs folder, copies
-// diagnostics and opens this version's What's New), GitHub and settings
-// (settings.js). Middle: the agents needing you and working, each a button
-// to the next such tab; the open file's details are viewer.js's. Right: an
-// installed update's item (update.js), the resource button and panel
-// (resources.js, respanel.js).
+// The status bar under the three panes. Left: version, then help (Shortcuts
+// | Tips over one card, whose foot opens the logs folder, copies diagnostics
+// and opens this version's What's New), GitHub and settings (settings.js).
+// Middle: the agents needing you and working, each a button to the next such
+// tab; the open file's details are viewer.js's. Right: an installed update's
+// item (update.js), the resource button and panel (resources.js,
+// respanel.js).
 import { $, esc, keyCaps } from '../state.js';
 import { showToast, copyToClipboard } from '../ui.js';
 import { call, failed } from './api.js';
@@ -13,6 +13,8 @@ import { drawAgentStates } from '../statusparts.js';
 import { setTheme, getStoredTheme, chooseThemePreference, currentTheme } from '../theme.js';
 import { state, subscribe, termTab, selectWorkspace, selectTab, openWhatsNew } from './store.js';
 import { initResources, refreshResources } from './resources.js';
+import { paneViews } from '../paneviews.js';
+import { initTipsHelp } from '../tips.js';
 
 // The agents page's own keys; the editor's live in shortcuts.js.
 const SHORTCUTS = [
@@ -30,26 +32,50 @@ const SHORTCUTS = [
 ];
 
 const helpSheet = $('#helpsheet');
+let helpViews = null;
+let tipsHelp = null;
 
+// showHelp opens the help card on the tab it was last left on: the version
+// and the notes that depend on this install are filled as it opens.
 function showHelp() {
-  const ver = state.wb.version ? ` <span class="help-version">v${esc(state.wb.version)}</span>` : '';
-  helpSheet.innerHTML = '<div class="help-card"><div class="help-header"><h2>Keyboard Shortcuts</h2>' + ver +
-    '</div><dl class="help-grid">' +
-    SHORTCUTS.map(([combos, v]) => '<dt>' + combos.map(keyCaps).join('<span class="key-or">/</span>') + '</dt>' +
-      '<dd>' + esc(v) + '</dd>').join('') + '</dl>' + legacyNotice() +
-    '<div class="help-foot"><button type="button" class="wb-btn" id="help-logs">Open logs folder</button>' +
-    '<button type="button" class="wb-btn" id="help-diag">Copy diagnostics</button>' +
-    (state.wb.version ? `<button type="button" class="wb-btn" id="help-news">What's new in v${esc(state.wb.version)}</button>` : '') +
-    '<span class="help-foot-note">The log never holds terminal output or prompts.</span></div></div>';
-  $('#help-logs').addEventListener('click', openLogs);
-  $('#help-diag').addEventListener('click', copyDiagnostics);
-  $('#help-news')?.addEventListener('click', () => {
-    helpSheet.hidden = true;
-    openWhatsNew(state.wb.version);
-  });
+  const v = state.wb.version;
+  $('#help-ver').textContent = v ? 'v' + v : '';
+  $('#help-ver').hidden = !v;
+  $('#help-news').textContent = v ? `What's new in v${v}` : '';
+  $('#help-news').hidden = !v;
+  $('#help-legacy').innerHTML = legacyNotice();
   $('#help-migrate')?.addEventListener('click', e =>
     copyToClipboard(MIGRATE_CMD, 'Command copied', e.currentTarget));
   helpSheet.hidden = false;
+  if (helpViews.current() === 'tips') tipsHelp.refresh();
+}
+
+function closeHelp() {
+  helpSheet.hidden = true;
+}
+
+function initHelp() {
+  $('#help-keys').innerHTML = SHORTCUTS.map(([combos, v]) => '<dt>' + combos.map(keyCaps).join('<span class="key-or">/</span>') + '</dt>' +
+    '<dd>' + esc(v) + '</dd>').join('');
+  tipsHelp = initTipsHelp($('#helpsheet [data-pane-view="tips"]'), 'agents');
+  helpViews = paneViews({
+    host: $('#helpsheet .help-body'),
+    bars: [$('#helpsheet .help-tabs')],
+    fallback: 'keys',
+    onChange: view => { if (view === 'tips') tipsHelp.refresh(); },
+  });
+  $('#btn-help').addEventListener('click', showHelp);
+  $('#help-close').addEventListener('click', closeHelp);
+  $('#help-logs').addEventListener('click', openLogs);
+  $('#help-diag').addEventListener('click', copyDiagnostics);
+  $('#help-news').addEventListener('click', () => {
+    closeHelp();
+    openWhatsNew(state.wb.version);
+  });
+  helpSheet.addEventListener('click', e => { if (e.target === helpSheet) closeHelp(); });
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !helpSheet.hidden) closeHelp();
+  });
 }
 
 const MIGRATE_CMD = 'punk0 migrate';
@@ -116,15 +142,9 @@ export function initStatusBar() {
   // wins the same way it does in the app (theme-preference.js).
   setTheme(chooseThemePreference(getStoredTheme(), currentTheme()), false);
 
-  $('#btn-help').addEventListener('click', showHelp);
+  initHelp();
   $('#st-waiting').addEventListener('click', () => nextAgent('waiting'));
   $('#st-working').addEventListener('click', () => nextAgent('working'));
-  helpSheet.addEventListener('click', e => {
-    if (!e.target.closest('.help-foot')) helpSheet.hidden = true;
-  });
-  addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !helpSheet.hidden) helpSheet.hidden = true;
-  });
 
   initResources();
   subscribe(renderStatus);

@@ -88,19 +88,11 @@ Whenever introducing a new Go package or subsystem, you must add both a `*_test.
   - CLI flags / Shortcuts -> [`README.md`](README.md)
   - Major architectural patterns -> [`docs/internals/`](docs/internals/)
   - User features -> [`docs/features/`](docs/features/)
-- **Keeping Tips & Tricks Updated**: Whenever rolling out an important user-facing feature, shortcut, command, or workflow improvement:
-  - Add a concise, helpful tip entry to [`web/src/tips-util.js`](web/src/tips-util.js) in `DEFAULT_TIPS` (the built-in offline fallback; the remote list at `https://px0.ai/tips.json` is px0's and not in this repo).
-  - Tips use the standard schema:
-    ```json
-    {
-      "id": "feature-slug",
-      "title": "Concise Feature Title",
-      "category": "Navigation | Git | AI | Editing | Viewer | Workbench | Performance",
-      "tag": "TagPill",
-      "content": "One to two sentences explaining the feature with **bold**, `code`, or <kbd> tags.",
-      "shortcut": "Mod+Key" // optional
-    }
+- **Keeping Tips Updated**: Whenever rolling out a user-facing feature, shortcut or command, add a tip to `TIPS` in [`web/src/tipsdata.js`](web/src/tipsdata.js), the one list both pages show (schema and rules in [`docs/features/tips-system.md`](docs/features/tips-system.md#adding-a-tip)):
+    ```js
+    { id: 'e-diff', page: 'editor', text: '{Mod+D} switches the open file between its source and its diff against HEAD.' },
     ```
+  - Keep it true of this version, at most 160 characters, with UI labels as the UI shows them.
   - Rebundle frontend assets via `make web` (`bun run build`) and run `bun run check`.
 
 ---

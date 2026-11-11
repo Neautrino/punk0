@@ -2177,8 +2177,7 @@ kbd {
 .res-btn svg { display: block; flex: none; color: var(--faint); }
 .res-btn .metric-divider { margin: 0 -4px; }
 /* The panel over the bar's right end: a table of CPU and RAM. Columns:
-   name, sparkline, CPU, RAM. Above the editor's tip widget (125): it was
-   asked for, the tip was not. */
+   name, sparkline, CPU, RAM. */
 .res {
   position: fixed; z-index: 126; width: 420px; max-width: calc(100vw - 16px); max-height: 70vh;
   display: flex; flex-direction: column;
@@ -3604,228 +3603,27 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
 .forge-connect-dialog .pr-merge-note code { font: 11px var(--mono); color: var(--fg); }
 .forge-connect-dialog .pr-merge-note:empty { display: none; }
 
-/* ---------- Floating Async Tip Widget ---------- */
-.tip-widget {
-  position: fixed;
-  bottom: 34px;
-  right: 18px;
-  width: 360px;
-  max-width: calc(100vw - 36px);
-  background: var(--bg2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  z-index: 125;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(14px) scale(0.98);
-  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: none;
-}
-.tip-widget[hidden] {
-  display: none;
-}
-.tip-widget.visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
-.tip-widget-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg3);
-  border-bottom: 1px solid var(--line);
-}
-.tip-widget-tag-group {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-.tip-widget-bulb {
-  color: var(--accent-fg, #eab308);
-  flex-shrink: 0;
-}
-.tip-widget-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--fg);
-}
-.tip-tag-pill {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--bg4);
-  color: var(--dim);
-  border: 1px solid var(--line);
-  cursor: pointer;
-  transition: color .1s, border-color .1s, background .1s;
-}
-.tip-tag-pill:hover {
-  color: var(--accent-fg);
-  border-color: var(--accent);
-}
-.tip-count-chip {
-  font: 10px var(--mono);
-  color: var(--faint);
-  margin-left: 2px;
-}
-.tip-btn-close {
-  background: transparent;
-  border: none;
-  font-size: 18px;
-  line-height: 1;
-  color: var(--faint);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: var(--r);
-  transition: color .1s;
-}
-.tip-btn-close:hover {
-  color: var(--fg);
-}
-.tip-widget-body {
-  padding: 12px 14px 10px;
-}
-.tip-widget-title {
-  margin: 0 0 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg);
-  line-height: 1.35;
-}
-.tip-widget-content {
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--dim);
-}
-.tip-widget-shortcut {
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-}
-.tip-shortcut-label {
-  color: var(--faint);
-}
-.tip-widget-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 12px;
-  background: var(--bg3);
-  border-top: 1px solid var(--line);
-}
-.tip-btn-link {
-  background: transparent;
-  border: none;
-  font-size: 11px;
-  color: var(--faint);
-  cursor: pointer;
-  padding: 2px 4px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: color .1s;
-}
-.tip-btn-link:hover {
-  color: var(--dim);
-}
-.tip-widget-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.tip-btn-nav {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  background: var(--bg4);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--dim);
-  cursor: pointer;
-  transition: color .1s, border-color .1s;
-}
-.tip-btn-nav:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-.tip-btn-all {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  height: 22px;
-  background: var(--bg4);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  color: var(--fg);
-  cursor: pointer;
-  transition: color .1s, border-color .1s, background .1s;
-}
-.tip-btn-all:hover {
-  color: var(--accent-fg);
-  border-color: var(--accent);
-}
+/* ---------- Tips (tips.js), the same on both pages ---------- */
+/* One tip in an empty view: left-aligned under a rule, ‹ n/N › × at the
+   right of its head. Empty and invisible until tips.js picks its tip. */
+.tipbox { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); text-align: left; font-size: 12px; line-height: 1.5; color: var(--dim); }
+.tipbox:empty { visibility: hidden; }
+.tipbox-head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.tipbox-tag { margin-right: auto; font: 600 10.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); }
+.tipbox-head button { width: 20px; height: 20px; border-radius: var(--r); color: var(--dim); font-size: 14px; line-height: 1; }
+.tipbox-head button:hover, .tipbox-head button:focus-visible { background: var(--bg4); color: var(--fg); outline: none; }
+.tipbox-n { font: 10.5px var(--mono); color: var(--faint); }
+.tipbox b, .tips-list b, #pal-hint b { color: var(--fg); font-weight: 600; }
+.tipbox kbd, .tips-list kbd, #pal-hint kbd { font-size: 10px; padding: 1px 4px; }
+/* The editor with no file open: under its shortcut list. */
+#empty-tip { width: 360px; max-width: 100%; margin: 28px auto 0; }
+/* The command palette's footer, in command mode: dim rather than faint, as
+   it is read, not glanced at. */
+#pal-hint:has(.tipbox-tag) { color: var(--dim); }
+#pal-hint .tipbox-tag { margin-right: 8px; }
 
-/* Shared tip typography */
-.tip-code {
-  font-family: var(--mono);
-  font-size: 11px;
-  background: var(--bg4);
-  color: var(--accent-fg);
-  padding: 1px 5px;
-  border-radius: var(--r);
-  border: 1px solid var(--line);
-}
-.tip-shortcut-keys {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.tip-shortcut-keys kbd,
-.tip-widget-shortcut kbd,
-.tip-item-content kbd,
-.tip-widget-content kbd,
-.tip-kbd {
-  font: 10px var(--mono);
-  background: var(--bg4);
-  color: var(--accent-fg);
-  border: 1px solid var(--line);
-  padding: 1px 5px;
-  border-radius: var(--r);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.25);
-  display: inline-block;
-  vertical-align: middle;
-  line-height: 1.3;
-}
-.tip-link {
-  color: var(--accent-fg, var(--accent));
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.tip-link:hover {
-  opacity: 0.85;
-}
-
-/* ---------- the help card's Tips tab ---------- */
-.tips-header-bar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 0 10px;
-}
+/* Help › Tips: a filter and the switch over every tip, this page's first. */
+.tips-header-bar { flex: none; display: flex; align-items: center; gap: 12px; padding: 0 0 10px; }
 .tips-search-wrap {
   flex: 1;
   display: flex;
@@ -3841,87 +3639,16 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   border-color: var(--accent);
   color: var(--fg);
 }
-#tips-filter {
-  flex: 1;
-  background: transparent;
-  border: none;
-  font-size: 12px;
-  color: var(--fg);
-  outline: none;
-  width: 100%;
-}
-.tips-setting-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  user-select: none;
-  color: var(--dim);
-  font-size: 11.5px;
-}
-.tips-setting-toggle input {
-  cursor: pointer;
-}
-.tips-setting-toggle:hover {
-  color: var(--fg);
-}
-#tips-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  align-content: start;
-  gap: 10px;
-}
-.tip-item {
-  background: var(--bg2);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 10px 12px;
-  transition: border-color .15s ease, background .15s ease;
-}
-.tip-item:hover {
-  border-color: var(--accent);
-}
-.tip-item-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.tip-item-title-group {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-.tip-item-num {
-  font: 10px var(--mono);
-  color: var(--faint);
-  flex-shrink: 0;
-}
-.tip-item-title {
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tip-item-meta {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-}
-.tip-item-content {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--dim);
-}
+.tips-filter { flex: 1; width: 100%; font-size: 12px; color: var(--fg); }
+.tips-setting-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--dim); font-size: 11.5px; }
+.tips-setting-toggle input { cursor: pointer; }
+.tips-setting-toggle:hover { color: var(--fg); }
+.tips-list { flex: 1; min-height: 0; overflow-y: auto; }
+.tips-group h3 { margin: 6px 0; font: 600 10.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); }
+.tips-group h3 span { margin-left: 8px; font-weight: 400; color: var(--faint); }
+.tips-group ul { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 22px; }
+.tips-group li { padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.5; color: var(--dim); }
+.tips-none { margin: 8px 0; color: var(--faint); font-size: 12.5px; }
 
 /* ---------- Code Review, Hunk Controls, Turn Revert & Inline Diagnostics ---------- */
 

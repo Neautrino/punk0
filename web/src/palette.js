@@ -23,7 +23,7 @@ import { getDocRaw } from './markdown.js';
 import { getSelectedRangeInfo } from './selbar.js';
 import { enterEditMode, exitEditMode, saveActiveFile } from './editview.js';
 import { promptNewItem } from './newitem.js';
-import { navigateToTips, showTipWidget } from './tips.js';
+import { tipLine } from './tips.js';
 
 export const overlay = $('#overlay');
 export const palInput = $('#pal');
@@ -102,8 +102,7 @@ export const COMMANDS = [
   { name: 'Git: Open Pull Request…', run: () => openPalette('openpr', '') },
   { name: 'Preferences: Toggle Vim Keybindings', run: () => setVimModeEnabled(!isVimEnabled(), true) },
   { name: 'Help: Vim Keybindings Cheat Sheet', run: () => showHelp('vim') },
-  { name: 'Help: Tips & Tricks (All Tips)', run: () => navigateToTips() },
-  { name: 'Help: Show Tip', run: () => showTipWidget() },
+  { name: 'Help: Tips', run: () => showHelp('tips') },
   { name: 'Keyboard Shortcuts', run: () => showHelp() },
 ];
 
@@ -116,12 +115,24 @@ export const PAL_MODES = {
   openpr: { tag: 'Open PR', hint: 'Full pull request URL (e.g. https://github.com/owner/repo/pull/123), then Enter.' },
 };
 
+// showMode names mode in the palette and fills its footer: the mode's hint,
+// or in command mode a tip (tips.js), picked the first time this opening of
+// the palette reaches command mode and kept while typing.
+function showMode(mode) {
+  $('#pal-mode').textContent = PAL_MODES[mode].tag;
+  if (mode !== 'command') {
+    $('#pal-hint').textContent = PAL_MODES[mode].hint;
+    return;
+  }
+  pal.tip ??= tipLine('editor');
+  $('#pal-hint').innerHTML = pal.tip;
+}
+
 export function openPalette(mode, seed) {
-  pal = { mode, items: [], sel: 0, restoreTheme: mode === 'theme' ? currentTheme() : null };
+  pal = { mode, items: [], sel: 0, restoreTheme: mode === 'theme' ? currentTheme() : null, tip: null };
   overlay.hidden = false;
   palInput.value = seed !== undefined ? seed : ({ symbol: '@', line: ':', command: '>' }[mode] || '');
-  $('#pal-mode').textContent = PAL_MODES[mode].tag;
-  $('#pal-hint').textContent = PAL_MODES[mode].hint;
+  showMode(mode);
   palInput.focus();
   palInput.setSelectionRange(palInput.value.length, palInput.value.length);
   refreshPalette();
@@ -149,8 +160,7 @@ export const refreshPalette = debounce(async () => {
   else if (raw.startsWith('@')) { mode = 'symbol'; raw = raw.slice(1); }
   else if (raw.startsWith(':')) { mode = 'line'; raw = raw.slice(1); }
   pal.mode = mode;
-  $('#pal-mode').textContent = PAL_MODES[mode].tag;
-  $('#pal-hint').textContent = PAL_MODES[mode].hint;
+  showMode(mode);
   const q = raw.trim();
 
   if (mode === 'line') {

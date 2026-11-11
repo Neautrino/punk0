@@ -139,8 +139,8 @@ var Schema = []SchemaItem{
 	},
 	{
 		Key:         "tips.enabled",
-		Title:       "Show Tips in Interface",
-		Description: "Controls whether punk0 periodically shows helpful tips and tricks in the interface.",
+		Title:       "Show Tips",
+		Description: "Shows one tip in empty views (the agents page's welcome, the editor with no file open) and in the command palette. Every tip stays listed in Help › Tips.",
 		Category:    "General",
 		Type:        "boolean",
 		Default:     true,

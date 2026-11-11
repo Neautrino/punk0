@@ -142,8 +142,9 @@ function applySettingLive(key, val) {
       break;
     }
   }
-  // The editor's Terminal panel follows these like the agents page's.
-  if (key.startsWith('terminal.')) emit('setting:changed', key, val);
+  // The editor's Terminal panel follows these like the agents page's, and the
+  // tips (tips.js) follow their switch on both pages.
+  if (key.startsWith('terminal.') || key === 'tips.enabled') emit('setting:changed', key, val);
 }
 
 

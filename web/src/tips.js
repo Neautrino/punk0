@@ -1,344 +1,172 @@
 // web/src/tips.js
-import { $, $$, esc, S, api, keyCaps } from './state.js';
-import { on, emit } from './bus.js';
+// Tips, the same on both pages: one list (tipsdata.js), one switch
+// (tips.enabled in settings.json) and one rotation. A tip shows only where the
+// reader is idle or looking for something: the agents page's welcome view,
+// the editor with no file open, the command palette's footer. Help › Tips
+// lists them all. Nothing pops up, runs on a timer or covers code or a
+// terminal.
+//
+// Rotation: punk0.tips.seen in localStorage holds the ids already shown. The
+// editor is served under the agents page's origin, so both pages share it: a
+// tip seen on one is not shown again on the other. A tip counts as seen once
+// shown; when a page has none left unseen, its ids are dropped and the round
+// starts over.
+import { $, esc, keyCaps, isMac } from './state.js';
+import { on } from './bus.js';
 import { showToast } from './ui.js';
-import { showHelp } from './shortcuts.js';
-import { TIPS_URL, TIPS_STORAGE_KEY_HIDDEN, TIPS_STORAGE_KEY_CACHE, TIPS_STORAGE_KEY_INDEX, DEFAULT_TIPS, renderTipMarkdown } from './tips-util.js';
+import { getSetting, saveSetting, settingsLoaded } from './settings-form.js';
+import { TIPS } from './tipsdata.js';
 
-export {
-  TIPS_URL,
-  TIPS_STORAGE_KEY_HIDDEN,
-  TIPS_STORAGE_KEY_CACHE,
-  TIPS_STORAGE_KEY_INDEX,
-  DEFAULT_TIPS,
-  renderTipMarkdown
-};
+const SEEN = 'punk0.tips.seen';
+const PAGE_NAMES = { agents: 'Agents page', editor: 'Editor' };
 
-let loadedTips = [...DEFAULT_TIPS];
-let currentTipIndex = 0;
-let tipAutoTimer = null;
-let tipsFilterQuery = '';
+export const tipsOn = () => getSetting('tips.enabled') !== false;
 
-/**
- * Checks whether tips are permanently hidden by the user.
- */
-export function isTipsPermanentlyHidden() {
-  const localPref = localStorage.getItem(TIPS_STORAGE_KEY_HIDDEN);
-  if (localPref === 'true') return true;
-  if (S.settings && S.settings['tips.enabled'] === false) return true;
-  return false;
+const forPage = (tip, page) => tip.page === page || tip.page === 'both';
+
+// tipsFor is what page shows now: its tips and both pages', less those for
+// another system and those whose setting no longer has the value they teach.
+export function tipsFor(page) {
+  return TIPS.filter(t => forPage(t, page)
+    && (!t.os || (t.os === 'mac') === isMac)
+    && (!t.only || getSetting(t.only[0]) === t.only[1]));
 }
 
-/**
- * Permanently hides or enables tips.
- */
-export async function setTipsPermanentlyHidden(hidden) {
-  if (hidden) {
-    localStorage.setItem(TIPS_STORAGE_KEY_HIDDEN, 'true');
-    if (!S.settings) S.settings = {};
-    S.settings['tips.enabled'] = false;
-    hideTipWidget();
-    stopTipAutoAdvance();
-    showToast('i', 'Tips hidden permanently. Re-enable anytime from Help or Settings.');
-  } else {
-    localStorage.removeItem(TIPS_STORAGE_KEY_HIDDEN);
-    if (!S.settings) S.settings = {};
-    S.settings['tips.enabled'] = true;
-    showToast('i', 'Tip popups enabled.');
-  }
-
-  // Update checkbox in inspector if present
-  const toggleEl = $('#tips-toggle-popup');
-  if (toggleEl) toggleEl.checked = !hidden;
-
-  // Persist to server settings.json
+function readSeen() {
   try {
-    await api('/api/settings', { 'tips.enabled': !hidden }, 'POST');
-  } catch {}
-}
-
-/**
- * Fetches tips from public URL (e.g. px0.ai/tips.json), falling back to local storage cache or defaults.
- */
-export async function fetchTips() {
-  const url = S.settings?.['tips.url'] || TIPS_URL;
-  try {
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 4000);
-    const resp = await fetch(url, { signal: ctrl.signal, cache: 'no-cache' });
-    clearTimeout(timeout);
-
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data) && data.length > 0) {
-        loadedTips = data;
-        localStorage.setItem(TIPS_STORAGE_KEY_CACHE, JSON.stringify(data));
-      }
-    }
-  } catch (err) {
-    // Attempt to restore from cached tips if network fails
-    try {
-      const cached = localStorage.getItem(TIPS_STORAGE_KEY_CACHE);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          loadedTips = parsed;
-        }
-      }
-    } catch {}
-  }
-
-  // Restore remembered tip index
-  const savedIndex = parseInt(localStorage.getItem(TIPS_STORAGE_KEY_INDEX) || '0', 10);
-  if (!isNaN(savedIndex) && savedIndex >= 0 && savedIndex < loadedTips.length) {
-    currentTipIndex = savedIndex;
-  }
-
-  updateTipsCountBadge();
-  return loadedTips;
-}
-
-function updateTipsCountBadge() {
-  const badge = $('#tips-count-badge');
-  if (badge) {
-    badge.textContent = loadedTips.length + (loadedTips.length === 1 ? ' tip' : ' tips');
+    const ids = JSON.parse(localStorage.getItem(SEEN) || '[]');
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];
   }
 }
 
-/**
- * Shows the tip widget in the interface with the given tip or current tip.
- */
-export function showTipWidget(index = currentTipIndex) {
-  if (!loadedTips || loadedTips.length === 0) return;
-  if (index < 0) index = loadedTips.length - 1;
-  if (index >= loadedTips.length) index = 0;
-  currentTipIndex = index;
-  localStorage.setItem(TIPS_STORAGE_KEY_INDEX, String(index));
-
-  const tip = loadedTips[index];
-  const widget = $('#tip-widget');
-  if (!widget) return;
-
-  const tagEl = $('#tip-widget-tag');
-  const countEl = $('#tip-widget-count');
-  const titleEl = $('#tip-widget-title');
-  const contentEl = $('#tip-widget-content');
-
-  if (tagEl) {
-    tagEl.textContent = tip.tag || tip.category || 'Tip';
-    tagEl.onclick = () => navigateToTips(tip.tag || tip.category);
-  }
-  if (countEl) {
-    countEl.textContent = `${index + 1}/${loadedTips.length}`;
-  }
-  if (titleEl) {
-    titleEl.textContent = tip.title;
-  }
-  if (contentEl) {
-    contentEl.innerHTML = renderTipMarkdown(tip.content);
-    if (tip.shortcut) {
-      const shortcutHtml = `<div class="tip-widget-shortcut"><span class="tip-shortcut-label">Shortcut:</span> <span class="tip-shortcut-keys">${keyCaps(tip.shortcut)}</span></div>`;
-      contentEl.insertAdjacentHTML('beforeend', shortcutHtml);
-    }
-  }
-
-  widget.hidden = false;
-  widget.classList.add('visible');
+// writeSeen keeps only ids still in the list, so retired tips do not pile up.
+function writeSeen(ids) {
+  const known = new Set(TIPS.map(t => t.id));
+  try { localStorage.setItem(SEEN, JSON.stringify([...new Set(ids)].filter(id => known.has(id)))); } catch {}
 }
 
-/**
- * Dismisses the tip widget for the current session.
- */
-export function hideTipWidget() {
-  const widget = $('#tip-widget');
-  if (widget) {
-    widget.classList.remove('visible');
-    widget.hidden = true;
+function markSeen(id) {
+  writeSeen([...readSeen(), id]);
+}
+
+// pickTip is the next tip for page, marked seen; null when it has none.
+export function pickTip(page) {
+  const list = tipsFor(page);
+  if (!list.length) return null;
+  let seen = readSeen();
+  let tip = list.find(t => !seen.includes(t.id));
+  if (!tip) {
+    const mine = new Set(list.map(t => t.id));
+    seen = seen.filter(id => !mine.has(id));
+    tip = list[0];
+  }
+  writeSeen([...seen, tip.id]);
+  return tip;
+}
+
+// tipHTML draws a tip's text: escaped, {combo} as key caps, **x** in bold.
+export function tipHTML(text) {
+  return esc(text)
+    .replace(/\{([^}]+)\}/g, (_, combo) => keyCaps(combo))
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+}
+
+async function turnTipsOff() {
+  if (await saveSetting('tips.enabled', false)) {
+    showToast('i', 'Tips are off. Turn them on again in Help › Tips or Settings.', 4000);
   }
 }
 
-/**
- * Navigates to the previous tip in the widget.
- */
-export function prevTip() {
-  showTipWidget(currentTipIndex - 1);
-}
+// mountTipBox makes el (a .tipbox in an empty view) show page's next tip,
+// with ‹ › to step through the page's tips and × to turn tips off. The tip
+// is picked, and so marked seen, the first time the box is on screen with
+// tips on: a view the page never shows uses none up. It follows the switch
+// while the page is open.
+export function mountTipBox(el, page) {
+  let list = [];
+  let at = 0;
 
-/**
- * Navigates to the next tip in the widget.
- */
-export function nextTip() {
-  showTipWidget(currentTipIndex + 1);
-}
+  // Until a tip is picked the box stays empty (.tipbox:empty takes no
+  // space on screen but is still laid out, so the observer sees it).
+  const draw = () => {
+    el.hidden = !tipsOn();
+    if (el.hidden || !list.length) return;
+    el.innerHTML = '<div class="tipbox-head"><span class="tipbox-tag">Tip</span>' +
+      '<button type="button" data-step="-1" title="Previous tip" aria-label="Previous tip">‹</button>' +
+      `<span class="tipbox-n">${at + 1}/${list.length}</span>` +
+      '<button type="button" data-step="1" title="Next tip" aria-label="Next tip">›</button>' +
+      '<button type="button" data-off title="Turn tips off" aria-label="Turn tips off">×</button></div>' +
+      `<div class="tipbox-text">${tipHTML(list[at].text)}</div>`;
+  };
 
-/**
- * Starts automatic progression of tips.
- */
-function startTipAutoAdvance() {
-  stopTipAutoAdvance();
-  tipAutoTimer = setInterval(() => {
-    const widget = $('#tip-widget');
-    if (widget && !widget.hidden && !widget.matches(':hover')) {
-      nextTip();
-    }
-  }, 24000);
-}
-
-function stopTipAutoAdvance() {
-  if (tipAutoTimer) {
-    clearInterval(tipAutoTimer);
-    tipAutoTimer = null;
-  }
-}
-
-/**
- * Opens the help card's Tips tab, the list narrowed to filter.
- */
-export function navigateToTips(filter = '') {
-  const query = typeof filter === 'string' ? filter : '';
-  hideTipWidget();
-  showHelp('tips');
-  const filterInput = $('#tips-filter');
-  if (filterInput) {
-    filterInput.value = query;
-  }
-  tipsFilterQuery = query.trim().toLowerCase();
-  renderTipsList();
-  if (filterInput) filterInput.focus();
-}
-
-/**
- * Renders all tips matching the search query into the help card's Tips tab.
- */
-export function renderTipsList() {
-  const listEl = $('#tips-list');
-  if (!listEl) return;
-
-  const q = tipsFilterQuery;
-  const filtered = loadedTips.filter(t => {
-    if (!q) return true;
-    const hay = ((t.title || '') + ' ' + (t.content || '') + ' ' + (t.category || '') + ' ' + (t.tag || '')).toLowerCase();
-    return hay.includes(q);
+  const seen = new IntersectionObserver(entries => {
+    if (list.length || !tipsOn() || !entries.some(e => e.isIntersecting)) return;
+    seen.disconnect();
+    list = tipsFor(page);
+    at = Math.max(0, list.indexOf(pickTip(page)));
+    draw();
   });
 
-  const countBadge = $('#tips-count-badge');
-  if (countBadge) {
-    countBadge.textContent = filtered.length + (filtered.length === 1 ? ' tip' : ' tips');
-  }
-
-  if (filtered.length === 0) {
-    listEl.innerHTML = `<div class="hint">No tips found matching "<b>${esc(q)}</b>".</div>`;
-    return;
-  }
-
-  let html = '';
-  filtered.forEach((tip, idx) => {
-    const tag = tip.tag || tip.category || 'Tip';
-    html += `
-      <article class="tip-item" data-id="${esc(tip.id || String(idx))}">
-        <header class="tip-item-header">
-          <div class="tip-item-title-group">
-            <span class="tip-item-num">#${idx + 1}</span>
-            <h4 class="tip-item-title">${esc(tip.title)}</h4>
-          </div>
-          <div class="tip-item-meta">
-            <button class="tip-tag-pill" data-tag="${esc(tag)}" title="Filter by ${esc(tag)}">${esc(tag)}</button>
-          </div>
-        </header>
-        <div class="tip-item-content">${renderTipMarkdown(tip.content)}</div>
-      </article>
-    `;
+  el.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if ('off' in btn.dataset) return void turnTipsOff();
+    at = (at + Number(btn.dataset.step) + list.length) % list.length;
+    markSeen(list[at].id);
+    draw();
   });
-
-  listEl.innerHTML = html;
-
-  // Tag filter clicking
-  listEl.querySelectorAll('.tip-tag-pill').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const tag = btn.dataset.tag;
-      if (tag) {
-        const filterInput = $('#tips-filter');
-        if (filterInput) filterInput.value = tag;
-        tipsFilterQuery = tag.toLowerCase();
-        renderTipsList();
-      }
-    });
+  settingsLoaded.then(() => {
+    draw();
+    seen.observe(el);
+    on('setting:changed', key => { if (key === 'tips.enabled') draw(); });
   });
 }
 
-/**
- * Initializes tips DOM listeners and state.
- */
-export function initTips() {
-  // Widget buttons
-  $('#tip-widget-close')?.addEventListener('click', () => {
-    hideTipWidget();
-    stopTipAutoAdvance();
-  });
-
-  $('#tip-widget-prev')?.addEventListener('click', () => {
-    prevTip();
-  });
-
-  $('#tip-widget-next')?.addEventListener('click', () => {
-    nextTip();
-  });
-
-  $('#tip-widget-all')?.addEventListener('click', () => {
-    navigateToTips();
-  });
-
-  $('#tip-widget-hide-perm')?.addEventListener('click', () => {
-    setTipsPermanentlyHidden(true);
-  });
-
-  // The help card's Tips tab
-  $('#tips-filter')?.addEventListener('input', (e) => {
-    tipsFilterQuery = e.target.value.trim().toLowerCase();
-    renderTipsList();
-  });
-
-  $('#btn-refresh-tips')?.addEventListener('click', async () => {
-    showToast('i', 'Fetching latest tips from px0.ai...');
-    await fetchTips();
-    renderTipsList();
-    showToast('i', `Loaded ${loadedTips.length} tips.`);
-  });
-
-  const togglePopupEl = $('#tips-toggle-popup');
-  if (togglePopupEl) {
-    togglePopupEl.checked = !isTipsPermanentlyHidden();
-    togglePopupEl.addEventListener('change', () => {
-      setTipsPermanentlyHidden(!togglePopupEl.checked);
-    });
-  }
-
-  // The Tips tab coming to the front (shortcuts.js)
-  on('tips:shown', () => {
-    renderTipsList();
-    const toggleEl = $('#tips-toggle-popup');
-    if (toggleEl) toggleEl.checked = !isTipsPermanentlyHidden();
-  });
+// tipLine is one tip for a single line (the palette's footer), or '' while
+// tips are off.
+export function tipLine(page) {
+  const tip = tipsOn() ? pickTip(page) : null;
+  return tip ? `<span class="tipbox-tag">Tip</span>${tipHTML(tip.text)}` : '';
 }
 
-/**
- * Kicks off asynchronous loading of tips and polite display.
- */
-export async function startTipsAsync() {
-  // If tips are permanently hidden, skip network fetch and background rendering on startup
-  if (isTipsPermanentlyHidden()) return;
+const plain = text => text.replace(/\*\*|[{}]/g, '').toLowerCase();
 
-  await fetchTips();
-  renderTipsList();
+// initTipsHelp fills section (Help's Tips tab) with every tip, this page's
+// first, a filter and the Show tips switch. refresh() redraws it as the tab
+// comes to the front; focus() puts the cursor in the filter.
+export function initTipsHelp(section, page) {
+  const other = page === 'agents' ? 'editor' : 'agents';
+  section.innerHTML = '<div class="tips-header-bar">' +
+    '<div class="tips-search-wrap"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+    '<input type="text" class="tips-filter" placeholder="Filter tips" aria-label="Filter tips" autocomplete="off" spellcheck="false"></div>' +
+    '<label class="tips-setting-toggle" title="Show a tip in empty views and the command palette"><input type="checkbox" class="tips-on"><span>Show tips</span></label>' +
+    '</div><div class="tips-list"></div>';
+  const filter = $('.tips-filter', section);
+  const toggle = $('.tips-on', section);
+  const listEl = $('.tips-list', section);
 
-  if (isTipsPermanentlyHidden()) return;
+  const group = (title, tips) => tips.length
+    ? `<section class="tips-group"><h3>${esc(title)}<span>${tips.length}</span></h3><ul>` +
+      tips.map(t => `<li>${tipHTML(t.text)}</li>`).join('') + '</ul></section>'
+    : '';
 
-  // Non-intrusive async delay before showing the tip popup in the interface
-  setTimeout(() => {
-    if (!isTipsPermanentlyHidden()) {
-      showTipWidget(currentTipIndex);
-      startTipAutoAdvance();
-    }
-  }, 1800);
+  function refresh() {
+    toggle.checked = tipsOn();
+    const q = filter.value.trim().toLowerCase();
+    const match = t => !q || plain(t.text).includes(q);
+    const here = TIPS.filter(t => forPage(t, page) && match(t));
+    const there = TIPS.filter(t => t.page === other && match(t));
+    listEl.innerHTML = group('This page', here) + group(PAGE_NAMES[other], there) ||
+      `<p class="tips-none">No tip mentions “${esc(filter.value.trim())}”.</p>`;
+  }
+
+  filter.addEventListener('input', refresh);
+  toggle.addEventListener('change', async () => {
+    if (!await saveSetting('tips.enabled', toggle.checked)) toggle.checked = tipsOn();
+  });
+  on('setting:changed', key => { if (key === 'tips.enabled') toggle.checked = tipsOn(); });
+  refresh();
+  return { refresh, focus: () => filter.focus() };
 }

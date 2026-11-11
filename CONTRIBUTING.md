@@ -54,7 +54,7 @@ make test       # full Go test suite
 ```
 
 - New Go packages need a `*_test.go` and at least one `Benchmark` function ([testing docs](docs/internals/testing-and-benchmarks.md)).
-- User-facing features need a tip in `DEFAULT_TIPS` (`web/src/tips-util.js`) and an update to the matching page under `docs/features/`.
+- User-facing features need a tip in `TIPS` (`web/src/tipsdata.js`) and an update to the matching page under `docs/features/`.
 - Keep each pull request to one logical change. Describe what changed and how you checked it; add screenshots for anything visible.
 
 ## License

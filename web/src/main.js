@@ -33,7 +33,7 @@ import { initGitGraph, refreshGraph } from './gitgraph.js';
 import { initPRScope } from './prscope.js';
 import { initEditView } from './editview.js';
 import { initNewItem } from './newitem.js';
-import { initTips, startTipsAsync } from './tips.js';
+import { mountTipBox } from './tips.js';
 import { watchSelects } from './selectbox.js';
 
 // Initialize all subsystems
@@ -42,7 +42,6 @@ initRenderer();
 initTabs();
 initEditView();
 initNewItem();
-initTips();
 initCursor();
 initHover();
 initSelectionBar();
@@ -236,6 +235,7 @@ initPRScope();
   // Load harnesses and models asynchronously after the browser is loaded.
   loadAgentAsync();
 
-  // Load and asynchronously display tips
-  startTipsAsync();
+  // Only now: until the first file opens, the empty view is up for a moment
+  // and would use a tip up unseen.
+  mountTipBox($('#empty-tip'), 'editor');
 })();
