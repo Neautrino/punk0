@@ -564,38 +564,52 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
   color: var(--dim); text-align: center;
   background-image: radial-gradient(color-mix(in srgb, var(--faint) 35%, transparent) 1px, transparent 1.2px); background-size: 18px 18px; background-position: center;
 }
-#o-empty p, #o-empty .o-welcome-acts { display: none; margin: 0; }
+#o-empty p, #o-empty .o-welcome-acts, #o-empty .o-welcome-cta { display: none; margin: 0; }
 #o-empty .wb-faint { font-size: 12px; }
 #o-empty b { color: var(--fg); }
 #o-empty[data-ws="none"] .o-empty-none,
 #o-empty[data-ws="pick"] .o-empty-pick,
 #o-empty[data-ws="yes"] .o-empty-yes,
 #o-empty[data-ws="missing"] .o-empty-missing,
-#o-empty .o-welcome-tag, #o-empty .o-welcome-foot { display: block; }
+#o-empty .o-welcome-tag { display: block; }
 #o-empty[data-ws="yes"] .o-welcome-acts { display: flex; }
 #o-empty[data-ws="yes"] .o-welcome-acts:empty { display: none; }
 .o-welcome {
-  width: min(440px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 28px 24px 22px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 24px 20px 16px; border: 1px solid var(--line); border-radius: var(--r-lg);
   background: var(--bg); box-shadow: var(--shadow);
 }
-.o-welcome-mark { display: flex; align-items: baseline; gap: 2px; font: 600 34px/1 var(--mono); color: var(--fg); letter-spacing: -.02em; }
+.o-welcome-mark { display: flex; align-items: baseline; gap: 2px; font: 600 30px/1 var(--mono); color: var(--fg); letter-spacing: -.02em; }
 .o-welcome-mark span { color: var(--mark-active); }
 .o-welcome-mark small { margin-left: 10px; font: 12px var(--mono); color: var(--faint); letter-spacing: 0; }
-#o-empty .o-welcome-tag { margin-bottom: 14px; font-size: 12.5px; }
+#o-empty .o-welcome-tag { margin-bottom: 8px; font-size: 12.5px; }
 .o-welcome-ws { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#o-empty .o-welcome-acts { width: 100%; flex-direction: column; gap: 2px; margin: 8px 0 4px; }
+#o-empty .o-welcome-acts { width: 100%; flex-direction: column; gap: 2px; margin: 6px 0 0; }
 .o-welcome-acts button {
-  display: grid; grid-template-columns: 14px auto 1fr; align-items: baseline; column-gap: 10px;
-  padding: 7px 10px; border-radius: var(--r); text-align: left; font-size: 12.5px; color: var(--fg);
+  display: grid; grid-template-columns: 14px auto 1fr; align-items: center; column-gap: 10px;
+  padding: 6px 10px; border: 1px solid transparent; border-radius: var(--r); text-align: left; font-size: 12.5px; color: var(--fg);
 }
 .o-welcome-acts button .wb-faint { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .o-welcome-acts button:hover, .o-welcome-acts button:focus-visible { background: var(--bg3); outline: none; }
 .o-welcome-acts code { font: 11px var(--mono); }
-/* The workspace's own tabs above the new ones, under a small heading. */
+/* The default agent: the one button the view leads with. */
+.o-welcome-acts .o-welcome-main { padding: 8px 10px; margin-bottom: 4px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.o-welcome-main kbd { font-size: 10px; padding: 2px 5px; }
+.o-welcome-ic { width: 14px; height: 14px; color: var(--dim); }
+/* The workspace's own tabs under the new ones, under a small heading. */
 .o-welcome-head { padding: 0 10px 2px; text-align: left; font-size: 11.5px; color: var(--faint); }
-#o-empty-tabs { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-#o-empty .o-welcome-foot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); width: 100%; font-size: 11.5px; }
+#o-empty-tabs { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+#o-empty .o-welcome-cta { margin-top: 10px; }
+/* The tip: left-aligned under a rule, ‹ › at the right of its head. */
+.o-welcome-tip { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); text-align: left; font-size: 12px; line-height: 1.5; color: var(--dim); }
+.o-welcome-tip-head { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.o-welcome-tip-tag { margin-right: auto; font: 600 10.5px var(--ui); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-fg); }
+.o-welcome-tip-head button { width: 20px; height: 20px; border-radius: var(--r); color: var(--dim); font-size: 14px; line-height: 1; }
+.o-welcome-tip-head button:hover, .o-welcome-tip-head button:focus-visible { background: var(--bg3); color: var(--fg); outline: none; }
+#o-empty .o-welcome-tip .wb-faint { font: 10.5px var(--mono); }
+.o-welcome-tip kbd { font-size: 10px; padding: 1px 4px; }
+/* Another agent…: every agent but the default, under its button. */
+.o-agent-menu { min-width: 200px; max-height: 60vh; overflow-y: auto; }
 
 /* Open file picker: the app's palette rows (.pi) in a box over the center. */
 #o-picker {

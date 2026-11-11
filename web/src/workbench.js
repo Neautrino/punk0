@@ -33,6 +33,7 @@ import { initPaneViews } from './orch/paneviews.js';
 import { initSettings } from './orch/settings.js';
 import { initNotify } from './orch/notify.js';
 import { watchSelects } from './selectbox.js';
+import { initWelcomeTips } from './orch/welcometips.js';
 
 // Editor windows link back here by this name (main.js), so going back
 // reuses this window instead of opening another orchestrator.
@@ -58,6 +59,7 @@ initNewWorkspace();
 initRemoveDialog();
 initLsp();
 initTabs();
+initWelcomeTips();
 initGit();
 initHistory();
 initTree();
@@ -95,6 +97,9 @@ subscribe(() => {
   termPane.hidden = !v.term;
   viewerPane.hidden = !v.file;
   emptyPane.hidden = !v.welcome;
+  // Picking a workspace that opens on the welcome view puts Enter on its
+  // first button, as picking one with a terminal focuses the terminal.
+  if (pick && v.welcome && emptyPane.dataset.ws === 'yes') $('#o-empty-main')?.focus({ preventScroll: true });
 
   // A file tab shows its text, or its diff as the Changes tab shows all of
   // them; switching between the two is a different key. A file's diff keeps
