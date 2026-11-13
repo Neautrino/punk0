@@ -3,7 +3,7 @@ import { $, $$, esc, S, doc_, isMac, MOD, LH, keyCaps } from './state.js';
 import { vp, sizer } from './ui.js';
 import { render, paint, toggleWordWrap } from './renderer.js';
 import { updateStatus } from './status.js';
-import { closeTab, switchTab, reopenClosedTab } from './tabs.js';
+import { closeCenterTab, centerTabAt, stepCenterTab, reopenClosedTab } from './tabs.js';
 import { go } from './history.js';
 import { clearLink, hovercard } from './hover.js';
 import { openFind, clearFind, findbar, findNextMatch } from './find.js';
@@ -116,9 +116,10 @@ export function initShortcuts() {
   });
 
   addEventListener('keydown', e => {
-    // The terminal and the Quick Edit box own their keys: a shell needs Ctrl+W/D/K/E,
-    // and an agent's TUI reads Esc; none of them should reach the viewer.
-    if (/** @type {Element|null} */ (e.target)?.closest?.('#editor-term-container, #quick-edit-container')) return;
+    // The terminals (the right side's and the center's) and the Quick Edit
+    // box own their keys: a shell needs Ctrl+W/D/K/E, and an agent's TUI
+    // reads Esc; none of them should reach the viewer.
+    if (/** @type {Element|null} */ (e.target)?.closest?.('#editor-term-container, #center-term, #quick-edit-container')) return;
     const mod = e[MOD];
 
     if (e.key === 'Escape') {
@@ -201,7 +202,7 @@ export function initShortcuts() {
     if ((mod && (e.key === 'w' || e.key === 'W')) || (e.altKey && e.code === 'KeyW')) {
       e.preventDefault();
       e.stopPropagation();
-      if (S.active >= 0) closeTab(S.active);
+      closeCenterTab();
       return;
     }
     if (e.altKey && e.shiftKey && !mod && e.code === 'KeyT') { e.preventDefault(); reopenClosedTab(); return; }
@@ -214,11 +215,11 @@ export function initShortcuts() {
     if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); go(1); return; }
     if (e.ctrlKey && e.key === 'Tab') {
       e.preventDefault();
-      if (S.tabs.length > 1) switchTab((S.active + (e.shiftKey ? -1 : 1) + S.tabs.length) % S.tabs.length);
+      stepCenterTab(e.shiftKey ? -1 : 1);
       return;
     }
     if (e.altKey && e.shiftKey && e.code === 'KeyH') { e.preventDefault(); showCalls(); return; }
-    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) { e.preventDefault(); switchTab(+e.code.slice(5) - 1); return; }
+    if (e.altKey && !mod && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) { e.preventDefault(); centerTabAt(+e.code.slice(5) - 1); return; }
     // Selection actions, live only while the status bar is showing them.
     if (e.altKey && !mod && !e.shiftKey && SEL_KEYS[e.code] && runSelectionAction(SEL_KEYS[e.code])) { e.preventDefault(); return; }
     if (e.altKey && e.code === 'KeyZ') {

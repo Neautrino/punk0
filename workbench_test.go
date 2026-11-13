@@ -1022,6 +1022,41 @@ func TestWorkspaceTabsList(t *testing.T) {
 	}
 }
 
+func TestTabMoveRoute(t *testing.T) {
+	newTestStore(t)
+	repo := cleanRepo(t)
+	wb := testWorkbench(t, "/", t.TempDir(), "", nil)
+	var opened map[string]any
+	decode(t, reqJSON(t, wb, "POST", "/api/projects", `{"dir":"`+repo+`"}`).Body, &opened)
+	wsID, _ := opened["workspace"].(string)
+	add := func() string {
+		var tab struct{ ID string }
+		decode(t, reqJSON(t, wb, "POST", "/api/workspaces/"+wsID+"/tabs", `{"kind":"shell"}`).Body, &tab)
+		return tab.ID
+	}
+	a, b := add(), add()
+	if w := reqJSON(t, wb, "POST", "/api/tabs/"+b+"/move", `{"before":"`+a+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("move: %d %s", w.Code, w.Body.String())
+	}
+	var res struct{ Tabs []struct{ ID string } }
+	getJSON(t, wb, "/api/workspaces/"+wsID+"/tabs", &res)
+	if len(res.Tabs) != 2 || res.Tabs[0].ID != b {
+		t.Fatalf("order after move: %+v", res.Tabs)
+	}
+	for body, want := range map[string]int{
+		`{"before":"nope"}`:      http.StatusNotFound,
+		`{"before":"` + b + `"}`: http.StatusBadRequest,
+		`not json`:               http.StatusBadRequest,
+	} {
+		if w := reqJSON(t, wb, "POST", "/api/tabs/"+b+"/move", body); w.Code != want {
+			t.Errorf("move %s = %d, want %d", body, w.Code, want)
+		}
+	}
+	if w := reqJSON(t, wb, "POST", "/api/tabs/nope/move", `{"before":""}`); w.Code != http.StatusNotFound {
+		t.Errorf("unknown tab = %d, want 404", w.Code)
+	}
+}
+
 func TestTabAddWithSession(t *testing.T) {
 	useSettings(t, map[string]any{})
 	newTestStore(t)

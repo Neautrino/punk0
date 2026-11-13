@@ -41,7 +41,7 @@ export function initSettings() {
   // program running there, as with Mod+B (resize.js).
   addEventListener('keydown', e => {
     if (e.key !== ',' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-    if (e.target.closest?.('#o-term')) return;
+    if (e.target.closest?.('.o-term')) return;
     e.preventDefault();
     openSettings();
   });

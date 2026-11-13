@@ -6,17 +6,17 @@
 // #wb-app (hide-left, hide-right). Each pane hides with its ≡ button
 // (.o-hide[data-hide]: the projects pane's head; the end of the files
 // tree's head, so in Files mode it hides the tree only), and a hidden
-// pane's show button (.o-show) takes its place: the center's head at the
-// left edge for the projects pane, the right end of the second row for the
-// files pane (the file tab row, or with no file group showing the
-// terminals' top row). The right side's toggle, which closes the files
-// pane with the open files, is split.js's (isHidden, setHidden,
-// 'pane:toggled'). All of it is remembered in this browser.
+// pane's show button (.o-show) takes its place: in the head of the
+// leftmost tab group in view for the projects pane, at the right end of
+// the rightmost one's for the files pane. The right side's toggle, which
+// closes the files pane with the second tab group, is split.js's
+// (isHidden, setHidden, 'pane:toggled'). All of it is remembered in this
+// browser.
 //
 // Smoothness: a drag only records the pointer; one requestAnimationFrame per
 // frame writes the variables, and body.wb-resizing turns off text selection
-// and lets the terminal postpone refitting its PTY until the drag rests
-// (term.js).
+// and lets the terminal views postpone refitting their PTY until the drag
+// rests (termview.js).
 import { $, $$ } from '../state.js';
 import { emit } from '../bus.js';
 
@@ -161,7 +161,7 @@ function key(handle, e) {
 // side.
 function shortcut(e) {
   if (e.key.toLowerCase() !== 'b' && e.code !== 'KeyB') return;
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.target.closest?.('#o-term')) return;
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.target.closest?.('.o-term')) return;
   e.preventDefault();
   toggleSide('left');
 }

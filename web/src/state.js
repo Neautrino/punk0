@@ -1,4 +1,5 @@
 // web/src/state.js
+import { emptyModel } from './editorgroups.js';
 /**
  * @param {string} s
  * @param {ParentNode} [r=document]
@@ -174,6 +175,9 @@ export const LH = 20, CHUNK = 1000, OVERSCAN = 24;
  * @property {WorkspaceMeta|null} meta
  * @property {DocTab[]} tabs
  * @property {number} active
+ * @property {string} center - 'doc' | 'term': what the center group shows
+ * @property {string} centerTerm - the terminal the center shows, '' for none
+ * @property {any} groups - the editor's two tab groups (editorgroups.js)
  * @property {Array<{path: string, line: number}>} hist
  * @property {number} histIdx
  * @property {any} find
@@ -201,6 +205,9 @@ export const S = {
   meta: null,
   tabs: [],
   active: -1,
+  center: 'doc',     // the center shows a document, or ('term') a terminal
+  centerTerm: '',    // which terminal the center shows
+  groups: emptyModel(), // the center and right tab lists (editorgroups.js)
   hist: [], histIdx: -1,
   find: null,         // {q, ci, hits:[{line,n}], active}
   occ: null,          // word to highlight everywhere
@@ -222,5 +229,7 @@ export const S = {
   unpushedCount: 0,  // outgoing commits (not on the upstream yet); owned by gitgraph.js
 };
 
+/* With a terminal in the center there is no document in front: every module
+   that reads the open file takes the same path it takes with no tabs open. */
 /** @returns {DocTab|null} */
-export const doc_ = () => (S.active >= 0 ? S.tabs[S.active] : null);
+export const doc_ = () => (S.center === 'term' || S.active < 0 ? null : S.tabs[S.active]);

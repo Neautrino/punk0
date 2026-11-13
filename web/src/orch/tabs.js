@@ -1,24 +1,29 @@
 // web/src/orch/tabs.js
-// Tab bars of the selected workspace. In the split layout (split.js) the
-// terminals' bar holds shells and agent chats and the file group's bar the
-// open files; in the tabs layout the terminals' bar holds both. "+" offers a
+// The tab bars of the selected workspace's two groups (orch/groups.js).
+// Each group has a bar of its own holding whatever it was given, shells,
+// agent chats, files, Changes and What's New alike; with one group, in the
+// tabs layout or a narrow window, the shown group's bar lists both groups'
+// tabs (split.js). A tab is dragged along its bar to reorder it, onto the
+// other group to move it there, or onto the right third of the only group
+// to open a second one (tabdrag.js); its right-click menu does the same
+// with the keyboard, and offers to stop a terminal (tabstop.js), which
+// keeps the tab to start again when opened. Each group's "+" offers a
 // shell and the open file picker, then below a rule a new tab of every
-// installed agent not in agents.hidden, agents.default first. The empty
-// center's welcome view starts the default agent, offers the other agents in
-// a menu of their own, then the shell, a file, the editor and a new
-// workspace, then a few of the workspace's own tabs to open again. The file
-// group's "+" opens the picker. Double-click renames a terminal tab
-// after what it is for; a right click offers to stop it (tabstop.js), which
-// keeps the tab to start again when opened. At the right end, the
-// workspace's folder opens in the full editor.
+// installed agent not in agents.hidden, agents.default first, and opens it
+// in that group. The first group's welcome view starts the default agent,
+// offers the other agents in a menu of their own, then the shell, a file,
+// the editor and a new workspace, then a few of the workspace's own tabs to
+// open again. Double-click renames a terminal tab after what it is for. At
+// the right end, the workspace's folder opens in the full editor.
 import { $, $$, esc, keyCaps } from '../state.js';
 import { emit, on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
-import { subscribe, reload, workspace, projectOf, tabsOf, fileTabsOf, activeTab, termTab, fileTab, selectTab, closeFile, closeChanges, closeWhatsNew } from './store.js';
+import { subscribe, reload, workspace, projectOf, tabsOf, groupsOf, tabIn, groupOf, focusedGroup, focusGroup, selectTab, moveTab, openIn, closeFile, closeChanges, closeWhatsNew } from './store.js';
 import { fileKind } from './tree.js';
 import { openPicker } from './picker.js';
 import { getSetting, visibleAgents, defaultAgent } from './settings.js';
-import { isSplit } from './split.js';
+import { isSplit, view } from './split.js';
+import { createTabDrag } from '../tabdrag.js';
 import { scrollTabsOnWheel } from '../tabwheel.js';
 import { agentIcon } from '../agenticons.js';
 import { getTabLabel } from '../term-util.js';
@@ -32,36 +37,53 @@ const ICON_NEWS = '<svg class="o-tab-svg" viewBox="0 0 24 24" fill="none" stroke
 const TAB_STATUS = { working: 'working', waiting: 'waiting for you', idle: 'idle' };
 const RESUME_MAX = 4; // the welcome view's tabs to open again; the bar has them all
 
-let barEl, fileBarEl, addEl, menuEl, tabMenuEl, agentMenuEl, emptyEl;
+let bars = []; // each group's tab bar, by group index
+let addEls = []; // each group's "+"
+let menuEl, tabMenuEl, agentMenuEl, emptyEl, zoneEl;
 let agents = []; // GET api/agents
 
 export function initTabs() {
-  barEl = $('#o-tabs');
-  fileBarEl = $('#o-file-tabs');
-  addEl = $('#o-new-tab');
   menuEl = $('#o-new-menu');
   tabMenuEl = $('#o-tab-menu');
   agentMenuEl = $('#o-agent-menu');
   emptyEl = $('#o-empty');
-  if (addEl) {
-    addEl.addEventListener('click', e => {
+  zoneEl = $('.o-side-zone');
+  const drag = createTabDrag({ canDrop, onDrop });
+  $$('.o-group').forEach((group, g) => {
+    const bar = $('.o-tabs', group);
+    const add = $('.o-group-add', group);
+    bars[g] = bar;
+    addEls[g] = add;
+    add.addEventListener('click', e => {
       e.stopPropagation();
-      toggleNewMenu();
+      toggleNewMenu(g, add);
     });
-  }
+    bar.addEventListener('click', onTabClick);
+    bar.addEventListener('dblclick', onRename);
+    bar.addEventListener('contextmenu', openTabMenu);
+    scrollTabsOnWheel(bar);
+    drag.bar(bar, g);
+    const body = $('.o-group-body', group);
+    drag.body(body, g);
+    // A click in a group's body focuses it, as a click on one of its tabs
+    // does: the status bar and Go to line follow the focused group.
+    body.addEventListener('pointerdown', () => focusGroup(g));
+  });
+  drag.side(zoneEl, 1);
   for (const b of $$('.o-open-editor')) b.addEventListener('click', openInEditor);
   menuEl.addEventListener('click', e => {
     const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
     if (!kind) return;
+    const g = Number(menuEl.dataset.group) || 0;
     closeNewMenu();
-    startNew(kind);
+    startNew(g, kind);
   });
   emptyEl.addEventListener('click', onWelcomeClick);
   agentMenuEl.addEventListener('click', e => {
     const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
     if (!kind) return;
     closeAgentMenu();
-    startNew(kind);
+    startNew(0, kind);
   });
   // Enter with nothing focused starts the default agent, as the welcome
   // view's first button says; a focused control keeps its own Enter.
@@ -74,7 +96,7 @@ export function initTabs() {
     main.click();
   });
   document.addEventListener('mousedown', e => {
-    if (!menuEl.contains(e.target) && !addEl.contains(e.target)) closeNewMenu();
+    if (!menuEl.contains(e.target) && !addEls.some(b => b.contains(e.target))) closeNewMenu();
     if (!tabMenuEl.contains(e.target)) closeTabMenu();
     if (!agentMenuEl.contains(e.target) && !e.target.closest?.('#o-empty-more')) closeAgentMenu();
   });
@@ -90,13 +112,6 @@ export function initTabs() {
     $('#o-empty-more')?.focus();
   });
   tabMenuEl.addEventListener('click', onTabMenu);
-  for (const el of [barEl, fileBarEl]) {
-    el.addEventListener('click', onTabClick);
-    el.addEventListener('dblclick', onRename);
-    el.addEventListener('contextmenu', openTabMenu);
-    scrollTabsOnWheel(el);
-  }
-  $('#o-file-new').addEventListener('click', () => openPicker());
   subscribe(renderTabs);
   on('setting:changed', key => key.startsWith('agents.') && renderAgents());
   loadAgents();
@@ -137,19 +152,34 @@ function renderAgents() {
   closeAgentMenu();
 }
 
+// split says whether both groups stand side by side, each bar holding its
+// own tabs; else one bar lists them all.
+const split = () => isSplit() && groupsOf().groups.length === 2;
+
+// barSeq is what the bar holding group g lists: the group's own tabs in the
+// split layout, else every group's, each with the group it belongs to.
+function barSeq(g) {
+  const s = groupsOf();
+  if (split()) return (s.groups[g]?.ids || []).map(id => ({ id, g }));
+  return s.groups.flatMap((x, i) => x.ids.map(id => ({ id, g: i })));
+}
+
 function renderTabs() {
   const w = workspace();
   const off = !w || w.missing;
-  addEl.disabled = $('#o-file-new').disabled = off;
+  const v = view();
+  const byId = new Map(tabsOf(w).map(t => [t.id, t]));
+  bars.forEach((bar, g) => {
+    addEls[g].disabled = off;
+    const group = v.groups[g];
+    if (!group?.shown) return (bar.innerHTML = '');
+    bar.innerHTML = tabsHTML(barSeq(g).map(x => byId.get(x.id)).filter(Boolean), group.tab);
+    bar.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
   for (const b of $$('.o-open-editor')) b.disabled = off;
-  if (isSplit()) {
-    barEl.innerHTML = tabsHTML(w?.tabs || [], termTab());
-    fileBarEl.innerHTML = tabsHTML(fileTabsOf(w), fileTab());
-  } else {
-    barEl.innerHTML = tabsHTML(tabsOf(w), activeTab());
-    fileBarEl.innerHTML = '';
-  }
-  for (const el of [barEl, fileBarEl]) el.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // The side zone opens a second group: only with one, and only where two
+  // would have room.
+  zoneEl.hidden = !isSplit() || groupsOf().groups.length === 2;
   // A scratch chat is a folder of its own, with no project to branch from.
   $('#o-empty-nw').hidden = !w || !!projectOf(w.id)?.scratch;
   renderResume(w);
@@ -174,7 +204,7 @@ function onWelcomeClick(e) {
   const pick = e.target.closest('[data-pick-tab]')?.dataset.pickTab;
   if (pick) return selectTab(pick);
   const kind = e.target.closest('[data-new-tab]')?.dataset.newTab;
-  if (kind) return startNew(kind);
+  if (kind) return startNew(0, kind);
   const btn = e.target.closest('[data-act], #o-empty-more');
   if (!btn) return;
   if (btn.id === 'o-empty-more') return toggleAgentMenu(btn);
@@ -233,13 +263,16 @@ function tabTitle(t) {
   return `${label(t)} (${what}, ${st}): double-click to rename`;
 }
 
-function toggleNewMenu() {
-  if (!menuEl.hidden) return closeNewMenu();
+// toggleNewMenu opens the "+" menu for group g under its button; what it
+// starts opens in that group.
+function toggleNewMenu(g, btn) {
+  if (!menuEl.hidden && Number(menuEl.dataset.group) === g) return closeNewMenu();
+  menuEl.dataset.group = String(g);
   menuEl.hidden = false; // a hidden menu has no offsetParent or width
   const pane = menuEl.offsetParent.getBoundingClientRect();
-  const btn = addEl.getBoundingClientRect();
-  menuEl.style.left = `${Math.max(4, Math.min(btn.left - pane.left, pane.width - menuEl.offsetWidth - 4))}px`;
-  menuEl.style.top = `${btn.bottom - pane.top + 4}px`;
+  const r = btn.getBoundingClientRect();
+  menuEl.style.left = `${Math.max(4, Math.min(r.left - pane.left, pane.width - menuEl.offsetWidth - 4))}px`;
+  menuEl.style.top = `${r.bottom - pane.top + 4}px`;
   menuEl.querySelector('button')?.focus();
 }
 
@@ -247,19 +280,27 @@ function closeNewMenu() {
   menuEl.hidden = true;
 }
 
-// openTabMenu is a terminal tab's right-click menu at the pointer: Stop while
-// it runs, and what opening it again does.
+// openTabMenu is a tab's right-click menu at the pointer: where it can go,
+// Stop while a terminal runs, and what opening it again does.
 function openTabMenu(e) {
   const t = tabAt(e);
-  if (!t || t.kind === 'file' || t.whatsNew || t.changes) return;
+  if (!t) return;
   e.preventDefault();
-  const note = t.kind === 'shell'
-    ? 'Opening the tab again starts a new shell.'
-    : 'Opening the tab again starts it; the agent picks its chat up where it can.';
+  const g = groupOf(t.id);
+  const seq = barSeq(g);
+  const i = seq.findIndex(x => x.id === t.id);
+  const term = t.kind !== 'file';
+  const note = !term ? ''
+    : t.kind === 'shell' ? 'Opening the tab again starts a new shell.'
+      : 'Opening the tab again starts it; the agent picks its chat up where it can.';
   tabMenuEl.dataset.tab = t.id;
-  tabMenuEl.innerHTML = `<button type="button" role="menuitem" data-act="stop"${t.running ? '' : ' disabled'}>${t.running ? 'Stop' : 'Stopped'}</button>
-    <div class="o-menu-sep" role="separator"></div>
-    <div class="o-menu-label">${note}</div>`;
+  tabMenuEl.innerHTML = [
+    term ? `<button type="button" role="menuitem" data-act="stop"${t.running ? '' : ' disabled'}>${t.running ? 'Stop' : 'Stopped'}</button>` : '',
+    `<button type="button" role="menuitem" data-act="side"${alone(g) ? ' disabled' : ''}>Move to the other side</button>`,
+    `<button type="button" role="menuitem" data-act="left"${i > 0 ? '' : ' disabled'}>Move left</button>`,
+    `<button type="button" role="menuitem" data-act="right"${i >= 0 && i < seq.length - 1 ? '' : ' disabled'}>Move right</button>`,
+    note ? `<div class="o-menu-sep" role="separator"></div><div class="o-menu-label">${note}</div>` : '',
+  ].join('');
   tabMenuEl.hidden = false;
   tabMenuEl.style.left = `${Math.max(4, Math.min(e.clientX, innerWidth - tabMenuEl.offsetWidth - 4))}px`;
   tabMenuEl.style.top = `${Math.max(4, Math.min(e.clientY, innerHeight - tabMenuEl.offsetHeight - 4))}px`;
@@ -271,10 +312,24 @@ function closeTabMenu() {
 }
 
 async function onTabMenu(e) {
-  if (!e.target.closest('[data-act=stop]')) return;
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (!act) return;
   closeTabMenu();
-  const t = tabsOf(workspace()).find(x => x.id === tabMenuEl.dataset.tab);
-  if (t?.running && await stopTab(document.baseURI, { id: t.id, name: label(t) })) reload();
+  const id = tabMenuEl.dataset.tab;
+  const t = tabsOf(workspace()).find(x => x.id === id);
+  if (!t) return;
+  if (act === 'stop') {
+    if (t.running && await stopTab(document.baseURI, { id: t.id, name: label(t) })) reload();
+    return;
+  }
+  const g = groupOf(id);
+  if (act === 'side') return moveTab(id, g === 1 ? 0 : 1, '');
+  const seq = barSeq(g);
+  const i = seq.findIndex(x => x.id === id);
+  if (act === 'left' && i > 0) return moveTab(id, seq[i - 1].g, seq[i - 1].id);
+  if (act !== 'right' || i < 0 || i >= seq.length - 1) return;
+  const to = seq[i + 1], after = seq[i + 2];
+  moveTab(id, to.g, after?.g === to.g ? after.id : '');
 }
 
 function tabAt(e) {
@@ -282,29 +337,47 @@ function tabAt(e) {
   return tabsOf(workspace()).find(t => t.id === id) || null;
 }
 
-// group is the tabs of t's bar and the one shown from them: in the split
-// layout its own group's, else all of them.
-function group(t) {
-  const w = workspace();
-  if (!isSplit()) return { tabs: tabsOf(w), shown: activeTab() };
-  return t.kind === 'file' ? { tabs: fileTabsOf(w), shown: fileTab() } : { tabs: w?.tabs || [], shown: termTab() };
+// destOf is the group a drop lands in: the one holding the tab it goes
+// ahead of, since one bar may list both groups' tabs; dropping at the end
+// of such a bar lands in the last group.
+function destOf({ to, before, kind }) {
+  if (before) return groupOf(before);
+  if (kind === 'bar' && !split()) return groupsOf().groups.length - 1;
+  return to;
 }
 
-// neighbour is the tab of tabs to show once t closes: the one before it,
+// alone says whether group g's only tab would leave the first group empty
+// by going to the other side; it would then show nothing but the welcome
+// view, and the tab already has the group's whole width.
+const alone = g => g === 0 && groupsOf().groups.length === 1 && groupsOf().groups[0].ids.length < 2;
+
+function canDrop(d) {
+  const w = workspace();
+  if (!w || w.missing) return false;
+  if (d.kind === 'side') return !alone(0);
+  return true;
+}
+
+const onDrop = d => moveTab(d.id, destOf(d), d.before);
+
+// neighbour is the tab of group g to show once t closes: the one before it,
 // else after. A stopped terminal is passed over: showing it would start it.
-function neighbour(t, tabs) {
-  const open = tabs.filter(x => x.id === t.id || x.kind === 'file' || x.running);
-  const i = open.findIndex(x => x.id === t.id);
-  return (open[i - 1] || open[i + 1])?.id;
+function neighbour(t, g) {
+  const by = new Map(tabsOf(workspace()).map(x => [x.id, x]));
+  const open = (groupsOf().groups[g]?.ids || []).filter(id => id === t.id || by.get(id)?.kind === 'file' || by.get(id)?.running);
+  const i = open.indexOf(t.id);
+  return open[i - 1] || open[i + 1];
 }
 
 async function onTabClick(e) {
   const t = tabAt(e);
   if (!t) return;
-  const { tabs, shown } = group(t);
-  // Re-rendering the active tab would swallow the second click of a rename.
-  if (!e.target.closest('[data-act=close]')) return t.id !== shown?.id && selectTab(t.id);
-  const next = t.id === shown?.id ? neighbour(t, tabs) : null;
+  const g = groupOf(t.id);
+  // Re-rendering the tab in front would swallow the second click of a
+  // rename; a tab shown in a group that is not focused, or not in view at
+  // all, still has a click to answer.
+  const inFront = g >= 0 && view().groups[g]?.inView && g === focusedGroup() && tabIn(g)?.id === t.id;
+  if (!e.target.closest('[data-act=close]')) return !inFront && selectTab(t.id);
   if (t.whatsNew) {
     closeWhatsNew();
   } else if (t.changes) {
@@ -321,7 +394,8 @@ async function onTabClick(e) {
     // gone now, and the list would say otherwise until its next poll.
     emit('orch:tabclosed');
   }
-  if (next) selectTab(next);
+  // The group picks what to show in its place (orch/groups.js reconcile),
+  // passing over a stopped terminal.
 }
 
 async function onRename(e) {
@@ -334,7 +408,10 @@ async function onRename(e) {
   reload();
 }
 
-function startNew(kind) {
+// startNew opens a new tab of kind in group g: the group's "+", or the
+// welcome view, which is the first group's.
+function startNew(g, kind) {
+  openIn(g, kind);
   if (kind === 'file') openPicker();
   else addTab(kind);
 }

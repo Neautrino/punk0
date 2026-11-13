@@ -82,7 +82,7 @@ The categories listed first in the modal belong to punk0 itself and apply to the
 | `tips.enabled` | General | `true` | `true`, `false` | One tip in empty views (the agents page's welcome, the editor with no file open) and the command palette's footer, on both pages ([Tips](tips-system.md)) |
 | `workbench.colorTheme` | Appearance | `"catppuccin-mocha"` | 14 built-in theme IDs | Color theme of both pages |
 | `workbench.uiFontFamily` | Fonts | `""` | CSS font stack | Interface font; empty uses the theme's |
-| `layout.fileView` | Appearance | `"beside"` | `beside`, `tabs` | Files in a panel beside the terminals, or among the terminal tabs (agents page) |
+| `layout.fileView` | Appearance | `"beside"` | `beside`, `tabs` | Where a file opens on the agents page: in a tab group of its own beside the terminals, or among the terminal tabs in one group. Either way a tab can be dragged into the other group |
 | `agents.default` | Agents | `"claude"` | agent id or `shell` | Agent New chat and New workspace start with |
 | `agents.hidden` | Agents | `[]` | list of agent ids | Agents left out of menus and the welcome screen |
 | `agents.<id>.args` ⚿ | Agents | `""` | shell words | Extra arguments after the program name when punk0 starts the agent in a tab (not when you type it), one key per agent id in `agents.default`'s list |

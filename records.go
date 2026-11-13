@@ -1174,6 +1174,32 @@ func (r *Records) RemoveTab(id string) error {
 	return r.saveLocked()
 }
 
+// MoveTab puts tab id ahead of tab before in its workspace's tab order, or
+// last with before "". The order is the agents page's and the editor's
+// terminal bar order; which tab a fresh page reopens (LastTab) stays.
+func (r *Records) MoveTab(id, before string) error {
+	if id == before {
+		return fmt.Errorf("tab %q cannot move ahead of itself", id)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	w, i := r.tabLocked(id)
+	if w == nil {
+		return fmt.Errorf("tab %q: %w", id, errNotFound)
+	}
+	t := w.Tabs[i]
+	tabs := slices.Delete(slices.Clone(w.Tabs), i, i+1)
+	at := len(tabs)
+	if before != "" {
+		at = slices.IndexFunc(tabs, func(s *Satellite) bool { return s.ID == before })
+		if at < 0 {
+			return fmt.Errorf("tab %q in this workspace: %w", before, errNotFound)
+		}
+	}
+	w.Tabs = slices.Insert(tabs, at, t)
+	return r.saveLocked()
+}
+
 // UseTab records tab id as the one the user last picked or typed in: its
 // workspace's LastTab and the workspace a fresh page opens on. records.json
 // is written only when that changes, not once per key.

@@ -264,94 +264,63 @@
          their own right of them; tabs layout: one strip for both, files in
          the terminals' place. -->
     <section id="o-center">
-      <header class="o-head" id="o-tab-head">
-        <!-- Shows a hidden projects pane again; only there while it is
-             hidden, in the head at that edge of the center. -->
-        <button type="button" class="mini o-show" data-show="left" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
-        </button>
-        <div id="o-tabs" role="tablist"></div>
-        <button id="o-new-tab" type="button" class="mini" title="New tab" aria-label="New tab" aria-haspopup="menu">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-        <!-- While the right side is closed (no file group and no files pane
-             showing), its controls come here, at the top row's right end:
-             the files pane's show button (resize.js), Open in editor and
-             the right side's toggle (split.js), which brings it back. Open
-             in editor shows the selected workspace's folder in the full
-             editor, in its own browser tab; the ◫ toggle closes the open
-             files and the files pane together, or opens whatever of them is
-             closed (aria-pressed while the right side shows). -->
-        <span class="o-top-acts">
-          <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+      <!-- A tab group: its tab bar and "+", the path row of whatever file
+           it shows, and its body (terminal, file, diff, release notes, and
+           in the first group the welcome view). Both groups are the same;
+           tabs.js draws each from store.js's group model and tabdrag.js
+           moves tabs between them. The right-end buttons exist in both
+           heads, bound with $$; only the rightmost shown group's are in
+           view. -->
+      <section class="o-group" data-g="0">
+        <header class="o-head o-group-head">
+          <!-- Shows a hidden projects pane again; only there while it is
+               hidden, in the head at that edge of the center. -->
+          <button type="button" class="mini o-show" data-show="left" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
           </button>
-          <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+          <div class="o-tabs" role="tablist"></div>
+          <button type="button" class="mini o-group-add" title="New tab in this group" aria-label="New tab in this group" aria-haspopup="menu">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
-          </button>
-        </span>
-      </header>
-      <div id="o-new-menu" class="o-menu" role="menu" hidden>
-        <div id="o-new-shell" class="o-agent-list"></div>
-        <button type="button" role="menuitem" data-new-tab="file"><span class="o-menu-kind file"></span>Open file…</button>
-        <div id="o-new-sep" class="o-menu-sep" role="separator"></div>
-        <div id="o-new-agents" class="o-agent-list"></div>
-      </div>
-      <div id="o-term" hidden></div>
-      <div id="o-split-resizer" class="o-resizer" role="separator" aria-orientation="vertical" aria-label="Resize terminals and files" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
-      <!-- The right side's top row, over the file group and the files pane
-           (over the pane alone while no file group shows): the mode switch
-           at its left (paneviews.js), then Maximize (Files mode with the
-           file group open), Open in editor and the right side's toggle. -->
-      <header class="o-head" id="o-file-head">
-        <button type="button" class="mini o-show" data-show="left" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
-        </button>
-        <span class="pane-tabs" role="tablist" aria-label="Right side">
-          <button type="button" role="tab" data-view="files" title="Files" aria-label="Files" aria-selected="true">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg>
-          </button>
-          <button type="button" role="tab" data-view="chats" title="Chats" aria-label="Chats" aria-selected="false" tabindex="-1">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
-          </button>
-        </span>
-        <span class="o-top-acts">
-          <button id="o-file-max" type="button" class="mini" title="Maximize files" aria-label="Maximize files">
-            <svg class="o-ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-            <svg class="o-ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
-          </button>
-          <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
-          </button>
-          <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
-          </button>
-        </span>
-      </header>
-      <!-- Its second row: the open files' tabs, then Open file, and at its
-           right end a hidden files pane's show button, level with the ≡
-           that hid it (resize.js). -->
-      <header class="o-head" id="o-file-bar">
-        <div id="o-file-tabs" role="tablist"></div>
-        <button id="o-file-new" type="button" class="mini" title="Open file" aria-label="Open file">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-        <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
-        </button>
-      </header>
-      <main id="o-viewer" hidden>
-        <!-- The path row (under the file tabs beside the terminals, under the
-             tab bar in their place): the file's path and, in a git checkout,
-             whether it shows the text or the diff; for a diff (changes.js)
-             its summary, layout switch and refresh. -->
-        <header id="o-view-head">
-          <span id="o-file-title"></span>
-          <span id="o-file-meta"></span>
-          <span id="o-file-mode" class="o-acts sidebar-toggle" role="group" aria-label="Show" hidden>
+          <!-- The right end of the rightmost shown group's head: the files
+               pane's mode switch (paneviews.js) and show button
+               (resize.js), Maximize, Open in editor and the right side's
+               toggle (split.js). Open in editor shows the selected
+               workspace's folder in the full editor, in its own browser
+               tab; the ◫ toggle closes the open files and the files pane
+               together, or opens whatever of them is closed (aria-pressed
+               while the right side shows). -->
+          <span class="o-top-acts">
+            <span class="pane-tabs o-pane-tabs" role="tablist" aria-label="Right side">
+              <button type="button" role="tab" data-view="files" title="Files" aria-label="Files" aria-selected="true">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg>
+              </button>
+              <button type="button" role="tab" data-view="chats" title="Chats" aria-label="Chats" aria-selected="false" tabindex="-1">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+              </button>
+            </span>
+            <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+            </button>
+            <button type="button" class="mini o-file-max" title="Maximize files" aria-label="Maximize files">
+              <svg class="o-ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+              <svg class="o-ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+            </button>
+            <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+            </button>
+            <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+            </button>
+          </span>
+        </header>
+        <!-- The path row: the file's path and, in a git checkout, whether it
+             shows the text or the diff; for a diff (changes.js) its summary,
+             layout switch and refresh. -->
+        <header class="o-view-head" hidden>
+          <span class="o-file-title"></span>
+          <span class="o-file-meta"></span>
+          <span class="o-file-mode o-acts sidebar-toggle" role="group" aria-label="Show" hidden>
             <button type="button" class="toggle-btn" data-mode="source" title="The file" aria-label="The file">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
             </button>
@@ -359,8 +328,8 @@
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8M8 8h8M8 18h8"/></svg>
             </button>
           </span>
-          <span id="o-changes-acts" class="o-acts" hidden>
-            <span id="o-diff-layout" class="sidebar-toggle" role="group" aria-label="Diff layout" hidden>
+          <span class="o-changes-acts o-acts" hidden>
+            <span class="o-diff-layout sidebar-toggle" role="group" aria-label="Diff layout" hidden>
               <button type="button" class="toggle-btn" data-layout="unified" title="One column" aria-label="One column">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10"/></svg>
               </button>
@@ -368,46 +337,131 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>
               </button>
             </span>
-            <button id="o-changes-refresh" type="button" class="mini" title="Refresh changes" aria-label="Refresh changes">
+            <button type="button" class="mini o-changes-refresh" title="Refresh changes" aria-label="Refresh changes">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
           </span>
         </header>
-        <div id="o-code-vp">
-          <div id="o-code-sizer">
-            <div id="o-code-rows"></div>
+        <div class="o-group-body">
+          <div class="o-term" hidden></div>
+          <div class="o-code-vp" hidden>
+            <div class="o-code-sizer">
+              <div class="o-code-rows"></div>
+            </div>
+          </div>
+          <div class="o-diff-vp" hidden></div>
+          <div class="o-notes-vp" hidden></div>
+          <!-- Drop a tab on the right third of the only group to open the
+               second one (tabdrag.js); invisible, and only a target while
+               there is no second group. -->
+          <div class="o-side-zone" hidden></div>
+          <!-- The welcome view, behind the tabs: what the first group shows
+               when this page has opened none of the workspace's tabs (a new
+               project starts so, and a workspace whose last used tab is not
+               known). It starts the default agent; the other agents are one
+               menu away (#o-agent-menu). Its tabs are offered, never started
+               for the user: showing a tab starts it. A tip (tips.js) closes
+               it. -->
+          <div id="o-empty" data-ws="none">
+            <div class="o-welcome">
+              <div class="o-welcome-mark">punk<span>[0]</span><small id="o-empty-ver"></small></div>
+              <p class="o-welcome-tag">Code review and agent orchestration in your browser</p>
+              <p class="o-empty-yes o-welcome-ws" id="o-empty-ws"></p>
+              <div class="o-empty-yes o-welcome-acts">
+                <div id="o-empty-agents" class="o-agent-list"></div>
+                <button type="button" data-new-tab="file"><span class="o-menu-kind file"></span><span>Open file…</span></button>
+                <button type="button" data-act="open-editor"><svg class="o-welcome-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg><span>Open in editor</span></button>
+                <button type="button" data-act="new-workspace" id="o-empty-nw"><svg class="o-welcome-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New workspace…</span><span class="wb-faint">a branch or worktree</span></button>
+              </div>
+              <div class="o-empty-yes o-welcome-acts" id="o-empty-tabs"></div>
+              <p class="o-empty-none">Add a folder to start.</p>
+              <p class="o-empty-none wb-faint">Each project gets workspaces: its own folder, git worktrees, or scratch chats.</p>
+              <div class="o-empty-none o-welcome-cta"><button type="button" class="wb-btn wb-primary" data-act="add-project">Add project…</button></div>
+              <p class="o-empty-pick">Pick a workspace or chat on the left.</p>
+              <p class="o-empty-pick wb-faint">Nothing starts until you open it.</p>
+              <p class="o-empty-missing">The folder of this workspace is gone.</p>
+              <div id="o-empty-tip" class="tipbox" hidden></div>
+            </div>
           </div>
         </div>
-        <div id="o-diff-vp" hidden></div>
-        <div id="o-notes-vp" hidden></div>
-      </main>
-      <!-- The welcome view, behind the tabs: what the center shows when the
-           selected workspace has no tab open (a new project starts so, and a
-           workspace whose last used tab is not known), and the terminal group
-           in the split layout when it has no terminal. It starts the default
-           agent; the other agents are one menu away (#o-agent-menu). Its tabs
-           are offered, never started for the user: showing a tab starts it.
-           A tip (tips.js) closes it. -->
-      <div id="o-empty" data-ws="none">
-        <div class="o-welcome">
-          <div class="o-welcome-mark">punk<span>[0]</span><small id="o-empty-ver"></small></div>
-          <p class="o-welcome-tag">Code review and agent orchestration in your browser</p>
-          <p class="o-empty-yes o-welcome-ws" id="o-empty-ws"></p>
-          <div class="o-empty-yes o-welcome-acts">
-            <div id="o-empty-agents" class="o-agent-list"></div>
-            <button type="button" data-new-tab="file"><span class="o-menu-kind file"></span><span>Open file…</span></button>
-            <button type="button" data-act="open-editor"><svg class="o-welcome-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg><span>Open in editor</span></button>
-            <button type="button" data-act="new-workspace" id="o-empty-nw"><svg class="o-welcome-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New workspace…</span><span class="wb-faint">a branch or worktree</span></button>
+      </section>
+      <div id="o-split-resizer" class="o-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the tab groups" aria-valuemin="0" aria-valuemax="100" tabindex="0"></div>
+      <section class="o-group" data-g="1" hidden>
+        <header class="o-head o-group-head">
+          <button type="button" class="mini o-show" data-show="left" title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+          </button>
+          <div class="o-tabs" role="tablist"></div>
+          <button type="button" class="mini o-group-add" title="New tab in this group" aria-label="New tab in this group" aria-haspopup="menu">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <span class="o-top-acts">
+            <span class="pane-tabs o-pane-tabs" role="tablist" aria-label="Right side">
+              <button type="button" role="tab" data-view="files" title="Files" aria-label="Files" aria-selected="true">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/></svg>
+              </button>
+              <button type="button" role="tab" data-view="chats" title="Chats" aria-label="Chats" aria-selected="false" tabindex="-1">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/></svg>
+              </button>
+            </span>
+            <button type="button" class="mini o-show" data-show="right" title="Show files" aria-label="Show files">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h8M6 12h12M6 16h8"/></svg>
+            </button>
+            <button type="button" class="mini o-file-max" title="Maximize files" aria-label="Maximize files">
+              <svg class="o-ic-max" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+              <svg class="o-ic-restore" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+            </button>
+            <button type="button" class="mini o-open-editor" title="Open in editor" aria-label="Open in editor">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+            </button>
+            <button type="button" class="mini o-side-toggle" data-side="right" title="Close or open the right side (Ctrl+Alt+B)" aria-label="Right side" aria-pressed="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+            </button>
+          </span>
+        </header>
+        <header class="o-view-head" hidden>
+          <span class="o-file-title"></span>
+          <span class="o-file-meta"></span>
+          <span class="o-file-mode o-acts sidebar-toggle" role="group" aria-label="Show" hidden>
+            <button type="button" class="toggle-btn" data-mode="source" title="The file" aria-label="The file">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+            </button>
+            <button type="button" class="toggle-btn" data-mode="diff" title="Its changes" aria-label="Its changes">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v8M8 8h8M8 18h8"/></svg>
+            </button>
+          </span>
+          <span class="o-changes-acts o-acts" hidden>
+            <span class="o-diff-layout sidebar-toggle" role="group" aria-label="Diff layout" hidden>
+              <button type="button" class="toggle-btn" data-layout="unified" title="One column" aria-label="One column">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10"/></svg>
+              </button>
+              <button type="button" class="toggle-btn" data-layout="split" title="Side by side" aria-label="Side by side">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>
+              </button>
+            </span>
+            <button type="button" class="mini o-changes-refresh" title="Refresh changes" aria-label="Refresh changes">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
+          </span>
+        </header>
+        <div class="o-group-body">
+          <div class="o-term" hidden></div>
+          <div class="o-code-vp" hidden>
+            <div class="o-code-sizer">
+              <div class="o-code-rows"></div>
+            </div>
           </div>
-          <div class="o-empty-yes o-welcome-acts" id="o-empty-tabs"></div>
-          <p class="o-empty-none">Add a folder to start.</p>
-          <p class="o-empty-none wb-faint">Each project gets workspaces: its own folder, git worktrees, or scratch chats.</p>
-          <div class="o-empty-none o-welcome-cta"><button type="button" class="wb-btn wb-primary" data-act="add-project">Add project…</button></div>
-          <p class="o-empty-pick">Pick a workspace or chat on the left.</p>
-          <p class="o-empty-pick wb-faint">Nothing starts until you open it.</p>
-          <p class="o-empty-missing">The folder of this workspace is gone.</p>
-          <div id="o-empty-tip" class="tipbox" hidden></div>
+          <div class="o-diff-vp" hidden></div>
+          <div class="o-notes-vp" hidden></div>
         </div>
+      </section>
+      <!-- A group's "+" menu: a shell, Open file, then the installed agents.
+           It opens over the group whose "+" was clicked (tabs.js). -->
+      <div id="o-new-menu" class="o-menu" role="menu" hidden>
+        <div id="o-new-shell" class="o-agent-list"></div>
+        <button type="button" role="menuitem" data-new-tab="file"><span class="o-menu-kind file"></span>Open file…</button>
+        <div id="o-new-sep" class="o-menu-sep" role="separator"></div>
+        <div id="o-new-agents" class="o-agent-list"></div>
       </div>
       <div id="o-picker" hidden>
         <div id="o-picker-box">

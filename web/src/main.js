@@ -1,5 +1,5 @@
 // web/src/main.js
-import { $, $$, S, api, applyKeyLabels } from './state.js';
+import { $, $$, S, doc_, api, applyKeyLabels } from './state.js';
 import { measure, layout, render, initRenderer, updateEditorOptionControls } from './renderer.js';
 import { initTabs, openFile, switchTab } from './tabs.js';
 import { initCursor } from './cursor.js';
@@ -146,10 +146,12 @@ initPRScope();
     return !!(S.meta?.git && ((S.meta.gitChanges > 0) || S.meta?.pr));
   };
   const selectChangedFileTab = async () => {
-    if (S.tabs[S.active]?.diffAvailable) return;
-    const changedTabIdx = S.tabs.findIndex(t => t.diffAvailable);
-    if (changedTabIdx >= 0) {
-      switchTab(changedTabIdx);
+    // A terminal in the center is what the user put there: leave it.
+    if (S.center === 'term') return;
+    if (doc_()?.diffAvailable) return;
+    const changed = S.tabs.find(t => t.diffAvailable);
+    if (changed) {
+      switchTab(changed.path);
     } else if (S.meta.gitFiles && S.meta.gitFiles.length > 0) {
       await openFile(S.meta.gitFiles[0]);
     }
@@ -184,7 +186,7 @@ initPRScope();
 
   if (inGitMode()) {
     await expandDirtyDirs();
-    const activeDoc = S.tabs[S.active];
+    const activeDoc = doc_();
     if (activeDoc?.path) await revealFile(activeDoc.path);
   } else {
     collapseAllDirs();
@@ -218,7 +220,7 @@ initPRScope();
             if (hasGitChanges) await selectChangedFileTab();
             if (inGitMode()) {
               await expandDirtyDirs();
-              const activeDoc = S.tabs[S.active];
+              const activeDoc = doc_();
               if (activeDoc?.path) await revealFile(activeDoc.path);
             } else {
               collapseAllDirs();

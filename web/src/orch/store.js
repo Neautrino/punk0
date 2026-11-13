@@ -2,7 +2,9 @@
 // The project tree from GET /api/projects, the pull requests from
 // GET /api/wb/state, and what is selected. The sidebar, tab bar and panes all
 // render from here. The tree is small, so every change reloads all of it.
-import { call } from './api.js';
+import { call, failed } from './api.js';
+import { getSetting } from './settings.js';
+import { reconcile, moveTab as moveInGroups, canonicalTerms, movesToMatch, idKind, TERM, FILE } from './groups.js';
 
 const listeners = new Set();
 
@@ -50,15 +52,15 @@ export const state = {
   reviews: [], // pull request items from /api/wb/state
   wb: { cwd: '', home: '', sep: '/', version: '' },
   ws: initialWs(), // selected workspace id
-  // workspace id -> { term, file, front }: its last used terminal tab and
-  // file tab, and which of the two was used last.
-  tabs: loadJSON('punk0.tabs', {}),
+  // workspace id -> its tab groups (groups.js); the page's own tabs, with
+  // no workspace selected, are under ''.
+  groups: loadJSON('punk0.groups', {}),
   files: loadJSON('punk0.files', {}), // workspace id -> open file paths
   diffs: loadJSON('punk0.fileDiff', {}), // workspace id -> open file paths shown as their diff
   changes: loadJSON('punk0.changes', {}), // workspace id -> true while its Changes tab is open
   whatsNew: loadText('punk0.whatsNew'), // version the What's New tab shows, '' while it is closed
-  // The split layout's collapsed group: '', 'term' (files maximized) or
-  // 'file' (file panel hidden). Selecting a tab of that group shows it again.
+  // The split layout's collapsed group as text: '', '0' or '1'
+  // (collapsedGroup). Selecting a tab of that group shows it again.
   collapsed: loadText('punk0.splitCollapsed'),
 };
 
@@ -99,7 +101,6 @@ export function reload() {
         state.ws = state.wb.lastWorkspace;
         saveJSON('punk0.ws', state.ws);
       }
-      adoptLast(workspace());
       moved = true;
     }
     // A workspace that is gone, or an archived chat (its tabs are stopped),
@@ -117,17 +118,6 @@ export function reload() {
     }
   })().finally(() => { reloading = null; });
   return reloading;
-}
-
-// adoptLast gives workspace w, when this page remembers no tab of it that
-// still exists, the tab last used there in any page. Taken once, when the
-// workspace is selected: a tab used in another page later does not move
-// what this one shows.
-function adoptLast(w) {
-  if (!w || w.tabs.some(t => t.id === used(w.id).term)) return;
-  if (!w.tabs.some(t => t.id === w.lastTab)) return;
-  used(w.id).term = w.lastTab;
-  saveJSON('punk0.tabs', state.tabs);
 }
 
 // takePick reports whether the user chose the selection since it was last
@@ -175,13 +165,12 @@ export function hasGit(w) {
 export const wsLabel = w => w.title || w.name;
 
 export const fileTabId = path => `file:${path}`;
-// The Changes tab (changes.js): the workspace's diff, first in the file group.
+// The Changes tab (changes.js): the workspace's diff, one per workspace.
 export const CHANGES_TAB = 'changes';
 // The What's New tab (whatsnew.js): one version's release notes. It belongs
-// to the page, not a workspace: first in the file group of whatever
-// workspace is shown, or the whole center with none, until it is closed.
+// to the page, not a workspace: it goes to whichever group files were last
+// shown in, whatever workspace is selected, until it is closed.
 export const WHATSNEW_TAB = 'whatsnew';
-const kindOf = id => (id === CHANGES_TAB || id === WHATSNEW_TAB || id.startsWith('file:') ? 'file' : 'term');
 
 // tabsOf lists a workspace's tabs: its shells and Claude chats from the
 // server, then its Changes tab and the files open in it, which only this
@@ -191,9 +180,9 @@ export function tabsOf(w) {
   return [...w.tabs, ...fileTabsOf(w)];
 }
 
-// fileTabsOf lists the file group's tabs: the What's New tab (whatsNew set
-// to its version), the Changes tab (changes set, no path), then the files; a
-// file shown as its diff has diff set.
+// fileTabsOf lists the tabs only this page knows: the What's New tab
+// (whatsNew set to its version), the Changes tab (changes set, no path),
+// then the files; a file shown as its diff has diff set.
 export function fileTabsOf(w) {
   const diffs = state.diffs[w?.id] || [];
   const files = (state.files[w?.id] || []).map(path => ({
@@ -209,63 +198,180 @@ export function fileTabsOf(w) {
   return [...lead, ...files];
 }
 
-// used is the remembered tabs of workspace id; an entry stored in another
-// shape counts as none.
-function used(id) {
-  const e = state.tabs[id];
-  return e && typeof e === 'object' ? e : (state.tabs[id] = {});
+// adopted holds the workspaces whose last used tab this page has taken
+// (w.lastTab, Records.LastTab): once per workspace per page load, so a tab
+// used in another page later does not move what this one shows.
+const adopted = new Set();
+
+// liveOf is what exists now for workspace w: its tabs in the server's
+// order, this page's file tabs, which terminals run, and the tab to adopt.
+function liveOf(w) {
+  const tabs = w?.tabs || [];
+  let lastTab = '';
+  if (w && !adopted.has(w.id)) {
+    adopted.add(w.id);
+    lastTab = w.lastTab || '';
+  }
+  return {
+    terms: tabs.map(t => t.id),
+    files: fileTabsOf(w).map(t => t.id),
+    running: new Set(tabs.filter(t => t.running).map(t => t.id)),
+    lastTab,
+  };
 }
 
-// termTab is the selected workspace's last used terminal tab, or null: a tab
-// shown is a tab started, so none is chosen for the user (the welcome view
-// offers them instead).
-export function termTab(w = workspace()) {
-  if (!w) return null;
-  const id = used(w.id).term;
-  return w.tabs.find(t => t.id === id) || null;
+const groupKey = w => w?.id || '';
+
+function saveGroups(key, s) {
+  state.groups[key] = s;
+  saveJSON('punk0.groups', state.groups);
 }
 
-// fileTab is the selected workspace's last used file tab, else its first.
-export function fileTab(w = workspace()) {
-  const files = fileTabsOf(w);
-  const id = w && used(w.id).file;
-  return files.find(t => t.id === id) || files[0] || null;
+// pending is a tab selected before it was in a group: a new or resumed tab
+// the next list brings in. It is shown as soon as it appears.
+let pending = '';
+
+// groupsOf is workspace w's tab groups (groups.js), brought up to date with
+// the tabs that exist now and saved when that changed anything. Bringing
+// them up to date never moves a tab on the server: only a drop or a Move
+// menu item does, so two pages cannot push an order back and forth.
+export function groupsOf(w = workspace()) {
+  const key = groupKey(w);
+  const had = state.groups[key]?.groups?.length || 0;
+  const s = reconcile(state.groups[key], liveOf(w), { beside: getSetting('layout.fileView') !== 'tabs' });
+  if (pending) {
+    const g = s.groups.findIndex(x => x.ids.includes(pending));
+    if (g >= 0) {
+      s.groups[g].active = pending;
+      s.focus = g;
+      s.last[idKind(pending)] = g;
+      pending = '';
+    }
+  }
+  if (JSON.stringify(s) !== JSON.stringify(state.groups[key])) saveGroups(key, s);
+  // A second group that closed takes any collapse with it, or the next tab
+  // opened beside the first would be hidden.
+  if (had === 2 && s.groups.length === 1 && state.collapsed) {
+    state.collapsed = '';
+    saveJSON('punk0.splitCollapsed', '');
+  }
+  return s;
 }
 
-// activeTab is the tab in front: of the selected workspace's last used
-// terminal and file tabs, the one used last.
-export function activeTab() {
+// focusGroup makes group g the focused one: a click in its body, as a click
+// on one of its tabs does. The status bar, Go to line and the LSP item
+// follow the focused group's file.
+export function focusGroup(g) {
   const w = workspace();
-  const t = termTab(w), f = fileTab(w);
-  return (w && used(w.id).front === 'file' ? f || t : t || f) || null;
+  const s = groupsOf(w);
+  if (s.focus === g || !s.groups[g]) return;
+  s.focus = g;
+  saveGroups(groupKey(w), s);
+  rerender();
+}
+
+// tabIn is the tab group g shows, or null while this page has opened none
+// of its tabs.
+export function tabIn(g, w = workspace()) {
+  const id = groupsOf(w).groups[g]?.active;
+  return (id && tabsOf(w).find(t => t.id === id)) || null;
+}
+
+// focusedGroup is the group last clicked or dropped into: the one whose
+// file the status bar follows and whose terminal the keyboard reaches.
+export const focusedGroup = (w = workspace()) => groupsOf(w).focus;
+
+// groupOf is the group holding tab id, or -1.
+export const groupOf = (id, w = workspace()) => groupsOf(w).groups.findIndex(g => g.ids.includes(id));
+
+// frontTab is the tab in front: the focused group's, else the other's.
+export function frontTab() {
+  const w = workspace();
+  const s = groupsOf(w);
+  return tabIn(s.focus, w) || tabIn(1 - s.focus, w);
+}
+
+// showable says whether a tab may be shown as it is: a file always, a
+// terminal only while it runs, since showing a stopped one starts it.
+const showable = w => id => idKind(id) === FILE || !!(w?.tabs || []).find(t => t.id === id)?.running;
+
+// openIn says the next new tab of kind belongs to group g: the group's "+"
+// menu records it before the tab exists, and the placement rules follow.
+export function openIn(g, kind) {
+  const w = workspace();
+  const key = groupKey(w);
+  const s = groupsOf(w);
+  s.last[kind === 'file' ? FILE : TERM] = g;
+  saveGroups(key, s);
+}
+
+// moveTab puts tab id in group to, ahead of before ('' = last): a drop or a
+// Move menu item. The server holds the terminals in the order the two
+// groups read in (canonicalTerms), so the editor's bar follows; the moves
+// that bring it there go first and the page's copy of the order follows
+// them, since bringing the groups up to date re-sorts the terminals by the
+// server's order.
+export async function moveTab(id, to, before) {
+  const w = workspace();
+  const key = groupKey(w);
+  const s = moveInGroups(groupsOf(w), id, to, before, showable(w));
+  const desired = canonicalTerms(s);
+  const moves = movesToMatch((w?.tabs || []).map(t => t.id), desired);
+  for (const m of moves) {
+    const res = await call('POST', `api/tabs/${encodeURIComponent(m.id)}/move`, { before: m.before });
+    if (!res.ok) {
+      failed(res);
+      return reload(); // the bars draw the order the server kept
+    }
+  }
+  // The groups are saved against the order the server now holds, not the
+  // one the last poll brought.
+  if (moves.length) {
+    const rank = new Map(desired.map((x, i) => [x, i]));
+    w.tabs.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+  }
+  saveGroups(key, s);
+  picked ||= idKind(id) === TERM;
+  // Dropping into a collapsed group brings it back.
+  if (state.collapsed === String(s.focus)) setCollapsed(-1);
+  else rerender();
 }
 
 export function selectWorkspace(id) {
   state.ws = id;
   picked = true;
   saveJSON('punk0.ws', id);
-  adoptLast(workspace());
   rerender();
 }
 
+// selectTab shows tab id in the group holding it and focuses that group; a
+// tab of a collapsed group brings the group back. A tab no group holds yet
+// (one just started, or a chat being resumed) is shown once the next list
+// places it.
 export function selectTab(id) {
-  const kind = kindOf(id);
-  // With no workspace selected only the page's own tab is there to select,
-  // and no workspace to remember it for.
-  if (state.ws) {
-    Object.assign(used(state.ws), { [kind]: id, front: kind });
-    saveJSON('punk0.tabs', state.tabs);
+  const w = workspace();
+  const key = groupKey(w);
+  const s = groupsOf(w);
+  const g = s.groups.findIndex(x => x.ids.includes(id));
+  pending = g >= 0 ? '' : id;
+  if (g >= 0) {
+    s.groups[g].active = id;
+    s.focus = g;
+    s.last[idKind(id)] = g;
+    saveGroups(key, s);
   }
-  picked ||= kind === 'term';
-  if (state.collapsed === kind) return setCollapsed('');
+  picked ||= idKind(id) === TERM;
+  if (g >= 0 && state.collapsed === String(g)) return setCollapsed(-1);
   rerender();
 }
 
-// setCollapsed collapses one group of the split layout ('term' or 'file'),
-// or none ('').
-export function setCollapsed(kind) {
-  state.collapsed = kind;
-  saveJSON('punk0.splitCollapsed', kind);
+// collapsedGroup is the group the split layout hides, or -1 for neither.
+export const collapsedGroup = () => (state.collapsed === '0' ? 0 : state.collapsed === '1' ? 1 : -1);
+
+// setCollapsed collapses group g of the split layout, or neither with -1.
+export function setCollapsed(g) {
+  state.collapsed = g === 0 || g === 1 ? String(g) : '';
+  saveJSON('punk0.splitCollapsed', state.collapsed);
   rerender();
 }
 
@@ -296,8 +402,8 @@ export function openChanges() {
   selectTab(CHANGES_TAB);
 }
 
-// closeFile closes path's tab, and closeChanges the Changes tab; closing the
-// file group's last tab also ends a collapsed split, so the next file opens
+// closeFile closes path's tab, and closeChanges the Changes tab. Losing its
+// last tab closes the second group (groupsOf), so the next file opens
 // beside the terminals again.
 export function closeFile(path) {
   state.files[state.ws] = (state.files[state.ws] || []).filter(p => p !== path);
@@ -306,13 +412,13 @@ export function closeFile(path) {
     state.diffs[state.ws] = state.diffs[state.ws].filter(p => p !== path);
     saveJSON('punk0.fileDiff', state.diffs);
   }
-  closedFileTab();
+  rerender();
 }
 
 export function closeChanges() {
   delete state.changes[state.ws];
   saveJSON('punk0.changes', state.changes);
-  closedFileTab();
+  rerender();
 }
 
 // openWhatsNew shows the release notes of version ver in the page's one
@@ -326,11 +432,6 @@ export function openWhatsNew(ver) {
 export function closeWhatsNew() {
   state.whatsNew = '';
   saveJSON('punk0.whatsNew', '');
-  closedFileTab();
-}
-
-function closedFileTab() {
-  if (!fileTabsOf(workspace()).length && state.collapsed) return setCollapsed('');
   rerender();
 }
 

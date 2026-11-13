@@ -1635,3 +1635,68 @@ func TestUsedTabSurvivesARestart(t *testing.T) {
 		t.Fatal("UseTab accepted an unknown tab")
 	}
 }
+
+// A tab moves ahead of another of its workspace, or to the end, and the
+// order survives a restart; a tab cannot move ahead of itself or of another
+// workspace's tab, and moving never changes which tab a fresh page reopens.
+func TestMoveTab(t *testing.T) {
+	home := t.TempDir()
+	rec := openRecords(t, home)
+	p1, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := rec.AddProject(cleanRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab := func(ws string) string {
+		s, err := rec.AddTab(ws, tabShell, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.ID
+	}
+	ws := p1.Workspaces[0].ID
+	a, b, c, other := tab(ws), tab(ws), tab(ws), tab(p2.Workspaces[0].ID)
+	if err := rec.UseTab(b); err != nil {
+		t.Fatal(err)
+	}
+	order := func(r *Records) []string {
+		var ids []string
+		for _, s := range listed(r, p1.ID).Workspaces[0].Tabs {
+			ids = append(ids, s.ID)
+		}
+		return ids
+	}
+	if err := rec.MoveTab(c, a); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(rec); !slices.Equal(got, []string{c, a, b}) {
+		t.Fatalf("after moving c ahead of a: %v", got)
+	}
+	if err := rec.MoveTab(c, ""); err != nil {
+		t.Fatal(err)
+	}
+	back := openRecords(t, home)
+	if got := order(back); !slices.Equal(got, []string{a, b, c}) {
+		t.Fatalf("after moving c to the end and a restart: %v", got)
+	}
+	if got := listed(back, p1.ID).Workspaces[0].LastTab; got != b {
+		t.Fatalf("LastTab = %q, want %q: reordering must not change it", got, b)
+	}
+	for _, bad := range []struct {
+		id, before string
+		notFound   bool
+	}{
+		{"no-such-tab", "", true},
+		{a, other, true},
+		{a, "no-such-tab", true},
+		{a, a, false},
+	} {
+		err := back.MoveTab(bad.id, bad.before)
+		if err == nil || errors.Is(err, errNotFound) != bad.notFound {
+			t.Errorf("MoveTab(%q, %q) = %v, want an error (not found: %v)", bad.id, bad.before, err, bad.notFound)
+		}
+	}
+}

@@ -144,95 +144,83 @@ body.wb-resizing { cursor: col-resize; user-select: none; }
 body.wb-resizing #o-main > :not(.o-resizer), body.wb-resizing #o-center > :not(.o-resizer) { pointer-events: none; }
 body.wb-resizing .o-resizer { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) { .o-resizer::after { transition: none; } }
+/* While a tab is dragged (tabdrag.js), the same: the ghost and the drop
+   line follow the pointer, and nothing under it reacts. */
+body.tab-dragging #o-main > :not(.o-resizer), body.tab-dragging #o-center > :not(.o-resizer) { pointer-events: none; }
 /* A hidden side pane (resize.js): gone with its border. The status bar's
    left section then only wraps its contents. */
 #wb-app.hide-left #o-side, #wb-app.hide-left .o-resizer[data-side="left"],
 #wb-app.hide-right #o-files, #wb-app.hide-right .o-resizer[data-side="right"] { display: none; }
-/* The projects pane's show button sits in the center's head at its edge:
-   the file group's when the terminals are collapsed (split.js), else the
-   terminals'. */
+/* The projects pane's show button sits in the head of the leftmost group
+   in view, the files pane's in the rightmost one's right end, with the
+   files pane's mode switch (paneviews.js), Maximize, Open in editor and
+   the right side's toggle. Every group holds the whole set; split.js marks
+   which group is leftmost and which rightmost. */
 #o-center .o-show { display: none; }
-#wb-app.hide-left #o-center:not(.term-off) #o-tab-head .o-show[data-show="left"],
-#wb-app.hide-left #o-center.term-off #o-file-head .o-show[data-show="left"] { display: inline-flex; }
-/* The files pane's show button: at the right end of the second row, where
-   its ≡ hide button was: the file tab row while the file group shows, else
-   the terminals' top row, the right side then being closed. */
-#wb-app.hide-right #o-center.files-open:not(.file-off) #o-file-bar .o-show[data-show="right"],
-#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-tab-head .o-show[data-show="right"] { display: inline-flex; }
-/* The top row's right end: always in the right side's top row (Maximize
-   in Chats mode, and in Files mode with the file group open); in the
-   terminals' head only while the right side is closed, to bring it back. */
+#wb-app.hide-left .o-group.o-leftmost .o-show[data-show="left"] { display: inline-flex; }
 .o-top-acts { display: none; flex: none; margin-left: auto; align-items: center; gap: 2px; }
-#o-file-head .o-top-acts,
-#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-tab-head .o-top-acts { display: flex; }
-.o-head .o-top-acts .mini, #o-center .o-show[data-show="right"] { flex: none; width: 22px; height: 22px; padding: 0; align-items: center; justify-content: center; border-radius: var(--r); }
-.o-head .o-top-acts .mini { display: inline-flex; }
-#o-file-max { display: none; }
-#wb-app[data-pane-view="chats"] #o-file-max,
-#wb-app:not([data-pane-view="chats"]) #o-center.files-open:not(.file-off) #o-file-max { display: inline-flex; }
+.o-group.o-rightmost .o-top-acts { display: flex; }
+.o-top-acts .mini, #o-center .o-show[data-show="right"] { flex: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r); }
+/* The files pane's show button only while it is hidden; its mode switch
+   unless the whole right side is closed; Maximize for the chats, or for a
+   second group to maximize. */
+.o-top-acts .o-show[data-show="right"], .o-top-acts .o-file-max { display: none; }
+#wb-app.hide-right #o-center:not(.g2-open) .o-pane-tabs { display: none; }
+#wb-app.hide-right .o-group.o-rightmost .o-top-acts .o-show[data-show="right"],
+#wb-app[data-pane-view="chats"] .o-group.o-rightmost .o-top-acts .o-file-max,
+#wb-app:not([data-pane-view="chats"]) #o-center.g2-open .o-group.o-rightmost .o-top-acts .o-file-max { display: inline-flex; }
 /* The pane's own hide button, at the end of the tree's head: shown
    filled, as the pane is. */
 .o-head .mini.o-hide[data-hide="right"] { margin-left: 2px; width: 22px; height: 22px; border-radius: var(--r); background: var(--bg4); color: var(--fg); }
 .o-show[data-show="left"] { margin: 0 4px 0 6px; }
-/* The center is a grid of four rows and five columns. Rows: top rows; the
-   file group's tabs and the files pane's head; the file group's path row;
-   bodies. Columns: terminal group, split border, file group, files pane
-   border, files pane. The terminals' head is column 1's top row; the right
-   side's (#o-file-head) runs over the file group and the pane, or the pane
-   alone while no file group shows, and goes with the right side. The
-   files pane takes rows 2-4 (its mode's head, level with the file tabs,
-   then its body). Terminals and the welcome view take rows 2-4; in the
-   tabs layout, and in split while no file is open, only the terminal
-   group has width and the viewer takes its place (path row 2, code rows
-   3-4). --o-split (split.js) is the terminal group's share of the two
-   groups; each keeps 320px (GROUP_MIN in split.js). */
+/* The center is a grid of one row and five columns: the first tab group,
+   the split border, the second group, the files pane's border, the files
+   pane. Each group lays itself out (tab bar, path row, body), so the bars
+   and the files pane's head stay level. Only one group shows in the tabs
+   layout, in a narrow window and while one is collapsed: it takes the
+   first column, whichever of the two it is. --o-split (split.js) is the
+   first group's share of the two; each keeps 320px (GROUP_MIN in
+   split.js). */
 #o-center {
   flex: 1; min-width: 320px; position: relative; background: var(--bg);
   --o-files-w: var(--wb-right);
-  display: grid; grid-template-rows: 30px 30px 28px minmax(0, 1fr);
+  display: grid; grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w);
 }
 #wb-app.hide-right #o-center { --o-files-w: 0px; }
-#o-center.files-open {
+#o-center.g2-open {
   grid-template-columns:
     minmax(0, clamp(320px, calc((100% - var(--o-files-w)) * var(--o-split, .5)), calc(100% - var(--o-files-w) - 320px)))
     0 minmax(0, 1fr) 0 var(--o-files-w);
 }
-#o-center.files-open.term-off { grid-template-columns: 0 0 minmax(0, 1fr) 0 var(--o-files-w); }
-#o-center.files-open.file-off { grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w); }
-#o-tab-head { grid-area: 1 / 1 / 2 / 2; }
-#o-term, #o-empty { grid-area: 2 / 1 / 5 / 2; }
-/* The viewer's path row and code sit in the grid themselves. */
-#o-viewer { display: contents; }
-#o-view-head { grid-area: 2 / 1; }
-#o-code-vp, #o-diff-vp, #o-notes-vp { grid-area: 3 / 1 / 5 / 2; }
-#o-split-resizer { grid-area: 1 / 2 / 5 / 3; display: none; }
-#o-file-head { grid-area: 1 / 5 / 2 / 6; border-left: 1px solid var(--line); }
-#o-center.files-open:not(.file-off) #o-file-head { grid-column: 3 / -1; }
-#wb-app.hide-right #o-center:is(:not(.files-open), .file-off) #o-file-head { display: none; }
-#o-file-bar { grid-area: 2 / 3; display: none; }
-#o-center.files-open #o-view-head { grid-area: 3 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open :is(#o-code-vp, #o-diff-vp, #o-notes-vp) { grid-area: 4 / 3; border-left: 1px solid var(--line); }
-#o-center.files-open #o-file-bar { display: flex; border-left: 1px solid var(--line); }
-#o-center.files-open #o-split-resizer { display: block; }
-.o-resizer[data-side="right"] { grid-area: 2 / 4 / 5 / 5; }
-#o-files { grid-area: 2 / 5 / 5 / 6; }
-/* Chats mode: no file group; the chats take its columns and the pane's,
+#o-center.g2-open.g0-off { grid-template-columns: 0 0 minmax(0, 1fr) 0 var(--o-files-w); }
+#o-center.g2-open.g1-off { grid-template-columns: minmax(0, 1fr) 0 0 0 var(--o-files-w); }
+.o-group { grid-area: 1 / 1 / 2 / 2; min-width: 0; display: grid; grid-template-rows: 30px auto minmax(0, 1fr); }
+.o-group[hidden] { display: none; }
+#o-center.g2-open .o-group[data-g="1"] { grid-column: 3 / 4; border-left: 1px solid var(--line); }
+.o-group-body { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+.o-group-body > * { grid-area: 1 / 1 / 2 / 2; min-width: 0; min-height: 0; }
+.o-group [hidden] { display: none; }
+/* The border stays while a snapped group is dragged back. */
+#o-split-resizer { grid-area: 1 / 2 / 2 / 3; display: none; }
+#o-center.g2-open:not(.g0-off, .g1-off) #o-split-resizer,
+#o-center.g2-open.dragging #o-split-resizer { display: block; }
+.o-resizer[data-side="right"] { grid-area: 1 / 4 / 2 / 5; }
+#o-files { grid-area: 1 / 5 / 2 / 6; }
+/* Chats mode: no second group; the chats take its column and the pane's,
    even while the tree is hidden. */
-#wb-app[data-pane-view="chats"] #o-center.files-open > :is(#o-file-bar, #o-viewer, .o-resizer[data-side="right"]) { display: none; }
-#wb-app[data-pane-view="chats"] #o-center.files-open:not(.file-off) > #o-files { display: flex; grid-column: 3 / 6; }
-/* Chats maximized without a file group: the pane's column takes the
-   center (split.js only maximizes them while the pane shows). */
-#wb-app[data-pane-view="chats"] #o-center.term-off:not(.files-open) { grid-template-columns: 0 0 0 0 minmax(0, 1fr); }
-#wb-app[data-pane-view="chats"] #o-center.term-off:not(.files-open) > .o-resizer[data-side="right"] { display: none; }
-#wb-app[data-pane-view="chats"] #o-center.term-off > #o-files { border-left: 0; }
-/* A collapsed group goes; the border stays only while being dragged back. */
-#o-center.term-off > :is(#o-tab-head, #o-term, #o-empty),
-#o-center.file-off > :is(#o-file-bar, #o-viewer),
-#o-center:is(.term-off, .file-off):not(.dragging) > #o-split-resizer { display: none; }
-#o-center.term-off :is(#o-file-head, #o-file-bar, #o-view-head, #o-code-vp, #o-diff-vp, #o-notes-vp) { border-left: 0; }
-#o-file-max .o-ic-restore, #o-center.term-off #o-file-max .o-ic-max { display: none; }
-#o-center.term-off #o-file-max .o-ic-restore { display: inline; }
+#wb-app[data-pane-view="chats"] #o-center.g2-open > :is(.o-group[data-g="1"], .o-resizer[data-side="right"]) { display: none; }
+#wb-app[data-pane-view="chats"] #o-center.g2-open:not(.g1-off) > #o-files { display: flex; grid-column: 3 / 6; }
+/* Maximized chats take the center; the first group keeps its head beside
+   them (split.js only maximizes them while the chats show). */
+#wb-app #o-center.acts-only { grid-template-columns: max-content 0 0 0 minmax(0, 1fr); }
+#o-center.acts-only > :is(.o-resizer[data-side="right"], #o-split-resizer) { display: none; }
+.o-group.o-head-only { grid-template-rows: 30px 0 0; }
+.o-group.o-head-only > :not(.o-group-head), .o-group.o-head-only :is(.o-tabs, .o-group-add) { display: none; }
+#wb-app[data-pane-view="chats"] #o-center.g0-off > #o-files { border-left: 0; }
+#o-center.g2-open.g0-off .o-group[data-g="1"] { border-left: 0; }
+.o-file-max .o-ic-restore, #o-center.g0-off .o-file-max .o-ic-max { display: none; }
+#o-center.g0-off .o-file-max .o-ic-restore { display: inline; }
 .o-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 
 .o-head {
@@ -264,7 +252,7 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
    in the projects pane after the Projects | Scratch switch. */
 .o-side-head { gap: 6px; padding: 0 4px 0 8px; }
 .o-files-head { height: 30px; gap: 6px; padding: 0 4px; }
-#o-file-head .pane-tabs { margin-left: 6px; }
+.o-group-head .o-pane-tabs { margin-right: 4px; }
 .o-hide[data-hide="left"] { margin-left: auto; }
 .o-side-tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
 .o-side-tabs button {
@@ -421,14 +409,13 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 
 /* ---------- middle: tabs, terminal, viewer ---------- */
 /* The bars' line is a shadow, as in the app, so the active tab covers it. */
-#o-tab-head, #o-file-head, #o-file-bar { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); min-width: 0; }
-#o-tabs, #o-file-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-#o-tabs::-webkit-scrollbar, #o-file-tabs::-webkit-scrollbar { display: none; }
-#o-tabs .tab, #o-file-tabs .tab { height: 100%; line-height: normal; }
-#o-new-tab { flex: none; margin: 0 auto 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-/* Open file follows the file tabs, as New tab the terminal tabs; what
-   comes after them sits at the bar's right end. */
-#o-file-new { flex: none; margin: 0 auto 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.o-group-head { gap: 4px; padding: 0 6px 0 0; border-bottom: 0; box-shadow: inset 0 -1px 0 var(--line); min-width: 0; }
+.o-tabs { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.o-tabs::-webkit-scrollbar { display: none; }
+.o-tabs .tab { height: 100%; line-height: normal; }
+/* New tab follows its group's tabs; what comes after sits at the bar's
+   right end. */
+.o-group-add { flex: none; margin: 0 2px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 /* A terminal tab's PTY: hollow when stopped, then by agent status. */
 .o-tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; border: 1px solid var(--faint); }
 .o-tab-dot.on { background: var(--gi); border-color: var(--gi); }
@@ -473,26 +460,29 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-menu-label { padding: 2px 12px; font-size: 11px; color: var(--faint); }
 .o-menu button[role="menuitemradio"][aria-checked="true"]::after { content: "✓"; margin-left: auto; padding-left: 12px; color: var(--accent-fg); }
 
-#o-term { min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
+.o-term { min-height: 0; overflow: hidden; padding: 4px 0 0 8px; background: var(--bg); }
 
-/* The path row: as high as its grid row (row 2 in the terminals' place,
-   level with the files pane's head; row 3 under the file tabs). */
-#o-view-head {
-  min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px;
+/* The path row, under its group's tab bar: there only while the group
+   shows a file, a diff or the release notes. */
+.o-view-head {
+  height: 28px; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px;
   background: var(--bg2); border-bottom: 1px solid var(--line); font: 11px var(--mono);
 }
-#o-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
-#o-file-meta { flex: none; color: var(--faint); }
-#o-code-vp { min-width: 0; min-height: 0; overflow: auto; position: relative; }
-#o-code-sizer { position: relative; min-width: 100%; }
-#o-code-rows { position: absolute; top: 0; left: 0; min-width: 100%; width: max-content; }
-#o-code-rows .g { cursor: default; }
-#o-code-vp.o-image #o-code-rows { position: static; width: auto; padding: 16px; }
-#o-code-vp.o-image img { display: block; max-width: 100%; }
+.o-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+.o-file-meta { flex: none; color: var(--faint); }
+.o-code-vp { min-width: 0; min-height: 0; overflow: auto; position: relative; }
+.o-code-sizer { position: relative; min-width: 100%; }
+.o-code-rows { position: absolute; top: 0; left: 0; min-width: 100%; width: max-content; }
+.o-code-rows .g { cursor: default; }
+.o-code-vp.o-image .o-code-rows { position: static; width: auto; padding: 16px; }
+.o-code-vp.o-image img { display: block; max-width: 100%; }
+/* Dropping a tab on the right third of the only group opens the second
+   one: a target for tabdrag.js, never for the pointer. */
+.o-side-zone { position: absolute; top: 0; right: 0; width: 33%; height: 100%; pointer-events: none; }
 
 /* The Changes tab (changes.js): each changed file under a sticky header,
    its hunks' heads sticking just below it. */
-#o-diff-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); font: var(--fs)/var(--lh) var(--mono); }
+.o-diff-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); font: var(--fs)/var(--lh) var(--mono); }
 .o-chg-head {
   position: sticky; top: 0; z-index: 2; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
   background: var(--bg2); border-bottom: 1px solid var(--line); font-size: 11.5px; cursor: pointer; user-select: none;
@@ -508,13 +498,13 @@ body.wb-resizing .o-resizer { pointer-events: auto; }
 .o-chg-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .o-chg-head .mini { margin-left: 0; width: 20px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .o-chg-head .mini:hover { background: var(--bg4); }
-#o-diff-vp .diff-hunk-head { top: 28px; }
-#o-diff-vp.o-diff-one .diff-hunk-head { top: 0; }
-#o-diff-vp .o-note { font-family: var(--ui); }
+.o-diff-vp .diff-hunk-head { top: 28px; }
+.o-diff-vp.o-diff-one .diff-hunk-head { top: 0; }
+.o-diff-vp .o-note { font-family: var(--ui); }
 
 /* The What's New tab (whatsnew.js): a sticky list of the release's sections
    and entries beside the notes; a narrow tab drops the list. */
-#o-notes-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); container: notes / inline-size; }
+.o-notes-vp { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); container: notes / inline-size; }
 .wn { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 32px; padding: 24px 28px 48px; font: 13px/1.6 var(--ui); color: var(--fg); }
 .wn.wn-bare { grid-template-columns: minmax(0, 1fr); }
 .wn-nav { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 140px); overflow: auto; font-size: 12px; }

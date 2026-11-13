@@ -488,6 +488,7 @@ func (wb *workbench) routes() {
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/hook"), wb.handleHook)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/send"), wb.handleTabSend)
 	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/stop"), wb.handleTabStop)
+	wb.mux.HandleFunc("POST "+wb.route("/api/tabs/{id}/move"), wb.handleTabMove)
 	wb.mux.HandleFunc("GET "+wb.route("/api/diagnostics"), wb.handleDiagnostics)
 	wb.mux.HandleFunc("POST "+wb.route("/api/logs/open"), wb.handleLogsOpen)
 	wb.mux.HandleFunc(wb.route("/w/"), wb.handleWorkspace)
@@ -1809,6 +1810,26 @@ func (wb *workbench) handleTabRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := wb.records.RemoveTab(r.PathValue("id")); err != nil {
+		failRecord(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// handleTabMove serves POST /api/tabs/{id}/move {"before": id | ""}: the
+// tab goes ahead of before in its workspace's order, or last.
+func (wb *workbench) handleTabMove(w http.ResponseWriter, r *http.Request) {
+	if !localPost(w, r) {
+		return
+	}
+	var body struct {
+		Before string `json:"before"`
+	}
+	if readJSONBody(r, &body) != nil {
+		fail(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if err := wb.records.MoveTab(r.PathValue("id"), body.Before); err != nil {
 		failRecord(w, err)
 		return
 	}

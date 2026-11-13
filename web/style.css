@@ -890,19 +890,16 @@ body.right-zoom #btn-right-zoom .ic-restore { display: block; }
 .cnode .car.cyc { cursor: default; font-size: 11px; }
 .cnone { padding-block: 1px; padding-right: 10px; font-size: 11px; font-style: italic; color: var(--faint); }
 
-/* The terminal's tab chips, in the right side's top row. */
-.term-inspector-tabs { display: flex; gap: 4px; overflow-x: auto; flex: 1; min-width: 0; align-items: center; scrollbar-width: none; }
-.term-tab-chip {
-  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
-  border-radius: var(--r); background: transparent; border: 1px solid transparent;
-  color: var(--dim); font-size: 11px; font-family: var(--mono); cursor: pointer;
-  white-space: nowrap;
-}
-.term-tab-chip:hover { background: var(--bg3); color: var(--fg); }
-.term-tab-chip.active { background: var(--bg3); color: var(--fg); border-color: var(--line); }
+/* The right group's tab bar, in its top row: its terminals and the files
+   dragged to it, drawn as the center's tabs are (tabs.js). */
+.side-tabs { display: flex; gap: 0; overflow-x: auto; flex: 1; min-width: 0; align-self: stretch; scrollbar-width: none; }
+.side-tabs::-webkit-scrollbar { display: none; }
+.side-tabs .tab { font-size: 11px; font-family: var(--mono); max-width: 160px; }
 .term-status-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .term-status-dot.idle { background: #a6e3a1; }
 .term-status-dot.busy { background: #f9e2af; animation: pulse-dot 1.2s infinite; }
+/* A stopped tab: it keeps its place, and starts again when clicked. */
+.term-status-dot.off { background: var(--faint); }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .term-agent-menu {
   position: absolute;
@@ -944,27 +941,28 @@ body.right-zoom #btn-right-zoom .ic-restore { display: block; }
 .agent-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .agent-ic svg { width: 12px; height: 12px; }
 .term-tab-kind { color: var(--dim); }
-.term-tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  margin-left: 2px;
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0.5;
-  cursor: pointer;
-}
-.term-tab-close:hover {
-  opacity: 1;
-  background: var(--bg4);
-  color: var(--err, #f38ba8);
-}
 .term-inspector-body {
   flex: 1; min-height: 0; overflow: hidden; background: var(--bg); padding: 4px 0 0 6px;
 }
+/* A file dragged to the right side: read only, with Edit to take it back
+   to the center (fileview.js draws the rows). */
+.side-file { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.side-file-head {
+  flex: none; display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 6px;
+  font-size: 11px; color: var(--dim); background: var(--bg2); box-shadow: inset 0 -1px 0 var(--line);
+}
+.side-file-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.side-file-meta { flex: none; color: var(--faint); }
+.side-file-edit {
+  flex: none; padding: 1px 7px; border-radius: var(--r); border: 1px solid var(--line);
+  background: var(--bg3); color: var(--fg); font-size: 11px; cursor: pointer;
+}
+.side-file-edit:hover { background: var(--bg4); }
+.side-file-vp { flex: 1; min-height: 0; overflow: auto; contain: strict; }
+.side-file-vp .g { padding: 0 8px; }
+.side-file-vp img { max-width: 100%; }
+.side-file-vp .o-note { padding: 10px; font-size: 12px; color: var(--dim); }
+.side-file-vp .o-err { color: var(--err, #f38ba8); }
 /* Floating Selection Pill */
 .floating-sel-pill {
   position: fixed;
@@ -1262,6 +1260,13 @@ body.right-zoom #btn-right-zoom .ic-restore { display: block; }
 
 /* ---------- the editor surface ---------- */
 #editor { flex: 1; position: relative; overflow: hidden; background: var(--bg); }
+/* A terminal dragged into the center, in #editor's place: while it shows,
+   there is no document in front (tabs.js, term_inspector.js). */
+#center-term { flex: 1; min-height: 0; overflow: hidden; background: var(--bg); padding: 4px 0 0 6px; }
+/* The right third of the center while a tab is dragged and the right side
+   is hidden: dropping there opens that side on the tab (tabdrag.js). */
+#center-side-zone { display: none; position: absolute; top: 30px; right: 0; bottom: 0; width: 33%; z-index: 4; }
+body.tab-dragging.right-hidden #center-side-zone { display: block; }
 /* The whole surface takes the text cursor, not just the glyphs: past the end of a
    line and below the last one still read as places the caret can go. */
 #viewport { position: absolute; inset: 0; overflow: auto; contain: strict; cursor: text; }
@@ -1341,6 +1346,11 @@ body.word-wrap #viewport { overflow-x: hidden; }
 body.word-wrap .row { height: auto; min-height: var(--lh); }
 body.word-wrap .g { align-self: flex-start; height: var(--lh); }
 body.word-wrap .c { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+/* The right side's read-only file places its rows by line height
+   (fileview.js), so word wrap must leave them one line tall. */
+body.word-wrap .side-file-vp .row { height: var(--lh); min-height: 0; }
+body.word-wrap .side-file-vp .g { align-self: auto; }
+body.word-wrap .side-file-vp .c { white-space: pre; word-break: normal; overflow-wrap: normal; }
 
 
 /* Git gutter (normal file view): a thin bar on the line-number cell, VS Code
@@ -3722,3 +3732,13 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
   color: var(--yellow, #d29922) !important;
   font-weight: 600;
 }
+
+/* Tab dragging (tabdrag.js), on the agents page and in the editor. While a
+   drag runs, terminals and frames ignore the pointer so their canvases do
+   not swallow it. */
+.tab-ghost { position: fixed; z-index: 1000; pointer-events: none; opacity: .85; box-shadow: 0 4px 16px rgb(0 0 0 / .35); }
+.tab-dragged { opacity: .4; }
+.tab-drop-line { position: fixed; z-index: 999; width: 2px; background: var(--accent); pointer-events: none; }
+.tab-drop-box { position: fixed; z-index: 998; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; border-radius: 4px; }
+body.tab-dragging, body.tab-dragging * { cursor: grabbing !important; user-select: none; }
+body.tab-dragging .xterm, body.tab-dragging iframe { pointer-events: none; }

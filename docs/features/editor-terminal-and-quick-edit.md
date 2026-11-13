@@ -15,13 +15,29 @@ The right side has two modes, picked with the icons at the left of its top row: 
 
 ## The Terminal
 
-The Terminal mode's own row holds the tab chips and **+**.
+The Terminal mode's own row is the right group's tab bar: its terminal tabs, the files dragged to it, and **+**.
 
 The pane is an xterm.js terminal connected to the orchestrator's PTY for the editor's workspace folder. The tabs are the workspace's own terminal tabs, so a tab opened here also appears on the agents page and the other way round.
 
-- **Chips**: one per tab, with a status dot that lights while an agent is working or waiting. Click a chip to show that tab. A stopped tab starts when you click it.
-- **`+`**: opens a menu of every agent punk0 knows (Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Antigravity, Cursor Agent, Qwen Code, Factory Droid, Kimi Code, Crush, Pi, Oh My Pi, Aider), then Shell, and starts a tab running the one you pick.
-- **`×`** on a chip closes that tab.
+- **Tabs**: one per terminal, with a status dot that lights while an agent is working or waiting and is dim while the tab is stopped. Click a tab to show it. A stopped tab starts when you click it; nothing else starts one, so a reload never wakes a stopped agent.
+- **`+`**: opens a menu of every agent punk0 knows (Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Antigravity, Cursor Agent, Qwen Code, Factory Droid, Kimi Code, Crush, Pi, Oh My Pi, Aider), then Shell, and starts a tab running the one you pick, on this side.
+- **`×`** on a terminal tab closes that tab; on a file tab it only takes the file off the side.
+
+When several workspaces share this folder, each terminal tab says whose it is.
+
+## Two Groups: Dragging Tabs
+
+The editor has two tab groups: the centre (the tab bar over the document view) and the right side's Terminal mode. Any tab can be dragged from one bar to the other, and within a bar to reorder it:
+
+- **A terminal dragged into the centre** shows there, in the document's place, as wide as the editor. While it is in front there is no document open: the status bar's file details, the outline, Find, Quick Edit, save and the vim keys behave as they do with no file, and keys typed in the terminal stay with it. Click a file tab to come back.
+- **A file dragged to the right side** shows read only, with its own **Edit** button: Edit (and the tab menu's) opens it in the centre again for editing. The editor's status bar and `Mod+G` always follow the centre's document, never the side's file.
+- While the right side is hidden, dropping a tab on the right third of the centre opens it on that tab; dropping on the side while it shows Chats switches it to Terminal.
+- A drag starts after 4 px of movement, so a click still selects a tab and a middle click still closes it. `Esc`, or a drop on nothing, cancels.
+- Right-clicking any tab offers **Move to other side**, **Move left** and **Move right**, plus **Close**, **Stop** for a terminal and **Edit** for a read-only file. **Close All**, **Close Others**, **Close to the Right** and **Close to the Left** are in the centre's menu and close documents only: a bulk close never ends a shell.
+
+Terminal order is the server's, shared with the agents page: reordering a terminal here reorders it there (and the other way round) as soon as the pages' 3 s poll comes round. The order is the centre's terminals first, then the right side's. When several workspaces share the folder, a terminal only reorders among its own workspace's tabs, so a drag shows no insertion point between another workspace's — moving it to the other group is always allowed.
+
+The centre's terminals are remembered for the browser tab (`sessionStorage`): a reload puts them back in the centre, and shows the one that was in front again only while it is still running. Open documents are not remembered, as before.
 
 Shells and agents run in the orchestrator, not the page: closing the browser or the editor leaves them running, and reconnecting redraws their screen and scrollback as they were. When the connection ends, the terminal says so; press any key to reconnect.
 
@@ -57,7 +73,7 @@ The pill is not shown in the diff view or the Markdown preview, and it hides whe
 
 ### Add to Chat
 
-Add to Chat sends the selection to the agent in the active terminal tab as `@path lines a-b` followed by the code in a fenced block, the same text **Copy with Context** (`Alt+A`) copies. It works in the source view and the diff view. With no terminal tab running, or while the tab's agent is working or waiting on a question, it is refused with a notice.
+Add to Chat sends the selection to an agent tab as `@path lines a-b` followed by the code in a fenced block, the same text **Copy with Context** (`Alt+A`) copies. It works in the source view and the diff view. The agent it goes to is the one shown in the group you used last, else the one shown in the other group, else the first agent tab; the group holding it comes to the front. With no agent tab, or while the agent is working or waiting on a question, it is refused with a notice.
 
 ---
 

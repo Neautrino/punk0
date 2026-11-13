@@ -9,7 +9,7 @@
 // It replaces both the Recent Commits list and the Unpushed section: the
 // outgoing commits are counted into S.unpushedCount, which tree.js's
 // hasGitView() reads so a clean tree with local commits keeps its Git view.
-import { $, S, esc, api } from './state.js';
+import { $, S, esc, api, doc_ } from './state.js';
 import { on, emit } from './bus.js';
 import { openFile } from './tabs.js';
 import { copyToClipboard } from './ui.js';
@@ -416,7 +416,7 @@ async function openFirstCommitFile(el) {
 
 // The path the active tab shows if it is pinned to sha, else ''.
 function activeCommitPath(sha) {
-  const d = S.tabs[S.active];
+  const d = doc_();
   return d && d.diffRef === sha ? d.path : '';
 }
 

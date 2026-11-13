@@ -9,7 +9,7 @@ import { go, pushHistory } from './history.js';
 import { openFind, findNextMatch, clearFind } from './find.js';
 import { showHover } from './hover.js';
 import { showCalls } from './calls.js';
-import { switchTab, closeTab } from './tabs.js';
+import { centerTabAt, centerTabCount, stepCenterTab } from './tabs.js';
 import { getSelectedRangeInfo, runSelectionAction } from './selbar.js';
 import { openPalette } from './palette.js';
 import { showHelp } from './shortcuts.js';
@@ -358,18 +358,16 @@ export function handleVimKeyDown(e) {
       // gh: Call trail
       showCalls();
     } else if (e.key === 't') {
-      // gt: Next tab
+      // gt: Next tab of the center bar, terminals included
       const count = parseInt(vimCount, 10);
-      if (!isNaN(count) && count > 0 && count <= S.tabs.length) {
-        switchTab(count - 1);
-      } else if (S.tabs.length > 1) {
-        switchTab((S.active + 1) % S.tabs.length);
+      if (!isNaN(count) && count > 0 && count <= centerTabCount()) {
+        centerTabAt(count - 1);
+      } else {
+        stepCenterTab(1);
       }
     } else if (e.key === 'T') {
       // gT: Previous tab
-      if (S.tabs.length > 1) {
-        switchTab((S.active - 1 + S.tabs.length) % S.tabs.length);
-      }
+      stepCenterTab(-1);
     }
     resetVimState();
     return true;

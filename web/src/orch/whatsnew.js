@@ -5,12 +5,16 @@
 // links to the release and the changelog. It opens by itself once after a
 // version change (/api/wb/state whatsNew): the first page to open it tells
 // the server, so other pages and the next start do not open it again. The
-// update card (update.js) and the help sheet open it too.
-import { $, esc } from '../state.js';
+// update card (update.js) and the help sheet open it too. There is one tab,
+// so one group shows it at a time: it draws in the viewport of whichever
+// holds it.
+import { $, $$, esc } from '../state.js';
 import { call } from './api.js';
 import { state, subscribe, openWhatsNew } from './store.js';
 
-let vp, titleEl, metaEl;
+let panes = []; // per group: { vp, titleEl, metaEl }
+let at = -1; // the group the notes are drawn in, -1 while they are not
+let vp = null; // that group's viewport
 const loaded = new Map(); // version -> answer with notes; a failure is asked again
 let shown = ''; // version drawn in vp
 let spy = null; // marks the list's link of where the reading is; null when nothing is drawn
@@ -18,18 +22,20 @@ let frame = 0;
 let claimed = '';
 
 export function initWhatsNew() {
-  vp = $('#o-notes-vp');
-  titleEl = $('#o-file-title');
-  metaEl = $('#o-file-meta');
-  vp.addEventListener('click', e => {
-    const id = e.target.closest('.wn-nav a')?.dataset.to;
-    if (!id) return;
-    e.preventDefault();
-    vp.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start' });
-  });
-  vp.addEventListener('scroll', () => {
-    if (spy && !frame) frame = requestAnimationFrame(() => { frame = 0; spy?.(); });
-  }, { passive: true });
+  panes = $$('.o-group').map(group => ({
+    vp: $('.o-notes-vp', group), titleEl: $('.o-file-title', group), metaEl: $('.o-file-meta', group),
+  }));
+  for (const p of panes) {
+    p.vp.addEventListener('click', e => {
+      const id = e.target.closest('.wn-nav a')?.dataset.to;
+      if (!id) return;
+      e.preventDefault();
+      p.vp.querySelector(`#${CSS.escape(id)}`)?.scrollIntoView({ block: 'start' });
+    });
+    p.vp.addEventListener('scroll', () => {
+      if (p.vp === vp && spy && !frame) frame = requestAnimationFrame(() => { frame = 0; spy?.(); });
+    }, { passive: true });
+  }
   subscribe(autoOpen);
 }
 
@@ -41,12 +47,16 @@ function autoOpen() {
   openWhatsNew(v);
 }
 
-// showWhatsNew draws version ver's notes; the path row names them.
-export async function showWhatsNew(ver) {
-  titleEl.textContent = `What's New · v${ver}`;
-  metaEl.textContent = '';
-  if (shown === ver) return;
+// showWhatsNew draws version ver's notes in group g; the path row names
+// them. Moving the tab to the other group draws them there.
+export async function showWhatsNew(g, ver) {
+  const p = panes[g];
+  p.titleEl.textContent = `What's New · v${ver}`;
+  p.metaEl.textContent = '';
+  if (shown === ver && at === g) return;
   shown = ver;
+  at = g;
+  vp = p.vp;
   let res = loaded.get(ver);
   if (!res) {
     vp.innerHTML = '<p class="o-note">Loading the release notes…</p>';
@@ -54,11 +64,14 @@ export async function showWhatsNew(ver) {
     res = r.ok ? r.data : { version: ver, html: '' };
     if (res.html) loaded.set(ver, res);
   }
-  if (shown === ver) draw(res);
+  if (shown === ver && at === g) draw(res);
 }
 
-export function hideWhatsNew() {
+// hideWhatsNew is for something else in front of group g.
+export function hideWhatsNew(g) {
+  if (at !== g) return;
   shown = '';
+  at = -1;
   spy = null;
 }
 

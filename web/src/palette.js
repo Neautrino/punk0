@@ -1,7 +1,7 @@
 // web/src/palette.js
 import { $, esc, S, doc_, api, debounce, withKeys } from './state.js';
 import { render, toggleWordWrap } from './renderer.js';
-import { openFile, centerLine, closeTab, closeAllTabs, reopenClosedTab } from './tabs.js';
+import { openFile, centerLine, closeCenterTab, closeAllTabs, reopenClosedTab } from './tabs.js';
 import { updateStatus, openLspMenu } from './status.js';
 import { pushHistory } from './history.js';
 import { showPanel, reindexWorkspace } from './panels.js';
@@ -95,7 +95,7 @@ export const COMMANDS = [
   { name: 'Select Theme…', run: () => openPalette('theme') },
   { name: 'Next Theme', run: cycleTheme },
   { name: 'Re-index Workspace', run: reindexWorkspace },
-  { name: 'Close Tab', run: () => { if (S.active >= 0) closeTab(S.active); } },
+  { name: 'Close Tab', run: () => closeCenterTab() },
   { name: 'Close All Tabs', run: () => closeAllTabs() },
   { name: withKeys('Reopen Closed Tab ({Alt+Shift+T})'), run: () => reopenClosedTab() },
   { name: withKeys('Terminal: Show Agent Terminal ({Alt+T})'), run: showTerminal },

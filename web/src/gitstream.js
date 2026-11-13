@@ -212,8 +212,7 @@ export async function handleGitStatus(data) {
   // Close tabs that were opened in git diff view or currently in diff view if their changes are gone.
   // In PR review mode, tabs should remain open even if clean relative to HEAD.
   if (!S.meta?.pr) {
-    for (let i = S.tabs.length - 1; i >= 0; i--) {
-      const t = S.tabs[i];
+    for (const t of [...S.tabs]) {
       // A tab pinned to a commit shows a frozen diff; the working tree going
       // clean is exactly when you want to still be reading it.
       if (t.diffRef) continue;
@@ -221,7 +220,7 @@ export async function handleGitStatus(data) {
       const isDiff = !!code; // untracked included: shown as all added
       const wasDiff = !!(t.diffMode || t.openedInDiffView);
       if (wasDiff && (t.diffAvailable || t.diffMode) && !isDiff) {
-        closeTab(i);
+        closeTab(t.path);
       }
     }
   }

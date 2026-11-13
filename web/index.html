@@ -309,6 +309,14 @@
       <div id="pr-comment-list" class="pr-comment-list" hidden></div>
     </div>
 
+    <!-- A terminal dragged into the center shows here, in the document
+         view's place (term_inspector.js, tabs.js). -->
+    <div id="center-term" hidden></div>
+
+    <!-- Dropping a tab on the right third of the center opens the right
+         side on it while that side is hidden (tabdrag.js). -->
+    <div id="center-side-zone" aria-hidden="true"></div>
+
     <!-- PR review bar: shown only when this session is `px0 pr ...` (web/src/pr.js) -->
     <div id="pr-bar" class="pr-bar" hidden>
       <div class="pr-bar-row">
@@ -409,17 +417,28 @@
         <button type="button" class="side-btn" data-toggle-side="right" title="Hide ({Mod+J})" aria-label="Hide the right side"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
       </span>
     </header>
-    <!-- Terminal: the tab chips and + (an agent or a shell), then the
-         terminal (term_inspector.js). -->
+    <!-- Terminal: the right group's tab bar (its terminals and the files
+         dragged to it) and + (an agent or a shell), then the terminal and
+         the read-only file view those tabs show (term_inspector.js). -->
     <section class="side-view" data-pane-view="term" aria-label="Terminal">
       <header class="side-sub" id="term-inspector-bar">
-        <div class="term-inspector-tabs" id="term-inspector-tabs"></div>
+        <div class="side-tabs" id="term-inspector-tabs" role="tablist"></div>
         <span class="side-top-acts">
           <button id="btn-term-add" type="button" class="side-btn" title="New tab: an agent or a shell" aria-label="New terminal tab" aria-haspopup="menu"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
           <div id="term-agent-menu" class="term-agent-menu" role="menu" hidden></div>
         </span>
       </header>
       <div class="term-inspector-body" id="editor-term-container"></div>
+      <!-- A file dragged to this side, read only until Edit takes it back
+           to the center (fileview.js). -->
+      <div class="side-file" id="right-file" hidden>
+        <div class="side-file-head">
+          <span class="side-file-title" id="right-file-title"></span>
+          <span class="side-file-meta" id="right-file-meta"></span>
+          <button type="button" class="side-file-edit" id="right-file-edit" title="Open this file in the editor">Edit</button>
+        </div>
+        <div class="side-file-vp" id="right-file-vp"><div id="right-file-sizer"><div id="right-file-rows"></div></div></div>
+      </div>
     </section>
     <!-- Chats: the agents' chats in this folder, to read and resume
          (chats.js). -->

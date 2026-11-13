@@ -1,7 +1,7 @@
 // web/src/orch/lsp.js
 // The selected folder's language servers, as px0's status bar shows its own:
 // an item at the right corner of the middle column, its dot saying whether
-// they are on, and a menu above it. With a text file in front (viewer.js's
+// they are on, and a menu above it. With a text file in front (fileview.js's
 // 'file:shown') the item is named after the file's language, and while the
 // folder's servers are on it starts that language's server, as opening the
 // file in the editor does, and its dot follows that server; with no file it

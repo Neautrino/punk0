@@ -1,26 +1,25 @@
 // web/src/term_inspector.js
+// The editor's terminals: one pane per group (termview.js), the right
+// side's and the center's, both showing tabs of the agents page that owns
+// this folder. The tabs themselves, in what order and in which group, are
+// tabs.js's business (editorgroups.js); this module knows which exist
+// (one 3 s poll for the page, 'termtabs:changed'), attaches a pane to one,
+// starts and stops them, and types a selection into an agent's prompt.
 import { $, S, api } from './state.js';
+import { CENTER, RIGHT, activeEntry, groupOf, other, place } from './editorgroups.js';
 import { sideShown, rightView, showRightView } from './sideviews.js';
 import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
 import { getTabLabel } from './term-util.js';
+import { createTermView } from './termview.js';
 import { agentIcon } from './agenticons.js';
-import { installClipboard, clipboardKey } from './termclip.js';
-import { termOptions, loadTermFonts, remeasure } from './termoptions.js';
-import { registerFileLinks } from './filelinks.js';
-import { openFile } from './tabs.js';
+import { openFile, switchTab, drawTabs } from './tabs.js';
 
-let termEl = null;
-let tabListEl = null;
 let agentMenuEl = null;
-let booting = null;
-let xtermInstance = null;
-let activeSocket = null;
-let activeTabId = null;
+const views = {}; // group -> its termview.js pane
+let lastGroup = RIGHT; // the group whose terminal was shown last (Alt+T)
 let workspaceTabs = [];
 let pollTimer = null;
-let isEnded = false;
-const enc = new TextEncoder();
 
 // parentURL is a path of the orchestrator that opened this editor.
 export const parentURL = path => {
@@ -35,18 +34,6 @@ const wsURL = path => {
   return u.href;
 };
 
-function termColors() {
-  const cs = getComputedStyle(document.documentElement);
-  const v = name => cs.getPropertyValue(name).trim();
-  return {
-    background: v('--bg') || '#1e1e2e',
-    foreground: v('--fg') || '#cdd6f4',
-    cursor: v('--accent') || '#89b4fa',
-    cursorAccent: v('--bg') || '#1e1e2e',
-    selectionBackground: v('--sel') || 'rgba(137,180,250,0.3)',
-  };
-}
-
 // fileLinks is filelinks.js's view of this editor's folder: a path in the
 // terminal opens as an editor tab, at its line.
 function fileLinks() {
@@ -58,147 +45,45 @@ function fileLinks() {
   };
 }
 
-function boot() {
-  if (!booting) {
-    let late = () => {}; // set once the terminal exists; see orch/term.js
-    booting = Promise.all([
-      import(parentURL('static/vendor/xterm.mjs')),
-      import(parentURL('static/vendor/addon-fit.mjs')),
-      import(parentURL('static/vendor/addon-image.mjs')),
-      import(parentURL('static/vendor/addon-web-links.mjs')),
-      loadTermFonts(termOptions(), () => late()),
-    ]).then(([{ Terminal }, { FitAddon }, { ImageAddon }, { WebLinksAddon }]) => {
-      const term = new Terminal({ ...termOptions(), theme: termColors() });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      term.loadAddon(new ImageAddon()); // SIXEL and iTerm2 inline images, as in orch/term.js
-      term.loadAddon(new WebLinksAddon()); // clickable URLs, as in orch/term.js
-      registerFileLinks(term, fileLinks); // and file paths, opening editor tabs
-      term.open(termEl);
+// newEditorTermView binds a terminal pane of this editor in el: the
+// agents page's websocket, file paths opening editor tabs.
+export const newEditorTermView = el => createTermView(el, { vendorURL: parentURL, socketURL: wsURL, fileLinks });
 
-      const fitNow = () => {
-        if (termEl && termEl.clientWidth && termEl.clientHeight) {
-          fit.fit();
-        }
-      };
-      fitNow();
-      late = () => { remeasure(term); fitNow(); };
-      new ResizeObserver(fitNow).observe(termEl);
+export const termTabs = () => workspaceTabs;
+export const termTab = id => workspaceTabs.find(t => t.id === id) || null;
+export const isRunning = id => !!termTab(id)?.running;
+// shownTerm is the tab a group's pane has attached, '' for none.
+export const shownTerm = g => views[g]?.id() || '';
 
-      on('theme:changed', () => { term.options.theme = termColors(); });
-      on('setting:changed', key => {
-        if (!key.startsWith('terminal.')) return;
-        const next = termOptions();
-        loadTermFonts(next, () => late()).then(() => {
-          Object.assign(term.options, next);
-          fitNow();
-        });
-      });
-      installClipboard(term, termEl);
-
-      const send = data => activeSocket?.readyState === WebSocket.OPEN && activeSocket.send(data);
-      const sendSize = () => send(JSON.stringify({ cols: term.cols, rows: term.rows }));
-
-      term.onData(s => {
-        if (isEnded) return connect();
-        if (Date.now() - claimed > 1000) reclaim(); // typing here makes this the latest viewer
-        send(enc.encode(s));
-      });
-      term.onBinary(s => send(Uint8Array.from(s, c => c.charCodeAt(0))));
-      term.onResize(sendSize);
-      // The agents page may show this tab too, and its PTY has one size: the
-      // viewer that reported last (term.go). Report again whenever this pane
-      // is used, so the agent draws at this pane's width.
-      let claimed = 0;
-      const reclaim = () => {
-        if (!termEl?.clientWidth || !termEl.clientHeight) return;
-        fit.fit();
-        sendSize();
-        claimed = Date.now();
-      };
-      termEl.addEventListener('pointerdown', reclaim);
-      term.textarea?.addEventListener('focus', reclaim);
-      addEventListener('focus', reclaim);
-      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reclaim());
-
-      term.attachCustomKeyEventHandler(e => {
-        if (clipboardKey(term, e)) return false;
-        if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
-        e.preventDefault();
-        if (e.type === 'keydown') send(enc.encode('\x1b\r'));
-        return false;
-      });
-
-      xtermInstance = { term, fit, sendSize, fitNow };
-      return xtermInstance;
-    });
-  }
-  return booting;
+// attachTerm shows tab id in group g's pane. pick says the user chose it,
+// which starts a stopped tab and makes it the one punk0 reopens.
+export function attachTerm(g, id, { pick = false, focus = true } = {}) {
+  if (!views[g]) return;
+  lastGroup = g;
+  views[g].attach(id, { pick, focus });
 }
 
-function connect() {
-  if (activeSocket) {
-    activeSocket.onclose = null;
-    activeSocket.close();
-    activeSocket = null;
-  }
-  isEnded = false;
-  if (!xtermInstance || !activeTabId) return;
-
-  const { term, sendSize, fitNow } = xtermInstance;
-  term.reset();
-
-  const ws = new WebSocket(wsURL(`api/tabs/${encodeURIComponent(activeTabId)}/term`));
-  activeSocket = ws;
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen = () => {
-    term.focus();
-  };
-  // The server first sends the size its copy of the screen is drawn at, then
-  // that copy (term.go Attach): draw it at that size, then fit this pane,
-  // which reflows it, and report the pane's size.
-  let drawing = false;
-  ws.onmessage = e => {
-    if (typeof e.data === 'string') {
-      const { cols, rows } = JSON.parse(e.data);
-      term.resize(cols, rows);
-      drawing = true;
-    } else if (drawing) {
-      drawing = false;
-      term.write(new Uint8Array(e.data), () => { fitNow(); sendSize(); });
-    } else {
-      term.write(new Uint8Array(e.data));
-    }
-  };
-  ws.onclose = e => {
-    if (activeSocket !== ws) return;
-    activeSocket = null;
-    term.write(`\r\n\x1b[2m[${e.reason || 'disconnected'} · press any key to restart]\x1b[0m\r\n`);
-    isEnded = true;
-  };
+// detachTerm empties a group's pane, leaving note (the idle text) in its
+// place; the tab itself keeps running on the server. The pane writes a
+// note only when it changes, so the 3 s poll may repeat it.
+export function detachTerm(g, note = '') {
+  const v = views[g];
+  if (!v) return;
+  if (v.id()) v.attach(null);
+  v.showNotice(note);
 }
 
-export function attachTab(tabId) {
-  activeTabId = tabId;
-  idleNotice = '';
-  renderTabChips();
-  boot().then(() => {
-    if (activeTabId === tabId) connect();
-  }).catch(err => {
-    if (termEl) termEl.textContent = `Could not load terminal: ${err.message}`;
-  });
-}
-
-function getWorkspaceID() {
+// workspaceID is this editor's workspace at the orchestrator, '' when it
+// has none (no tabs, no drag).
+export function workspaceID() {
   return S.meta?.workspace || S.meta?.workspaceId || '';
 }
 
 // loadWorkspaceTabs fetches this editor's workspace tabs into workspaceTabs,
-// attaching nothing, and says whether it got them; termtabs:changed tells the
-// status bar.
+// attaching nothing, and says whether it got them; 'termtabs:changed' tells
+// tabs.js (the groups and their bars) and the status bar.
 async function loadWorkspaceTabs() {
-  const wsId = getWorkspaceID();
+  const wsId = workspaceID();
   if (!wsId) return false;
   try {
     const res = await fetch(parentURL(`api/workspaces/${encodeURIComponent(wsId)}/tabs`));
@@ -212,31 +97,7 @@ async function loadWorkspaceTabs() {
   return true;
 }
 
-export async function refreshWorkspaceTabs() {
-  if (!await loadWorkspaceTabs()) return;
-  if (activeTabId && workspaceTabs.some(t => t.id === activeTabId)) {
-    renderTabChips();
-    return;
-  }
-  // Attaching starts a stopped tab's process (handleTerm calls Shell()), so a
-  // page load or poll only reattaches to a tab that is already running.
-  // A stopped tab starts when the user clicks it.
-  const running = workspaceTabs.find(t => t.running);
-  if (running) {
-    attachTab(running.id);
-    return;
-  }
-  if (activeSocket) {
-    activeSocket.onclose = null;
-    activeSocket.close();
-    activeSocket = null;
-  }
-  activeTabId = null;
-  renderTabChips();
-  showIdleNotice(workspaceTabs.length
-    ? 'Tabs are stopped. Click one to start it, or use + for a new one.'
-    : 'No terminal tabs. Click + to start an agent or a shell.');
-}
+export const refreshWorkspaceTabs = () => loadWorkspaceTabs();
 
 // The running agent tabs with that status, in tab order: what the status
 // bar's needs-you and working buttons count and step through.
@@ -244,78 +105,34 @@ const agentTabs = status => workspaceTabs.filter(t => t.running && t.status === 
 export const agentTabCount = status => agentTabs(status).length;
 
 // nextAgentTab shows the tab after the shown one with that status, so
-// clicking again walks through all of them.
+// clicking again walks through all of them, in the group holding it.
 export function nextAgentTab(status) {
   const list = agentTabs(status);
   if (!list.length) return;
-  const { id } = list[(list.findIndex(t => t.id === activeTabId) + 1) % list.length];
-  if (id === activeTabId) showTerminal();
+  const shown = shownTerm(S.groups.focus) || shownTerm(other(S.groups.focus));
+  const { id } = list[(list.findIndex(t => t.id === shown) + 1) % list.length];
+  if (id === shown) showTerminal();
   else openTab(id);
 }
 
-// watchWorkspaceTabs refreshes the tabs every 3 s while the page is visible,
-// for the status bar's counts; while the terminal shows, the refresh also
-// reattaches it.
+// watchWorkspaceTabs refreshes the tabs every 3 s while the page is
+// visible: the bars, the status bar's counts, and each group's view of
+// what it holds (tabs.js).
 export function watchWorkspaceTabs() {
-  if (pollTimer || !getWorkspaceID()) return;
+  if (pollTimer || !workspaceID()) return;
   const tick = () => {
     if (document.hidden) return;
-    if (termShown()) refreshWorkspaceTabs();
-    else loadWorkspaceTabs();
+    loadWorkspaceTabs();
   };
   pollTimer = setInterval(tick, 3000);
   document.addEventListener('visibilitychange', tick);
   tick();
 }
 
-let idleNotice = '';
-function showIdleNotice(text) {
-  if (idleNotice === text) return; // the 3 s poll would otherwise redraw it
-  idleNotice = text;
-  boot().then(() => {
-    if (!xtermInstance || activeTabId || idleNotice !== text) return;
-    xtermInstance.term.reset();
-    xtermInstance.term.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
-  }).catch(() => {});
-}
-
-function renderTabChips() {
-  if (!tabListEl) return;
-  tabListEl.innerHTML = '';
-  // A folder's tabs may belong to several workspaces at it (main, hmm…):
-  // then each chip says whose it is.
-  const several = new Set(workspaceTabs.map(t => t.workspace)).size > 1;
-
-  for (const t of workspaceTabs) {
-    const btn = document.createElement('button');
-    btn.className = 'term-tab-chip' + (t.id === activeTabId ? ' active' : '');
-    const dot = document.createElement('span');
-    dot.className = 'term-status-dot ' + (t.status === 'working' || t.status === 'waiting' ? 'busy' : 'idle');
-    btn.appendChild(dot);
-    btn.insertAdjacentHTML('beforeend', agentIcon(t.kind, 'term-tab-kind'));
-
-    const name = document.createElement('span');
-    name.textContent = (several && t.workspaceName ? t.workspaceName + ' · ' : '') + getTabLabel(t);
-    btn.appendChild(name);
-
-    const closeBtn = document.createElement('span');
-    closeBtn.className = 'term-tab-close';
-    closeBtn.innerHTML = '&times;';
-    closeBtn.title = 'Close tab';
-    closeBtn.onclick = (e) => {
-      e.stopPropagation();
-      removeTab(t.id);
-    };
-    btn.appendChild(closeBtn);
-
-    btn.onclick = () => attachTab(t.id);
-    tabListEl.appendChild(btn);
-  }
-}
-
 // addTab starts a kind tab in workspace wsId, else this editor's (a folder
-// backend id: the orchestrator picks its workspace).
-export async function addTab(kind, wsId = getWorkspaceID()) {
+// backend id: the orchestrator picks its workspace). New terminals open on
+// the right side.
+export async function addTab(kind, wsId = workspaceID()) {
   if (!wsId) {
     showToast('!', 'No workspace ID available');
     return;
@@ -329,9 +146,9 @@ export async function addTab(kind, wsId = getWorkspaceID()) {
     });
     if (res.ok) {
       const added = await res.json();
-      showTerminal();
+      showTermSide();
       await refreshWorkspaceTabs();
-      attachTab(added.id);
+      openTab(added.id);
     } else {
       const err = await res.json().catch(() => ({}));
       showToast('!', err.error || `Failed to create ${kind} tab`);
@@ -347,14 +164,7 @@ export async function removeTab(tabId) {
       method: 'DELETE',
     });
     if (res.ok) {
-      if (activeTabId === tabId) {
-        if (activeSocket) {
-          activeSocket.onclose = null;
-          activeSocket.close();
-          activeSocket = null;
-        }
-        activeTabId = null;
-      }
+      for (const g of [CENTER, RIGHT]) if (shownTerm(g) === tabId) detachTerm(g);
       await refreshWorkspaceTabs();
     } else {
       const err = await res.json().catch(() => ({}));
@@ -367,21 +177,24 @@ export async function removeTab(tabId) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function socketOpen(ms = 5000) {
+async function socketOpen(g, ms = 5000) {
   for (let t = 0; t < ms; t += 100) {
-    if (activeSocket?.readyState === WebSocket.OPEN) return true;
+    if (views[g].open()) return true;
     await sleep(100);
   }
   return false;
 }
 
-/* A tab the selection can go to: the shown one if it runs an agent, else the
-   first agent tab, running ones first. A plain shell is never a target: it
-   would run the pasted lines as commands. */
+/* A tab the selection can go to: the one the focused group shows if it
+   runs an agent, else the other group's, else the first agent tab, running
+   ones first. A plain shell is never a target: it would run the pasted
+   lines as commands. */
 function chatTab() {
   const isAgent = t => t.kind !== 'shell';
-  const shown = workspaceTabs.find(t => t.id === activeTabId);
-  if (shown && isAgent(shown)) return shown;
+  for (const g of [S.groups.focus, other(S.groups.focus)]) {
+    const shown = termTab(shownTerm(g));
+    if (shown && isAgent(shown)) return shown;
+  }
   return workspaceTabs.find(t => isAgent(t) && t.running) || workspaceTabs.find(isAgent) || null;
 }
 
@@ -390,7 +203,6 @@ function chatTab() {
    the newlines stay in the input and nothing is sent until the user presses
    Enter. Control characters are dropped so the text cannot end the paste. */
 export async function sendToActiveTerminal(text) {
-  showTerminal();
   await refreshWorkspaceTabs();
   const tab = chatTab();
   if (!tab) {
@@ -402,8 +214,12 @@ export async function sendToActiveTerminal(text) {
     return false;
   }
   const wasRunning = tab.running;
-  if (activeTabId !== tab.id || !activeSocket) attachTab(tab.id);
-  if (!await booting || !await socketOpen()) {
+  const g = groupOf(S.groups, tab.id) || RIGHT;
+  // The text must land where the user can see it answered.
+  if (shownTerm(g) !== tab.id || !views[g].open()) openTab(tab.id);
+  else if (g === RIGHT) showTermSide();
+  else views[g].focus();
+  if (!await views[g].ready().catch(() => null) || !await socketOpen(g)) {
     showToast('!', 'Could not connect to ' + getTabLabel(tab));
     return false;
   }
@@ -418,38 +234,46 @@ export async function sendToActiveTerminal(text) {
     }
   }
   const clean = text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
-  xtermInstance.term.paste(clean + '\n');
-  xtermInstance.term.focus();
+  views[g].paste(clean + '\n');
   showToast('✓', 'Added to ' + getTabLabel(tab));
   return true;
 }
 
-const termShown = () => sideShown('right') && rightView() === 'term';
+export const termSideShown = () => sideShown('right') && rightView() === 'term';
 
-// showTerminal shows the right side on its Terminal mode and puts the caret
-// in it.
-export function showTerminal() {
-  if (termShown()) return onTermInspectorShown();
-  showRightView('term'); // 'side:toggled' or 'rightview:changed' calls onTermInspectorShown
+// showTermSide shows the right side on its Terminal mode, where its own
+// tabs live.
+export function showTermSide() {
+  if (termSideShown()) onTermInspectorShown();
+  else showRightView('term'); // 'side:toggled' or 'rightview:changed' calls onTermInspectorShown
 }
 
-// openTab shows tab id in the terminal, a tab the orchestrator has just
-// opened (a resumed chat). Attaching first keeps the tab list's refresh from
-// picking another running tab meanwhile.
+// showTerminal puts the caret in a terminal (Alt+T): the group that showed
+// one last, which may be the center.
+export function showTerminal() {
+  if (lastGroup === CENTER && S.center === 'term' && shownTerm(CENTER)) {
+    views[CENTER].focus();
+    return;
+  }
+  showTermSide();
+}
+
+// openTab shows tab id in the group holding it, the right side for one no
+// group has yet: a chat the orchestrator has just resumed (chats.js), or
+// the agent the status bar stepped to.
 export function openTab(id) {
-  showTerminal();
-  attachTab(id);
+  if (!groupOf(S.groups, id)) S.groups = place(S.groups, { kind: 'term', id }, RIGHT);
+  switchTab(id);
   refreshWorkspaceTabs();
 }
 
 export function onTermInspectorShown() {
   refreshWorkspaceTabs();
-  if (xtermInstance?.fit) {
-    setTimeout(() => {
-      xtermInstance.fit.fit();
-      xtermInstance.term.focus();
-    }, 50);
-  }
+  setTimeout(() => {
+    views[RIGHT].fit();
+    const a = activeEntry(S.groups, RIGHT);
+    if (a?.kind !== 'view') views[RIGHT].focus();
+  }, 50);
   watchWorkspaceTabs();
 }
 
@@ -501,8 +325,8 @@ function toggleAgentMenu(e) {
 }
 
 export function initTermInspector() {
-  termEl = $('#editor-term-container');
-  tabListEl = $('#term-inspector-tabs');
+  views[RIGHT] = newEditorTermView($('#editor-term-container'));
+  views[CENTER] = newEditorTermView($('#center-term'));
   agentMenuEl = $('#term-agent-menu');
   const addBtn = $('#btn-term-add');
   addBtn.onclick = toggleAgentMenu;
@@ -511,4 +335,5 @@ export function initTermInspector() {
   });
   on('side:toggled', ({ side, shown }) => { if (side === 'right' && shown && rightView() === 'term') onTermInspectorShown(); });
   on('rightview:changed', ({ view }) => { if (view === 'term' && sideShown('right')) onTermInspectorShown(); });
+  drawTabs();
 }

@@ -14,7 +14,7 @@ import { $, esc } from '../state.js';
 import { on, emit } from '../bus.js';
 import { call, failed } from './api.js';
 import { subscribe, workspace, openFile, hasGit } from './store.js';
-import { view } from './split.js';
+import { fileShown } from './split.js';
 
 /* git status letter -> CSS class + label, as in the app's tree. */
 export const GIT_STATUS = {
@@ -152,7 +152,7 @@ function renderTree() {
     expandDirty(treeEl);
   }
   drawAll();
-  activePath = view().file?.path ?? null;
+  activePath = fileShown()?.tab.path ?? null;
   markActive();
 }
 
@@ -167,7 +167,7 @@ function setChanged(d) {
 function drawAll() {
   allEl.hidden = !treeEl.classList.contains('changed-only') || !changed;
   allCountEl.textContent = changed;
-  allEl.classList.toggle('sel', !!view().file?.changes);
+  allEl.classList.toggle('sel', !!fileShown()?.tab.changes);
 }
 
 function markActive() {
