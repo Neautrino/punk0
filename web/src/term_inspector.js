@@ -1,5 +1,5 @@
 // web/src/term_inspector.js
-import { $, S } from './state.js';
+import { $, S, api } from './state.js';
 import { sideShown, rightView, showRightView } from './sideviews.js';
 import { on, emit } from './bus.js';
 import { showToast } from './ui.js';
@@ -7,6 +7,8 @@ import { getTabLabel } from './term-util.js';
 import { agentIcon } from './agenticons.js';
 import { installClipboard, clipboardKey } from './termclip.js';
 import { termOptions, loadTermFonts, remeasure } from './termoptions.js';
+import { registerFileLinks } from './filelinks.js';
+import { openFile } from './tabs.js';
 
 let termEl = null;
 let tabListEl = null;
@@ -45,6 +47,17 @@ function termColors() {
   };
 }
 
+// fileLinks is filelinks.js's view of this editor's folder: a path in the
+// terminal opens as an editor tab, at its line.
+function fileLinks() {
+  if (!S.meta?.root) return null;
+  return {
+    root: S.meta.root,
+    list: dir => api('/api/tree', { dir }).then(j => j.children),
+    open: (path, line, col) => openFile(path, line ? { line, col, view: 'source' } : {}),
+  };
+}
+
 function boot() {
   if (!booting) {
     let late = () => {}; // set once the terminal exists; see orch/term.js
@@ -60,6 +73,7 @@ function boot() {
       term.loadAddon(fit);
       term.loadAddon(new ImageAddon()); // SIXEL and iTerm2 inline images, as in orch/term.js
       term.loadAddon(new WebLinksAddon()); // clickable URLs, as in orch/term.js
+      registerFileLinks(term, fileLinks); // and file paths, opening editor tabs
       term.open(termEl);
 
       const fitNow = () => {

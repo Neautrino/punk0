@@ -9,9 +9,12 @@
 // xterm.js is loaded from static/vendor on the first attach rather than
 // bundled, so the page itself stays small.
 import { on } from '../bus.js';
-import { pageURL, wsURL } from './api.js';
+import { call, pageURL, wsURL } from './api.js';
+import { workspace, openFile } from './store.js';
+import { revealLine } from './viewer.js';
 import { installClipboard, clipboardKey } from '../termclip.js';
 import { termOptions, loadTermFonts, remeasure } from '../termoptions.js';
+import { registerFileLinks } from '../filelinks.js';
 
 // The server closes a viewer that lags behind the PTY with 1013 (try again
 // later); reattaching draws the screen again, so nothing is lost.
@@ -47,6 +50,21 @@ function termColors() {
   };
 }
 
+// fileLinks is filelinks.js's view of the selected workspace, whose tab the
+// pane shows: a path in it opens as a file tab, at its line.
+function fileLinks() {
+  const w = workspace();
+  if (!w || w.missing) return null;
+  return {
+    root: w.dir,
+    list: dir => call('GET', `${w.href}api/tree?` + new URLSearchParams({ dir })).then(r => (r.ok ? r.data.children : null)),
+    open: (path, line, col) => {
+      openFile(path, line ? 'source' : undefined);
+      if (line) revealLine(path, line, col);
+    },
+  };
+}
+
 function boot() {
   if (booting) return booting;
   let late = () => {}; // set once the terminal exists
@@ -66,6 +84,7 @@ function boot() {
     // http(s) URLs in the output open in a new browser tab on click, without
     // an opener; a drag over one still selects.
     term.loadAddon(new WebLinksAddon());
+    registerFileLinks(term, fileLinks);
     term.open(termEl);
     // A hidden pane has no size; fitting it would shrink the PTY to 2 columns.
     const fitNow = () => termEl.clientWidth && termEl.clientHeight && fit.fit();

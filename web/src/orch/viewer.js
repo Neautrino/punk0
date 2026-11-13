@@ -27,6 +27,7 @@ let viewHref = ''; // its folder's backend, "w/<id>/"
 let current = null; // { path, doc, top, cur, image, error } shown now
 let diffView = false; // current is shown as its diff (changes.js), not its text
 const opened = new Map(); // path -> the same, for the workspace viewWs
+const wanted = new Map(); // path -> {line, col} a terminal link asked for, applied once its text shows
 
 export function initViewer() {
   codeVp = $('#o-code-vp');
@@ -82,6 +83,7 @@ export function showFile(w, path, diff = false) {
     viewWs = w.id;
     viewHref = w.href;
     opened.clear();
+    wanted.clear();
   }
   let f = opened.get(path);
   if (!f) {
@@ -178,6 +180,21 @@ function paint() {
   codeSizer.style.height = `${d.total * lineH + 100}px`;
   codeVp.scrollTop = f.top;
   renderRows();
+  takeWanted();
+}
+
+// revealLine puts path's cursor on line (and col) the next time its text is
+// in front, which is now if it already is.
+export function revealLine(path, line, col) {
+  wanted.set(path, { line, col });
+  if (current?.path === path && current.doc && !diffView) takeWanted();
+}
+
+function takeWanted() {
+  const w = wanted.get(current.path);
+  if (!w) return;
+  wanted.delete(current.path);
+  goToLine(w.line, w.col);
 }
 
 // drawStatus fills #st-file for a text file in front, and hides it for
@@ -241,17 +258,21 @@ function closeGoto() {
   stPos.setAttribute('aria-expanded', 'false');
 }
 
-// goTo moves the cursor to the typed line, a third of the way down the view.
+// goTo moves the cursor to the typed line.
 function goTo(text) {
   const m = /^\s*(\d+)\s*(?:[:,]\s*(\d+)\s*)?$/.exec(text);
-  const d = current?.doc;
-  if (!m || !d) return;
-  const line = Math.min(Math.max(1, Number(m[1])), d.total);
+  if (!m || !current?.doc) return;
   closeGoto();
+  goToLine(Number(m[1]), Number(m[2]));
+}
+
+// goToLine moves the cursor to line, a third of the way down the view.
+function goToLine(line, col) {
+  line = Math.min(Math.max(1, line), current.doc.total);
   codeVp.scrollTop = Math.max(0, (line - 1) * lineH - codeVp.clientHeight / 3);
   current.top = codeVp.scrollTop;
   renderRows();
-  setCursor(line, Math.max(1, Number(m[2]) || 1));
+  setCursor(line, Math.max(1, col || 1));
 }
 
 function ensureChunks(d, first, last) {
