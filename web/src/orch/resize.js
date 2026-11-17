@@ -7,8 +7,10 @@
 // (.o-hide[data-hide]: the projects pane's head; the end of the files
 // tree's head, so in Files mode it hides the tree only), and a hidden
 // pane's show button (.o-show) takes its place: in the head of the
-// leftmost tab group in view for the projects pane, at the right end of
-// the rightmost one's for the files pane. The right side's toggle, which
+// leftmost tab group in view (or the files pane's top row while no group
+// is) for the projects pane, at the right end of the rightmost one's for
+// the files pane, while a second group still shows (with none, the right
+// side's ◫ brings the pane back). The right side's toggle, which
 // closes the files pane with the second tab group, is split.js's
 // (isHidden, setHidden, 'pane:toggled'). All of it is remembered in this
 // browser.

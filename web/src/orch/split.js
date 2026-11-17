@@ -85,23 +85,24 @@ export function fileShown() {
 
 // layoutCenter puts view() into the center's and the groups' classes and
 // returns it. Only the leftmost group in view carries the projects pane's
-// show button, only the rightmost the right side's buttons.
+// show button, only the rightmost the right side's buttons, and those only
+// while the files pane (with its own top row of them) does not show.
 export function layoutCenter() {
   const v = view();
   // The chats take the second group's column while both groups stand side
   // by side, so only the first can be in view then; maximized they leave
-  // none, and its head stays beside them for the mode switch and Restore.
+  // none and take the whole center, their top row keeping the mode switch,
+  // Restore and a hidden projects pane's show button.
   const chats = paneView() === 'chats';
   const inView = v.groups.map((g, i) => g.shown && !(chats && i === 1 && (v.split || v.collapsed === 0)));
   const shown = inView.flatMap((x, i) => (x ? [i] : []));
-  const actsOnly = chats && !shown.length;
+  const chatsOnly = chats && !shown.length;
   center.classList.toggle('g2-open', v.split);
   center.classList.toggle('g0-off', v.collapsed === 0);
   center.classList.toggle('g1-off', v.collapsed === 1);
-  center.classList.toggle('acts-only', actsOnly);
+  center.classList.toggle('chats-only', chatsOnly);
   groupEls.forEach((el, i) => {
-    el.hidden = !inView[i] && !(actsOnly && i === 0);
-    el.classList.toggle('o-head-only', actsOnly && i === 0);
+    el.hidden = !inView[i];
     el.classList.toggle('o-leftmost', i === (shown[0] ?? 0));
     el.classList.toggle('o-rightmost', i === (shown[shown.length - 1] ?? 0));
     if (v.groups[i]) v.groups[i].inView = !!inView[i];

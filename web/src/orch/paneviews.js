@@ -1,7 +1,9 @@
 // web/src/orch/paneviews.js
 // The right side's two modes, Files and Chats, picked with the icon switch
-// at the left of the right-end buttons of whichever tab group is rightmost
-// (.o-pane-tabs, one per group head; ../paneviews.js draws them all). Each
+// at the left of the files pane's top row (.o-pane-tabs in #o-files
+// .o-pane-head), or, while the pane does not show, at the left of the
+// right-end buttons of whichever tab group is rightmost (one per group
+// head; ../paneviews.js draws them all). Each
 // mode is a <section data-pane-view> in #o-files holding its head and body;
 // only the active one shows. #wb-app carries the mode as data-pane-view, so
 // CSS can give Chats the second group's column too: the modes never share

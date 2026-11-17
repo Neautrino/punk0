@@ -13,8 +13,10 @@
 // in that group. The first group's welcome view starts the default agent,
 // offers the other agents in a menu of their own, then the shell, a file,
 // the editor and a new workspace, then a few of the workspace's own tabs to
-// open again. Double-click renames a terminal tab after what it is for. At
-// the right end, the workspace's folder opens in the full editor.
+// open again. Double-click renames a terminal tab after what it is for. The
+// </> buttons (.o-open-editor: the files pane's top row, or the rightmost
+// tab bar's end while the pane is hidden) open the workspace's folder in
+// the full editor.
 import { $, $$, esc, keyCaps } from '../state.js';
 import { emit, on } from '../bus.js';
 import { call, failed, openEditor } from './api.js';
